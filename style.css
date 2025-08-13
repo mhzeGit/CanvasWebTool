@@ -1,0 +1,125 @@
+body, html {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #111;
+}
+
+canvas {
+  display: block;
+  touch-action: none;
+  cursor: grab;
+}
+
+.top-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: #181818;
+  color: #e0e0e0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid #2a2a2a;
+  z-index: 10;
+  user-select: none;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu-button {
+  background: transparent;
+  color: inherit;
+  border: 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.menu-button:hover {
+  background: #242424;
+}
+
+.menu-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 160px;
+  background: #202020;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 6px;
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+}
+
+.menu.open .menu-dropdown {
+  display: flex;
+}
+
+/* CSS-only fallback so menus still work if JS fails */
+.menu:hover .menu-dropdown {
+  display: flex;
+}
+
+.menu-item {
+  background: #2a2a2a;
+  color: #ddd;
+  border: 0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item[disabled] {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.menu-item:hover:not([disabled]) {
+  background: #353535;
+}
+
+.context-menu {
+  position: fixed;
+  min-width: 160px;
+  background: #202020;
+  color: #ddd;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 1000;
+}
+
+.context-item {
+  display: block;
+  width: 100%;
+  background: #2a2a2a;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.context-item:hover {
+  background: #353535;
+}
+
+.context-item[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

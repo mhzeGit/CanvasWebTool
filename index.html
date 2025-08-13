@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Background Grid</title>
+  <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <div id="topBar" class="top-bar">
+    <div class="menu">
+      <button class="menu-button" data-menu="file">File</button>
+      <div class="menu-dropdown" data-menu="file">
+        <button class="menu-item" disabled>New (soon)</button>
+        <button class="menu-item" disabled>Open (soon)</button>
+        <button class="menu-item" disabled>Save (soon)</button>
+      </div>
+    </div>
+    <div class="menu">
+      <button class="menu-button" data-menu="edit">Edit</button>
+      <div class="menu-dropdown" data-menu="edit">
+        <button class="menu-item" disabled>Undo (soon)</button>
+        <button class="menu-item" disabled>Redo (soon)</button>
+      </div>
+    </div>
+    <div class="menu">
+      <button class="menu-button" data-menu="view">View</button>
+      <div class="menu-dropdown" data-menu="view">
+        <button class="menu-item" disabled>Reset Zoom (soon)</button>
+      </div>
+    </div>
+    <div class="menu">
+      <button class="menu-button" data-menu="add">Add</button>
+      <div class="menu-dropdown" data-menu="add">
+        <button id="actionAddNode" class="menu-item">Add Node</button>
+      </div>
+    </div>
+  </div>
+  <div id="contextMenu" class="context-menu" style="display:none"></div>
+  <canvas id="gridCanvas"></canvas>
+
+  <div id="serveWarning" style="display:none; position:fixed; inset:0; background:#111; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; padding:24px; line-height:1.5;">
+    <h2 style="margin:0 0 8px 0; font-weight:600;">This page needs to be served over HTTP</h2>
+    <p style="margin:0 0 12px 0;">You're opening the file directly from disk. ES module imports are blocked on the <code>file://</code> protocol, so nothing runs.</p>
+    <p style="margin:0;">Run a local server in this folder and visit <a href="http://localhost:5173" style="color:#4FC3F7;">http://localhost:5173</a>. For example:</p>
+    <pre style="background:#222; padding:12px; border-radius:6px; margin-top:8px;">python -m http.server 5173</pre>
+  </div>
+
+  <script>
+    (function() {
+      if (location.protocol === 'file:') {
+        document.getElementById('serveWarning').style.display = 'block';
+      }
+    })();
+  </script>
+
+  <!-- Include the module from the folder -->
+  <script type="module" src="gridScripts/gridControl.js"></script>
+</body>
+</html>
