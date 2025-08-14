@@ -123,3 +123,58 @@ canvas {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Fallback spacing between context items if flex gap is not applied */
+.context-item + .context-item {
+  margin-top: 6px;
+}
+.context-submenu-trigger + .context-item {
+  margin-top: 6px;
+}
+.context-item + .context-submenu-trigger {
+  margin-top: 6px;
+}
+.context-submenu-trigger + .context-submenu-trigger {
+  margin-top: 6px;
+}
+
+/* Context submenu support */
+.context-submenu-trigger {
+  position: relative;
+}
+
+.context-item.has-submenu {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.context-item .submenu-arrow {
+  opacity: 0.7;
+}
+
+.context-submenu {
+  position: absolute;
+  top: -6px;
+  left: 100%;
+  margin-left: 6px;
+  min-width: 160px;
+  background: #202020;
+  color: #ddd;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+  padding: 6px;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 1001;
+}
+
+.context-submenu-trigger:hover > .context-submenu {
+  display: flex;
+}
+
+.context-submenu .context-item + .context-item {
+  margin-top: 6px;
+}

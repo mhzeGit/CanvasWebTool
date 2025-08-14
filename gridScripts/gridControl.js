@@ -30,6 +30,21 @@ let clipboard = [];
 let isSelectingBox = false;
 let boxStartX = 0, boxStartY = 0, boxEndX = 0, boxEndY = 0;
 let boxMode = 'replace'; // 'replace' | 'add' | 'remove'
+let boxBaseSelection = new Set();
+
+// Drag/selection thresholds and pending click state
+const DRAG_THRESHOLD_PX = 3;
+let pendingClickIndex = -1;
+let pointerDownScreenX = 0, pointerDownScreenY = 0;
+let didDragSincePointerDown = false;
+let pendingShiftKey = false;
+let pendingCtrlKey = false;
+
+// Right-click context vs pan handling
+const RMB_MENU_THRESHOLD_MS = 250;
+let rmbDownTime = 0;
+let rmbMoved = false;
+let rmbPending = false;
 
 function screenToWorld(sx, sy) {
   return { x: (sx - offsetX) / scale, y: (sy - offsetY) / scale };
@@ -48,9 +63,13 @@ function addNodeAtCenter() {
   const centerCssX = rect.width / 2;
   const centerCssY = rect.height / 2;
   const world = screenToWorld(centerCssX, centerCssY);
+  addNodeAt(world.x, world.y);
+}
+
+function addNodeAt(worldX, worldY) {
   const w = 140; const h = 80;
   const idx = nodes.length;
-  nodes.push({ x: world.x - w / 2, y: world.y - h / 2, w, h });
+  nodes.push({ x: worldX - w / 2, y: worldY - h / 2, w, h });
   selected.clear();
   selected.add(idx);
 }
@@ -77,8 +96,15 @@ resizeCanvas();
 
 // Disable native context menu on the canvas
 canvas.addEventListener('contextmenu', (e) => {
+  // Allow the browser to fire contextmenu, but we decide whether to show ours
   e.preventDefault();
-  openContextMenu(e);
+  if (!rmbPending) return; // only if a recent RMB down happened
+  const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  const withinTime = (now - rmbDownTime) <= RMB_MENU_THRESHOLD_MS;
+  if (withinTime && !rmbMoved && !isPanning) {
+    openContextMenu(e);
+  }
+  rmbPending = false; // consume
 });
 
 function openContextMenu(e) {
@@ -99,6 +125,25 @@ function openContextMenu(e) {
       selected.clear();
       selected.add(hit);
     }
+    // Add submenu (place at top)
+    const addWrap = document.createElement('div');
+    addWrap.className = 'context-submenu-trigger';
+    const addBtn = document.createElement('button');
+    addBtn.className = 'context-item has-submenu';
+    addBtn.innerHTML = '<span>Add</span><span class="submenu-arrow">▸</span>';
+    const sub = document.createElement('div');
+    sub.className = 'context-submenu';
+    const addNode = document.createElement('button');
+    addNode.className = 'context-item';
+    addNode.textContent = 'Add Node';
+    addNode.addEventListener('click', () => {
+      addNodeAt(world.x, world.y);
+      closeContextMenu();
+    });
+    sub.appendChild(addNode);
+    addWrap.appendChild(addBtn);
+    addWrap.appendChild(sub);
+    items.push(addWrap);
     // Delete item
     const del = document.createElement('button');
     del.className = 'context-item';
@@ -139,8 +184,28 @@ function openContextMenu(e) {
       closeContextMenu();
     });
     items.push(paste);
+
   } else {
-    // Background: show only Paste
+    // Background: Add submenu and Paste (Add at top)
+    const addWrap = document.createElement('div');
+    addWrap.className = 'context-submenu-trigger';
+    const addBtn = document.createElement('button');
+    addBtn.className = 'context-item has-submenu';
+    addBtn.innerHTML = '<span>Add</span><span class="submenu-arrow">▸</span>';
+    const sub = document.createElement('div');
+    sub.className = 'context-submenu';
+    const addNode = document.createElement('button');
+    addNode.className = 'context-item';
+    addNode.textContent = 'Add Node';
+    addNode.addEventListener('click', () => {
+      addNodeAt(world.x, world.y);
+      closeContextMenu();
+    });
+    sub.appendChild(addNode);
+    addWrap.appendChild(addBtn);
+    addWrap.appendChild(sub);
+    items.push(addWrap);
+
     const paste = document.createElement('button');
     paste.className = 'context-item';
     paste.textContent = 'Paste';
@@ -252,39 +317,38 @@ canvas.addEventListener('pointerdown', (e) => {
   const world = screenToWorld(sx, sy);
 
   if (e.button === 2) {
-    // Right button: start panning
-    isPanning = true;
+    // Right button: prepare for possible panning or context menu
     lastPanX = e.clientX;
     lastPanY = e.clientY;
-    canvas.setPointerCapture(e.pointerId);
-    e.preventDefault();
+    rmbDownTime = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    rmbMoved = false;
+    rmbPending = true;
     return;
   }
 
   if (e.button === 0) {
     const hit = hitTestNode(world.x, world.y);
     if (hit !== -1) {
-      // Clicked a node: update selection based on modifiers
+      // Defer selection change until we know it's not a drag
+      pointerDownScreenX = sx;
+      pointerDownScreenY = sy;
+      pendingClickIndex = hit;
+      pendingShiftKey = e.shiftKey;
+      pendingCtrlKey = e.ctrlKey;
+      didDragSincePointerDown = false;
+
+      // If Ctrl, apply immediate removal
       if (e.ctrlKey) {
-        // remove from selection
         if (selected.has(hit)) selected.delete(hit);
+        pendingClickIndex = -1;
         e.preventDefault();
         return;
       }
+      // If Shift, apply immediate addition; drag will keep group
       if (e.shiftKey) {
-        // add to selection
-        selected.add(hit);
-      } else if (!selected.has(hit)) {
-        // replace selection
-        selected.clear();
         selected.add(hit);
       }
 
-      // Start dragging selected group
-      isDraggingNode = true;
-      dragStartWorldX = world.x;
-      dragStartWorldY = world.y;
-      dragGroupStarts = Array.from(selected).map(i => ({ i, x: nodes[i].x, y: nodes[i].y }));
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
       return;
@@ -297,6 +361,7 @@ canvas.addEventListener('pointerdown', (e) => {
     boxEndX = world.x;
     boxEndY = world.y;
     boxMode = e.shiftKey ? 'add' : (e.ctrlKey ? 'remove' : 'replace');
+    boxBaseSelection = new Set(selected);
     canvas.setPointerCapture(e.pointerId);
     e.preventDefault();
     return;
@@ -324,17 +389,38 @@ canvas.addEventListener('pointermove', (e) => {
     return;
   }
 
-  if (isPanning) {
+  if ((e.buttons & 2) === 2 || isPanning) {
     const dx = e.clientX - lastPanX;
     const dy = e.clientY - lastPanY;
     lastPanX = e.clientX;
     lastPanY = e.clientY;
     targetOffsetX += dx;
     targetOffsetY += dy;
+    if (Math.abs(dx) + Math.abs(dy) > 0) rmbMoved = true;
+    isPanning = true; // begin panning on movement
     e.preventDefault();
     return;
   }
 
+  // If we have a pending click on a node and moved past threshold, start dragging
+  if (pendingClickIndex !== -1 && (e.buttons & 1) === 1) {
+    const moveDx = Math.abs(sx - pointerDownScreenX);
+    const moveDy = Math.abs(sy - pointerDownScreenY);
+    if (moveDx >= DRAG_THRESHOLD_PX || moveDy >= DRAG_THRESHOLD_PX) {
+      // Ensure the drag group is the current selection, or the clicked node if it wasn't selected
+      if (!selected.has(pendingClickIndex)) {
+        selected.clear();
+        selected.add(pendingClickIndex);
+      } else if (selected.size === 1 && !pendingShiftKey && !pendingCtrlKey) {
+        // already one item, okay
+      }
+      isDraggingNode = true;
+      didDragSincePointerDown = true;
+      dragStartWorldX = world.x;
+      dragStartWorldY = world.y;
+      dragGroupStarts = Array.from(selected).map(i => ({ i, x: nodes[i].x, y: nodes[i].y }));
+    }
+  }
   // Hover feedback: move cursor if hovering any selected node
   let overSelected = false;
   for (const i of selected) {
@@ -348,6 +434,35 @@ canvas.addEventListener('pointermove', (e) => {
   if (isSelectingBox) {
     boxEndX = world.x;
     boxEndY = world.y;
+
+    // Live update selection while dragging the marquee
+    const x1 = Math.min(boxStartX, boxEndX);
+    const y1 = Math.min(boxStartY, boxEndY);
+    const x2 = Math.max(boxStartX, boxEndX);
+    const y2 = Math.max(boxStartY, boxEndY);
+    const hits = [];
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      const ix1 = Math.max(x1, n.x);
+      const iy1 = Math.max(y1, n.y);
+      const ix2 = Math.min(x2, n.x + n.w);
+      const iy2 = Math.min(y2, n.y + n.h);
+      if (ix2 >= ix1 && iy2 >= iy1) hits.push(i);
+    }
+
+    let newSelected;
+    if (boxMode === 'replace') {
+      newSelected = new Set(hits);
+    } else if (boxMode === 'add') {
+      newSelected = new Set(boxBaseSelection);
+      for (const i of hits) newSelected.add(i);
+    } else {
+      // remove
+      newSelected = new Set(boxBaseSelection);
+      for (const i of hits) newSelected.delete(i);
+    }
+    selected.clear();
+    for (const i of newSelected) selected.add(i);
   }
 
   // No live paste mode; paste happens instantly at cursor on click/shortcut
@@ -388,9 +503,30 @@ canvas.addEventListener('pointerup', (e) => {
 
     isSelectingBox = false;
   }
+  // Apply deferred click selection (no drag happened)
+  if (pendingClickIndex !== -1 && !didDragSincePointerDown) {
+    if (selected.has(pendingClickIndex) && selected.size > 1) {
+      selected.clear();
+      selected.add(pendingClickIndex);
+    } else if (!selected.has(pendingClickIndex) && !pendingShiftKey && !pendingCtrlKey) {
+      selected.clear();
+      selected.add(pendingClickIndex);
+    }
+  }
+  pendingClickIndex = -1;
+  didDragSincePointerDown = false;
+  pendingShiftKey = false;
+  pendingCtrlKey = false;
+  // If RMB was held and released without movement, allow contextmenu to show.
+  // Otherwise, clear the pending so contextmenu won't appear.
+  if (e.button === 2) {
+    if (rmbMoved) {
+      rmbPending = false;
+    }
+  }
   // Nothing extra when releasing in paste mode
   try { canvas.releasePointerCapture(e.pointerId); } catch {}
-  closeContextMenu();
+  // Do not force close here; allow contextmenu to open if appropriate
 });
 
 // --- Zoom handling ---
