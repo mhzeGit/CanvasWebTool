@@ -72,7 +72,7 @@ function addNodeAtCenter() {
 function addNodeAt(worldX, worldY) {
   const w = 140; const h = 80;
   const idx = nodes.length;
-  nodes.push({ x: worldX - w / 2, y: worldY - h / 2, w, h, color: '#2b2b2b', name: '', text: '' });
+  nodes.push({ x: worldX - w / 2, y: worldY - h / 2, w, h, color: '#2b2b2b', title: '', name: '', text: '' });
   selected.clear();
   selected.add(idx);
   refreshSidePanel();
@@ -631,30 +631,77 @@ function animate() {
     // Base style
     const baseColor = n.color || 'rgb(43, 43, 43)';
     ctx.fillStyle = baseColor;
-    // Auto outline: slightly darker than base (world-space width)
+    // Rounded rect path
+    const nodeRadius = Math.min(12, Math.min(n.w, n.h) * 0.2);
+    drawRoundedRect(ctx, n.x, n.y, n.w, n.h, nodeRadius);
+    ctx.fill();
+
+    // Exterior outline: slightly darker than base (world-space width)
     ctx.strokeStyle = getDarkerColor(baseColor, 0.7);
     ctx.lineWidth = 2; // world units; scales with zoom
-    // Rounded rect path
-    drawRoundedRect(ctx, n.x, n.y, n.w, n.h, Math.min(12, Math.min(n.w, n.h) * 0.2));
-    ctx.fill();
+    // Draw outline with offset to make it exterior
+    const outlineOffset = ctx.lineWidth / 2;
+    drawRoundedRect(ctx, n.x - outlineOffset, n.y - outlineOffset, n.w + outlineOffset * 2, n.h + outlineOffset * 2, nodeRadius + outlineOffset);
     ctx.stroke();
 
-    // Selection outline
+    // Selection outline around the whole node (exterior)
     if (selected.has(i)) {
+      ctx.save();
       ctx.strokeStyle = '#5aa0ff';
-      ctx.lineWidth = 2 / (scale * dpr);
+      ctx.lineWidth = 2;
+      const selectionOffset = ctx.lineWidth / 2;
+      drawRoundedRect(ctx, n.x - selectionOffset, n.y - selectionOffset, n.w + selectionOffset * 2, n.h + selectionOffset * 2, nodeRadius + selectionOffset);
       ctx.stroke();
+      ctx.restore();
     }
 
-    // Node text with wrapping and ellipsis
+         // Title bar background (auto height up to 1/3 of node)
+     const padding = 8;
+     const titleFont = `bold ${15}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+     const titleLineHeight = 18;
+     const maxTitleHeight = n.h / 3;
+     const maxTitleWidth = Math.max(0, n.w - padding * 2);
+     const titleLines = wrapTextLines(ctx, titleFont, n.title || '', maxTitleWidth);
+     const requiredTitleHeight = Math.max(0, titleLines.length * titleLineHeight + padding * 2);
+     const minTitleHeight = Math.min(maxTitleHeight, Math.max(24, padding * 2 + titleLineHeight));
+     const titleH = Math.min(maxTitleHeight, Math.max(minTitleHeight, requiredTitleHeight));
+     ctx.save();
+     ctx.fillStyle = getDarkerColor(baseColor, 0.6);
+     drawRoundedRectTopOnly(ctx, n.x, n.y, n.w, titleH, nodeRadius);
+     ctx.fill();
+     ctx.restore();
+
+    // Title text (bold, larger)
+    if (n.title && n.title.length > 0) {
+      ctx.save();
+      ctx.fillStyle = '#e7e7e7';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      drawWrappedTextWithEllipsisAligned(
+        ctx,
+        titleFont,
+        n.title,
+        n.x + n.w / 2,
+        n.y + padding,
+        maxTitleWidth,
+        Math.max(0, titleH - padding * 2),
+        titleLineHeight,
+        'center'
+      );
+      ctx.restore();
+    }
+
+    // Body text with wrapping and ellipsis (below title area)
     if (n.text && n.text.length > 0) {
       ctx.fillStyle = '#ddd';
       ctx.font = `${12}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+      ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       const padding = 8;
       const maxTextWidth = Math.max(0, n.w - padding * 2);
-      const maxTextHeight = Math.max(0, n.h - padding * 2);
-      drawWrappedTextWithEllipsis(ctx, n.text, n.x + padding, n.y + padding, maxTextWidth, maxTextHeight, 14);
+      const contentY = n.y + titleH + padding;
+      const maxTextHeight = Math.max(0, n.h - titleH - padding * 2);
+      drawWrappedTextWithEllipsis(ctx, n.text, n.x + padding, contentY, maxTextWidth, maxTextHeight, 14);
     }
   }
 
@@ -700,6 +747,7 @@ function refreshSidePanel() {
   const n = nodes[idx];
   const html = `
     <div class=\"panel-section-title\">Node</div>
+    <div class=\"panel-row\"><label>Title</label><input id=\"panelTitle\" class=\"panel-input\" type=\"text\" value=\"${n.title ?? ''}\" /></div>
     <div class=\"panel-row\"><label>Name</label><input id=\"panelName\" class=\"panel-input\" type=\"text\" value=\"${n.name ?? ''}\" /></div>
     <div class=\"panel-row\"><label>Color</label><input id=\"panelColor\" class=\"panel-input\" type=\"color\" value=\"${n.color ?? '#2b2b2b'}\" /></div>
     <div class=\"panel-row\"><label>Width</label><input id=\"panelW\" class=\"panel-input\" type=\"number\" min=\"10\" value=\"${n.w}\" /></div>
@@ -708,27 +756,35 @@ function refreshSidePanel() {
   `;
   sidePanelContent.innerHTML = html;
 
+  const titleInput = document.getElementById('panelTitle');
   const nameInput = document.getElementById('panelName');
   const colorInput = document.getElementById('panelColor');
   const wInput = document.getElementById('panelW');
   const hInput = document.getElementById('panelH');
   const textInput = document.getElementById('panelText');
 
+  if (titleInput) titleInput.addEventListener('input', (ev) => { n.title = ev.target.value; });
   if (nameInput) nameInput.addEventListener('input', (ev) => { n.name = ev.target.value; });
   if (colorInput) colorInput.addEventListener('input', (ev) => { n.color = ev.target.value; });
   if (wInput) {
     wInput.setAttribute('data-drag-number', 'true');
-    wInput.addEventListener('input', (ev) => { const v = parseFloat(ev.target.value); if (!Number.isNaN(v)) n.w = Math.max(10, v); });
+    wInput.addEventListener('input', (ev) => {
+      const v = parseFloat(ev.target.value);
+      if (!Number.isNaN(v)) updateNodeWidth(n, v);
+    });
     attachDragNumber(wInput, (delta) => {
-      n.w = Math.max(10, n.w + delta);
+      updateNodeWidth(n, n.w + delta);
       wInput.value = String(Math.round(n.w));
     });
   }
   if (hInput) {
     hInput.setAttribute('data-drag-number', 'true');
-    hInput.addEventListener('input', (ev) => { const v = parseFloat(ev.target.value); if (!Number.isNaN(v)) n.h = Math.max(10, v); });
+    hInput.addEventListener('input', (ev) => {
+      const v = parseFloat(ev.target.value);
+      if (!Number.isNaN(v)) updateNodeHeight(n, v);
+    });
     attachDragNumber(hInput, (delta) => {
-      n.h = Math.max(10, n.h + delta);
+      updateNodeHeight(n, n.h + delta);
       hInput.value = String(Math.round(n.h));
     });
   }
@@ -771,6 +827,26 @@ function attachDragNumber(inputEl, onDelta) {
   inputEl.addEventListener('pointerup', up);
 }
 
+function updateNodeWidth(n, newWidth) {
+  const minW = 140;
+  const targetW = Math.max(minW, newWidth);
+  const delta = targetW - n.w;
+  if (delta === 0) return;
+  // Keep center fixed
+  n.x -= delta / 2;
+  n.w = targetW;
+}
+
+function updateNodeHeight(n, newHeight) {
+  const minH = 80;
+  const targetH = Math.max(minH, newHeight);
+  const delta = targetH - n.h;
+  if (delta === 0) return;
+  // Keep center fixed
+  n.y -= delta / 2;
+  n.h = targetH;
+}
+
 function getDarkerColor(color, factor = 0.7) {
   // Accepts #rrggbb or rgb(r,g,b)
   let r, g, b;
@@ -801,6 +877,19 @@ function drawRoundedRect(ctx, x, y, w, h, r) {
   ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
   ctx.lineTo(x + radius, y + h);
   ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function drawRoundedRectTopOnly(ctx, x, y, w, h, r) {
+  const radius = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h);
+  ctx.lineTo(x, y + h);
   ctx.lineTo(x, y + radius);
   ctx.quadraticCurveTo(x, y, x + radius, y);
   ctx.closePath();
@@ -844,6 +933,76 @@ function drawWrappedTextWithEllipsis(ctx, text, x, y, maxWidth, maxHeight, lineH
     }
     ctx.fillText(line, x, y + li * lineHeight);
   }
+}
+
+function drawSingleLineEllipsis(ctx, text, cx, cy, maxWidth) {
+  let str = text;
+  if (ctx.measureText(str).width <= maxWidth) {
+    ctx.fillText(str, cx, cy);
+    return;
+  }
+  while (str.length > 0 && ctx.measureText(str + '…').width > maxWidth) {
+    str = str.slice(0, -1);
+  }
+  ctx.fillText(str + '…', cx, cy);
+}
+
+function wrapTextLines(ctx, font, text, maxWidth) {
+  ctx.save();
+  ctx.font = font;
+  const words = (text || '').split(/\s+/);
+  const lines = [];
+  let current = '';
+  for (let i = 0; i < words.length; i++) {
+    const candidate = current ? current + ' ' + words[i] : words[i];
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+    } else {
+      if (current) lines.push(current); else lines.push(words[i]);
+      current = '';
+    }
+  }
+  if (current) lines.push(current);
+  ctx.restore();
+  return lines;
+}
+
+function drawWrappedTextWithEllipsisAligned(ctx, font, text, cx, y, maxWidth, maxHeight, lineHeight, align) {
+  ctx.save();
+  ctx.font = font;
+  ctx.textAlign = align === 'center' ? 'center' : 'left';
+  const words = (text || '').split(/\s+/);
+  const lines = [];
+  let current = '';
+  const maxLines = Math.max(1, Math.floor(maxHeight / lineHeight));
+  for (let i = 0; i < words.length; i++) {
+    const candidate = current ? current + ' ' + words[i] : words[i];
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+    } else {
+      if (current) lines.push(current); else lines.push(words[i]);
+      current = '';
+      if (lines.length === maxLines) break;
+      if (!current && ctx.measureText(words[i]).width <= maxWidth) {
+        current = words[i];
+      }
+    }
+  }
+  if (current && lines.length < maxLines) lines.push(current);
+  if (lines.length > maxLines) lines.length = maxLines;
+  for (let li = 0; li < lines.length; li++) {
+    let line = lines[li];
+    if (li === lines.length - 1) {
+      const all = lines.join(' ');
+      if (all.length < (text || '').length) {
+        while (ctx.measureText(line + '…').width > maxWidth && line.length > 0) line = line.slice(0, -1);
+        line = line + '…';
+      }
+    }
+    const x = align === 'center' ? cx : (cx - maxWidth / 2);
+    ctx.fillText(line, x, y + li * lineHeight);
+  }
+  ctx.restore();
 }
 
 function computeSelectionKey() {
