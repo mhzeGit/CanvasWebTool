@@ -72,7 +72,7 @@ function addNodeAtCenter() {
 function addNodeAt(worldX, worldY) {
   const w = 140; const h = 80;
   const idx = nodes.length;
-  nodes.push({ x: worldX - w / 2, y: worldY - h / 2, w, h, color: '#2b2b2b', title: '', name: '', text: '' });
+  nodes.push({ x: worldX - w / 2, y: worldY - h / 2, w, h, color: '#2b2b2b', title: '', titleColor: '#e7e7e7', text: '' });
   selected.clear();
   selected.add(idx);
   refreshSidePanel();
@@ -285,7 +285,16 @@ function duplicateSelectedNodes() {
   const dupes = [];
   for (const i of selected) {
     const n = nodes[i];
-    dupes.push({ x: n.x + 20, y: n.y + 20, w: n.w, h: n.h });
+    dupes.push({ 
+      x: n.x + 20, 
+      y: n.y + 20, 
+      w: n.w, 
+      h: n.h, 
+      color: n.color, 
+      title: n.title, 
+      titleColor: n.titleColor, 
+      text: n.text 
+    });
   }
   const startIdx = nodes.length;
   for (const d of dupes) nodes.push(d);
@@ -319,7 +328,16 @@ function copySelectedNodes() {
   // offsets from mouse to each node
   for (const i of selectedArray) {
     const n = nodes[i];
-    clipboard.push({ dx: n.x - mouseWorld.x, dy: n.y - mouseWorld.y, w: n.w, h: n.h });
+    clipboard.push({ 
+      dx: n.x - mouseWorld.x, 
+      dy: n.y - mouseWorld.y, 
+      w: n.w, 
+      h: n.h, 
+      color: n.color, 
+      title: n.title, 
+      titleColor: n.titleColor, 
+      text: n.text 
+    });
   }
 }
 
@@ -327,7 +345,16 @@ function pasteNodesAt(worldX, worldY) {
   if (clipboard.length === 0) return;
   const startIdx = nodes.length;
   for (const c of clipboard) {
-    nodes.push({ x: worldX + c.dx, y: worldY + c.dy, w: c.w, h: c.h });
+    nodes.push({ 
+      x: worldX + c.dx, 
+      y: worldY + c.dy, 
+      w: c.w, 
+      h: c.h, 
+      color: c.color, 
+      title: c.title, 
+      titleColor: c.titleColor, 
+      text: c.text 
+    });
   }
   selected.clear();
   for (let i = 0; i < clipboard.length; i++) selected.add(startIdx + i);
@@ -630,11 +657,20 @@ function animate() {
     const n = nodes[i];
     // Base style
     const baseColor = n.color || 'rgb(43, 43, 43)';
-    ctx.fillStyle = baseColor;
-    // Rounded rect path
+    
+    // Draw shadow first
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 4;
+    ctx.shadowOffsetY = 4;
+    
+    // Rounded rect path with shadow
     const nodeRadius = Math.min(12, Math.min(n.w, n.h) * 0.2);
     drawRoundedRect(ctx, n.x, n.y, n.w, n.h, nodeRadius);
+    ctx.fillStyle = baseColor;
     ctx.fill();
+    ctx.restore();
 
     // Exterior outline: slightly darker than base (world-space width)
     ctx.strokeStyle = getDarkerColor(baseColor, 0.7);
@@ -674,7 +710,7 @@ function animate() {
     // Title text (bold, larger)
     if (n.title && n.title.length > 0) {
       ctx.save();
-      ctx.fillStyle = '#e7e7e7';
+      ctx.fillStyle = n.titleColor || '#e7e7e7';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       drawWrappedTextWithEllipsisAligned(
@@ -748,7 +784,7 @@ function refreshSidePanel() {
   const html = `
     <div class=\"panel-section-title\">Node</div>
     <div class=\"panel-row\"><label>Title</label><input id=\"panelTitle\" class=\"panel-input\" type=\"text\" value=\"${n.title ?? ''}\" /></div>
-    <div class=\"panel-row\"><label>Name</label><input id=\"panelName\" class=\"panel-input\" type=\"text\" value=\"${n.name ?? ''}\" /></div>
+    <div class=\"panel-row\"><label>Title Color</label><input id=\"panelTitleColor\" class=\"panel-input\" type=\"color\" value=\"${n.titleColor ?? '#e7e7e7'}\" /></div>
     <div class=\"panel-row\"><label>Color</label><input id=\"panelColor\" class=\"panel-input\" type=\"color\" value=\"${n.color ?? '#2b2b2b'}\" /></div>
     <div class=\"panel-row\"><label>Width</label><input id=\"panelW\" class=\"panel-input\" type=\"number\" min=\"10\" value=\"${n.w}\" /></div>
     <div class=\"panel-row\"><label>Height</label><input id=\"panelH\" class=\"panel-input\" type=\"number\" min=\"10\" value=\"${n.h}\" /></div>
@@ -757,14 +793,14 @@ function refreshSidePanel() {
   sidePanelContent.innerHTML = html;
 
   const titleInput = document.getElementById('panelTitle');
-  const nameInput = document.getElementById('panelName');
+  const titleColorInput = document.getElementById('panelTitleColor');
   const colorInput = document.getElementById('panelColor');
   const wInput = document.getElementById('panelW');
   const hInput = document.getElementById('panelH');
   const textInput = document.getElementById('panelText');
 
   if (titleInput) titleInput.addEventListener('input', (ev) => { n.title = ev.target.value; });
-  if (nameInput) nameInput.addEventListener('input', (ev) => { n.name = ev.target.value; });
+  if (titleColorInput) titleColorInput.addEventListener('input', (ev) => { n.titleColor = ev.target.value; });
   if (colorInput) colorInput.addEventListener('input', (ev) => { n.color = ev.target.value; });
   if (wInput) {
     wInput.setAttribute('data-drag-number', 'true');
@@ -795,33 +831,60 @@ function attachDragNumber(inputEl, onDelta) {
   let isDragging = false;
   let startX = 0;
   let accum = 0;
+  let dragDistance = 0;
   const step = 1; // world units per pixel moved
+  const DRAG_THRESHOLD = 5; // pixels to move before starting drag
+  
   const down = (e) => {
     if (e.button !== 0) return;
-    isDragging = true;
+    isDragging = false;
+    dragDistance = 0;
     startX = e.clientX;
     accum = 0;
     inputEl.setPointerCapture(e.pointerId);
-    e.preventDefault();
   };
+  
   const move = (e) => {
-    if (!isDragging) return;
+    if (!inputEl.hasPointerCapture(e.pointerId)) return;
+    
     const dx = e.clientX - startX;
+    dragDistance += Math.abs(dx);
     startX = e.clientX;
-    accum += dx * step;
-    if (Math.abs(accum) >= 1) {
-      const delta = Math.trunc(accum);
-      accum -= delta;
-      onDelta(delta);
+    
+    // Only start dragging after threshold
+    if (dragDistance > DRAG_THRESHOLD) {
+      if (!isDragging) {
+        isDragging = true;
+        // Prevent text selection during drag
+        inputEl.blur();
+      }
+      
+      accum += dx * step;
+      if (Math.abs(accum) >= 1) {
+        const delta = Math.trunc(accum);
+        accum -= delta;
+        onDelta(delta);
+      }
+      e.preventDefault();
     }
-    e.preventDefault();
   };
+  
   const up = (e) => {
-    if (!isDragging) return;
+    if (!inputEl.hasPointerCapture(e.pointerId)) return;
+    
+    try { 
+      inputEl.releasePointerCapture(e.pointerId); 
+    } catch {}
+    
+    // If we didn't drag much, allow normal input behavior
+    if (!isDragging) {
+      inputEl.focus();
+      inputEl.select();
+    }
+    
     isDragging = false;
-    try { inputEl.releasePointerCapture(e.pointerId); } catch {}
-    e.preventDefault();
   };
+  
   inputEl.addEventListener('pointerdown', down);
   inputEl.addEventListener('pointermove', move);
   inputEl.addEventListener('pointerup', up);
