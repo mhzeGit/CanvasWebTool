@@ -3,12 +3,83 @@ body, html {
   height: 100%;
   overflow: hidden;
   background: #111;
+  font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
 }
 
 canvas {
   display: block;
   touch-action: none;
   cursor: grab;
+}
+
+/* Layout: canvas fills remaining width next to side panel */
+body, html {
+  width: 100%;
+}
+body {
+  position: relative;
+}
+canvas#gridCanvas {
+  position: absolute;
+  top: 40px; /* below top bar */
+  left: 0;
+  bottom: 0;
+}
+
+.side-panel {
+  position: fixed;
+  top: 40px; /* below top bar */
+  right: 0;
+  bottom: 0;
+  width: clamp(220px, 24vw, 420px);
+  min-width: 220px;
+  max-width: 480px;
+  background: #161616;
+  border-left: 1px solid #2a2a2a;
+  color: #ddd;
+  overflow: auto;
+  z-index: 9; /* below top bar but above canvas */
+}
+
+.side-panel-content {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.side-panel, .side-panel * {
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.panel-section-title {
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+.panel-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-input, .panel-select {
+  background: #1f1f1f;
+  color: #ddd;
+  border: 1px solid #2b2b2b;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+}
+
+.panel-input[data-drag-number="true"] {
+  cursor: ew-resize;
+}
+
+.panel-empty {
+  opacity: .7;
 }
 
 .top-bar {
@@ -141,6 +212,8 @@ canvas {
 /* Context submenu support */
 .context-submenu-trigger {
   position: relative;
+  /* Create an invisible hover bridge so moving right into submenu doesn't drop hover */
+  padding-right: 6px;
 }
 
 .context-item.has-submenu {
@@ -157,7 +230,7 @@ canvas {
   position: absolute;
   top: -6px;
   left: 100%;
-  margin-left: 6px;
+  margin-left: 0;
   min-width: 160px;
   background: #202020;
   color: #ddd;
@@ -173,6 +246,16 @@ canvas {
 
 .context-submenu-trigger:hover > .context-submenu {
   display: flex;
+}
+
+/* Keep submenu open while pointer is between parent and submenu */
+.context-submenu-trigger::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  left: 100%;
+  width: 8px; /* invisible hover bridge */
 }
 
 .context-submenu .context-item + .context-item {

@@ -39,6 +39,12 @@
   <div id="contextMenu" class="context-menu" style="display:none"></div>
   <canvas id="gridCanvas"></canvas>
 
+  <div id="sidePanel" class="side-panel">
+    <div class="side-panel-content" id="sidePanelContent">
+      <div class="panel-empty">No selection</div>
+    </div>
+  </div>
+
   <div id="serveWarning" style="display:none; position:fixed; inset:0; background:#111; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; padding:24px; line-height:1.5;">
     <h2 style="margin:0 0 8px 0; font-weight:600;">This page needs to be served over HTTP</h2>
     <p style="margin:0 0 12px 0;">You're opening the file directly from disk. ES module imports are blocked on the <code>file://</code> protocol, so nothing runs.</p>

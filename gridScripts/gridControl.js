@@ -4,6 +4,8 @@ import { gridSettings } from './gridSettings.js';
 
 const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
+const sidePanel = document.getElementById('sidePanel');
+const sidePanelContent = document.getElementById('sidePanelContent');
 
 // --- State ---
 let offsetX = 0;
@@ -31,6 +33,7 @@ let isSelectingBox = false;
 let boxStartX = 0, boxStartY = 0, boxEndX = 0, boxEndY = 0;
 let boxMode = 'replace'; // 'replace' | 'add' | 'remove'
 let boxBaseSelection = new Set();
+let lastPanelKey = '';
 
 // Drag/selection thresholds and pending click state
 const DRAG_THRESHOLD_PX = 3;
@@ -69,9 +72,10 @@ function addNodeAtCenter() {
 function addNodeAt(worldX, worldY) {
   const w = 140; const h = 80;
   const idx = nodes.length;
-  nodes.push({ x: worldX - w / 2, y: worldY - h / 2, w, h });
+  nodes.push({ x: worldX - w / 2, y: worldY - h / 2, w, h, color: '#2b2b2b', name: '', text: '' });
   selected.clear();
   selected.add(idx);
+  refreshSidePanel();
 }
 
 // Hook up Add Node action
@@ -86,13 +90,31 @@ if (addNodeBtn) {
 // --- Resize handling ---
 function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
-  canvas.style.width = window.innerWidth + 'px';
-  canvas.style.height = window.innerHeight + 'px';
-  canvas.width = window.innerWidth * dpr;
-  canvas.height = window.innerHeight * dpr;
+  const sideEl = document.getElementById('sidePanel');
+  const sideWidthPx = sideEl ? sideEl.getBoundingClientRect().width : Math.floor(window.innerWidth * 0.30);
+  const topBarPx = 40;
+  const cssWidth = window.innerWidth - sideWidthPx;
+  const cssHeight = window.innerHeight - topBarPx;
+  canvas.style.width = cssWidth + 'px';
+  canvas.style.height = cssHeight + 'px';
+  canvas.width = cssWidth * dpr;
+  canvas.height = cssHeight * dpr;
 }
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
+// Initialize side panel on load
+refreshSidePanel();
+
+// Deselect when clicking outside canvas/panel/menus
+document.addEventListener('pointerdown', (e) => {
+  const target = e.target;
+  if (target === canvas) return;
+  if (target && (target.closest && (target.closest('#sidePanel') || target.closest('#contextMenu') || target.closest('.top-bar')))) return;
+  if (selected.size > 0) {
+    selected.clear();
+    refreshSidePanel();
+  }
+});
 
 // Disable native context menu on the canvas
 canvas.addEventListener('contextmenu', (e) => {
@@ -255,6 +277,7 @@ function deleteSelectedNodes() {
   nodes.length = 0;
   for (const n of remain) nodes.push(n);
   selected.clear();
+  refreshSidePanel();
 }
 
 function duplicateSelectedNodes() {
@@ -268,6 +291,7 @@ function duplicateSelectedNodes() {
   for (const d of dupes) nodes.push(d);
   selected.clear();
   for (let i = 0; i < dupes.length; i++) selected.add(startIdx + i);
+  refreshSidePanel();
 }
 
 function copySelectedNodes() {
@@ -307,6 +331,7 @@ function pasteNodesAt(worldX, worldY) {
   }
   selected.clear();
   for (let i = 0; i < clipboard.length; i++) selected.add(startIdx + i);
+  refreshSidePanel();
 }
 
 // --- Pointer interactions: RMB pans, LMB selects/drags nodes; Shift=add, Ctrl=remove; LMB on bg = marquee ---
@@ -463,6 +488,7 @@ canvas.addEventListener('pointermove', (e) => {
     }
     selected.clear();
     for (const i of newSelected) selected.add(i);
+    refreshSidePanel();
   }
 
   // No live paste mode; paste happens instantly at cursor on click/shortcut
@@ -502,6 +528,7 @@ canvas.addEventListener('pointerup', (e) => {
     }
 
     isSelectingBox = false;
+    refreshSidePanel();
   }
   // Apply deferred click selection (no drag happened)
   if (pendingClickIndex !== -1 && !didDragSincePointerDown) {
@@ -527,6 +554,7 @@ canvas.addEventListener('pointerup', (e) => {
   // Nothing extra when releasing in paste mode
   try { canvas.releasePointerCapture(e.pointerId); } catch {}
   // Do not force close here; allow contextmenu to open if appropriate
+  refreshSidePanel();
 });
 
 // --- Zoom handling ---
@@ -550,15 +578,18 @@ canvas.addEventListener('wheel', (e) => {
 
 // --- Keyboard handling ---
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Delete' || e.key === 'Backspace') {
+  // Avoid interfering with typing in inputs
+  const active = document.activeElement;
+  const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+  if (!isInput && (e.key === 'Delete' || e.key === 'Backspace')) {
     deleteSelectedNodes();
     e.preventDefault();
   }
-  if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c')) {
+  if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c')) {
     copySelectedNodes();
     e.preventDefault();
   }
-  if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'v')) {
+  if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'v')) {
     // Paste immediately at current mouse position if possible; fallback to center
     const rect = canvas.getBoundingClientRect();
     const mx = window._lastMouseX ?? rect.width / 2;
@@ -567,11 +598,11 @@ window.addEventListener('keydown', (e) => {
     pasteNodesAt(world.x, world.y);
     e.preventDefault();
   }
-  if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'd')) {
+  if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'd')) {
     duplicateSelectedNodes();
     e.preventDefault();
   }
-  if (e.key === 'Escape') {
+  if (!isInput && e.key === 'Escape') {
     closeContextMenu();
   }
 });
@@ -598,11 +629,13 @@ function animate() {
   for (let i = 0; i < nodes.length; i++) {
     const n = nodes[i];
     // Base style
-    ctx.fillStyle = 'rgb(43, 43, 43)';
-    ctx.strokeStyle = 'rgb(100, 100, 100)';
-    ctx.lineWidth = 1 / (scale * dpr);
-    ctx.beginPath();
-    ctx.rect(n.x, n.y, n.w, n.h);
+    const baseColor = n.color || 'rgb(43, 43, 43)';
+    ctx.fillStyle = baseColor;
+    // Auto outline: slightly darker than base (world-space width)
+    ctx.strokeStyle = getDarkerColor(baseColor, 0.7);
+    ctx.lineWidth = 2; // world units; scales with zoom
+    // Rounded rect path
+    drawRoundedRect(ctx, n.x, n.y, n.w, n.h, Math.min(12, Math.min(n.w, n.h) * 0.2));
     ctx.fill();
     ctx.stroke();
 
@@ -611,6 +644,17 @@ function animate() {
       ctx.strokeStyle = '#5aa0ff';
       ctx.lineWidth = 2 / (scale * dpr);
       ctx.stroke();
+    }
+
+    // Node text with wrapping and ellipsis
+    if (n.text && n.text.length > 0) {
+      ctx.fillStyle = '#ddd';
+      ctx.font = `${12}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+      ctx.textBaseline = 'top';
+      const padding = 8;
+      const maxTextWidth = Math.max(0, n.w - padding * 2);
+      const maxTextHeight = Math.max(0, n.h - padding * 2);
+      drawWrappedTextWithEllipsis(ctx, n.text, n.x + padding, n.y + padding, maxTextWidth, maxTextHeight, 14);
     }
   }
 
@@ -631,6 +675,180 @@ function animate() {
 
   // (no live paste preview)
 
+  // Keep side panel in sync even if an event was missed
+  const key = computeSelectionKey();
+  if (key !== lastPanelKey) {
+    refreshSidePanel();
+    lastPanelKey = key;
+  }
+
   requestAnimationFrame(animate);
 }
 animate();
+
+function refreshSidePanel() {
+  if (!sidePanelContent) return;
+  if (selected.size === 0) {
+    sidePanelContent.innerHTML = '<div class="panel-empty">Nothing selected</div>';
+    return;
+  }
+  if (selected.size > 1) {
+    sidePanelContent.innerHTML = `<div class=\"panel-section-title\">${selected.size} items selected</div>`;
+    return;
+  }
+  const idx = Array.from(selected)[0];
+  const n = nodes[idx];
+  const html = `
+    <div class=\"panel-section-title\">Node</div>
+    <div class=\"panel-row\"><label>Name</label><input id=\"panelName\" class=\"panel-input\" type=\"text\" value=\"${n.name ?? ''}\" /></div>
+    <div class=\"panel-row\"><label>Color</label><input id=\"panelColor\" class=\"panel-input\" type=\"color\" value=\"${n.color ?? '#2b2b2b'}\" /></div>
+    <div class=\"panel-row\"><label>Width</label><input id=\"panelW\" class=\"panel-input\" type=\"number\" min=\"10\" value=\"${n.w}\" /></div>
+    <div class=\"panel-row\"><label>Height</label><input id=\"panelH\" class=\"panel-input\" type=\"number\" min=\"10\" value=\"${n.h}\" /></div>
+    <div class=\"panel-row\"><label>Text</label><input id=\"panelText\" class=\"panel-input\" type=\"text\" value=\"${n.text ?? ''}\" /></div>
+  `;
+  sidePanelContent.innerHTML = html;
+
+  const nameInput = document.getElementById('panelName');
+  const colorInput = document.getElementById('panelColor');
+  const wInput = document.getElementById('panelW');
+  const hInput = document.getElementById('panelH');
+  const textInput = document.getElementById('panelText');
+
+  if (nameInput) nameInput.addEventListener('input', (ev) => { n.name = ev.target.value; });
+  if (colorInput) colorInput.addEventListener('input', (ev) => { n.color = ev.target.value; });
+  if (wInput) {
+    wInput.setAttribute('data-drag-number', 'true');
+    wInput.addEventListener('input', (ev) => { const v = parseFloat(ev.target.value); if (!Number.isNaN(v)) n.w = Math.max(10, v); });
+    attachDragNumber(wInput, (delta) => {
+      n.w = Math.max(10, n.w + delta);
+      wInput.value = String(Math.round(n.w));
+    });
+  }
+  if (hInput) {
+    hInput.setAttribute('data-drag-number', 'true');
+    hInput.addEventListener('input', (ev) => { const v = parseFloat(ev.target.value); if (!Number.isNaN(v)) n.h = Math.max(10, v); });
+    attachDragNumber(hInput, (delta) => {
+      n.h = Math.max(10, n.h + delta);
+      hInput.value = String(Math.round(n.h));
+    });
+  }
+  if (textInput) textInput.addEventListener('input', (ev) => { n.text = ev.target.value; });
+}
+
+function attachDragNumber(inputEl, onDelta) {
+  let isDragging = false;
+  let startX = 0;
+  let accum = 0;
+  const step = 1; // world units per pixel moved
+  const down = (e) => {
+    if (e.button !== 0) return;
+    isDragging = true;
+    startX = e.clientX;
+    accum = 0;
+    inputEl.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  };
+  const move = (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    startX = e.clientX;
+    accum += dx * step;
+    if (Math.abs(accum) >= 1) {
+      const delta = Math.trunc(accum);
+      accum -= delta;
+      onDelta(delta);
+    }
+    e.preventDefault();
+  };
+  const up = (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    try { inputEl.releasePointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+  };
+  inputEl.addEventListener('pointerdown', down);
+  inputEl.addEventListener('pointermove', move);
+  inputEl.addEventListener('pointerup', up);
+}
+
+function getDarkerColor(color, factor = 0.7) {
+  // Accepts #rrggbb or rgb(r,g,b)
+  let r, g, b;
+  if (typeof color === 'string' && color.startsWith('#') && color.length === 7) {
+    r = parseInt(color.slice(1,3), 16);
+    g = parseInt(color.slice(3,5), 16);
+    b = parseInt(color.slice(5,7), 16);
+  } else if (typeof color === 'string' && color.startsWith('rgb')) {
+    const m = color.match(/\d+/g);
+    if (m && m.length >= 3) {
+      r = parseInt(m[0], 10); g = parseInt(m[1], 10); b = parseInt(m[2], 10);
+    }
+  }
+  if (r === undefined) return 'rgb(100, 100, 100)';
+  r = Math.max(0, Math.min(255, Math.round(r * factor)));
+  g = Math.max(0, Math.min(255, Math.round(g * factor)));
+  b = Math.max(0, Math.min(255, Math.round(b * factor)));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function drawRoundedRect(ctx, x, y, w, h, r) {
+  const radius = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function drawWrappedTextWithEllipsis(ctx, text, x, y, maxWidth, maxHeight, lineHeight) {
+  if (maxWidth <= 0 || maxHeight <= 0) return;
+  const words = text.split(/\s+/);
+  const lines = [];
+  let current = '';
+  const maxLines = Math.max(1, Math.floor(maxHeight / lineHeight));
+  for (let i = 0; i < words.length; i++) {
+    const candidate = current ? current + ' ' + words[i] : words[i];
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+    } else {
+      if (current) lines.push(current); else lines.push(words[i]);
+      current = '';
+      if (lines.length === maxLines) break;
+      if (!current && ctx.measureText(words[i]).width <= maxWidth) {
+        current = words[i];
+      }
+    }
+  }
+  if (current && lines.length < maxLines) lines.push(current);
+
+  // If overflow, add ellipsis to last line
+  if (lines.length > maxLines) lines.length = maxLines;
+  let totalHeight = lines.length * lineHeight;
+  for (let li = 0; li < lines.length; li++) {
+    let line = lines[li];
+    if (li === lines.length - 1) {
+      // Determine if we consumed all words; if not, append ellipsis
+      const usedText = lines.slice(0, li).join(' ') + (lines.length > 1 ? ' ' : '') + line;
+      if (usedText.length < text.length) {
+        while (ctx.measureText(line + '…').width > maxWidth && line.length > 0) {
+          line = line.slice(0, -1);
+        }
+        line = line + '…';
+      }
+    }
+    ctx.fillText(line, x, y + li * lineHeight);
+  }
+}
+
+function computeSelectionKey() {
+  if (selected.size === 0) return 'none';
+  if (selected.size > 1) return `multi:${selected.size}`;
+  const idx = Array.from(selected)[0];
+  return `single:${idx}`;
+}
