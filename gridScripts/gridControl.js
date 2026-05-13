@@ -105,13 +105,13 @@ let dragArrowBodyIdx = -1;
 let dragArrowBodyStartWorld = null;
 let dragArrowBodySnapshot = null;
 
-let hoveredArrowEnd = null;
-
 const ARROW_END_RADIUS = 8;
 const ARROW_END_HIT_RADIUS = 14;
 const ARROW_BODY_HIT_THRESHOLD = 6;
 const ARROW_HEAD_LENGTH = 14;
 const ARROW_HEAD_ANGLE = Math.PI / 6;
+
+let lastWorldMouse = { x: 0, y: 0 };
 
 // Drag/selection thresholds and pending click state
 const DRAG_THRESHOLD_PX = 3;
@@ -1005,6 +1005,7 @@ canvas.addEventListener('pointermove', (e) => {
   window._lastMouseX = sx;
   window._lastMouseY = sy;
   const world = screenToWorld(sx, sy);
+  lastWorldMouse = { x: world.x, y: world.y };
 
   // Track mouse for connection preview
   if (connectingFrom !== null) {
@@ -1164,7 +1165,7 @@ canvas.addEventListener('pointermove', (e) => {
   // Hover feedback: cursor for resize handles, move, or grab
   let cursorSet = false;
   hoveredHandleInfo = null;
-  hoveredArrowEnd = null;
+
   if (connectingFrom !== null) {
     canvas.style.cursor = 'crosshair';
     cursorSet = true;
@@ -3002,37 +3003,31 @@ function drawArrows(ctx) {
     ctx.closePath();
     ctx.fill();
 
-    // Draw endpoint handle circles (only on hover or when specifically selected)
-    const isStartSel = isEndSelected && selectedArrowEnd.end === 'start';
-    const isEndSel = isEndSelected && selectedArrowEnd.end === 'end';
-    const isStartHover = hoveredArrowEnd && hoveredArrowEnd.arrowIdx === ai && hoveredArrowEnd.end === 'start';
-    const isEndHover = hoveredArrowEnd && hoveredArrowEnd.arrowIdx === ai && hoveredArrowEnd.end === 'end';
+    // Draw endpoint handle circles (only on hover or while actively dragging)
+    const isStartDrag = isDraggingArrowEnd && isEndSelected && selectedArrowEnd.end === 'start';
+    const isEndDrag = isDraggingArrowEnd && isEndSelected && selectedArrowEnd.end === 'end';
+    const dstStart = Math.sqrt((lastWorldMouse.x - x1) ** 2 + (lastWorldMouse.y - y1) ** 2);
+    const dstEnd = Math.sqrt((lastWorldMouse.x - x2) ** 2 + (lastWorldMouse.y - y2) ** 2);
+    const isStartHover = !isDraggingArrowEnd && !isDraggingArrowBody && dstStart <= ARROW_END_HIT_RADIUS;
+    const isEndHover = !isDraggingArrowEnd && !isDraggingArrowBody && dstEnd <= ARROW_END_HIT_RADIUS;
 
-    if (isStartSel || isStartHover) {
-      drawArrowHandle(ctx, x1, y1, isStartSel);
+    if (isStartDrag || isStartHover) {
+      drawArrowHandle(ctx, x1, y1, isStartDrag);
     }
-    if (isEndSel || isEndHover) {
-      drawArrowHandle(ctx, x2, y2, isEndSel);
+    if (isEndDrag || isEndHover) {
+      drawArrowHandle(ctx, x2, y2, isEndDrag);
     }
   }
 }
 
-function drawArrowHandle(ctx, x, y, isSelected) {
+function drawArrowHandle(ctx, x, y, _isSelected) {
   const r = ARROW_END_RADIUS;
   ctx.save();
 
-  // Handle circle fill
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = '#6bb5ff';
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
-
-  // Handle border
-  ctx.strokeStyle = isSelected ? '#f0c800' : '#6bb5ff';
-  ctx.lineWidth = isSelected ? 2.5 : 1.5;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.stroke();
 
   ctx.restore();
 }
