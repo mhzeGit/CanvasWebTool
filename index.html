@@ -11,16 +11,16 @@
     <div class="menu">
       <button class="menu-button" data-menu="file">File</button>
       <div class="menu-dropdown" data-menu="file">
-        <button class="menu-item" disabled>New (soon)</button>
-        <button class="menu-item" disabled>Open (soon)</button>
-        <button class="menu-item" disabled>Save (soon)</button>
+        <button id="actionNew" class="menu-item">New</button>
+        <button id="actionOpen" class="menu-item">Open</button>
+        <button id="actionSave" class="menu-item">Save</button>
       </div>
     </div>
     <div class="menu">
       <button class="menu-button" data-menu="edit">Edit</button>
       <div class="menu-dropdown" data-menu="edit">
-        <button class="menu-item" disabled>Undo (soon)</button>
-        <button class="menu-item" disabled>Redo (soon)</button>
+        <button id="actionUndo" class="menu-item">Undo <span class="shortcut-hint">Ctrl+Z</span></button>
+        <button id="actionRedo" class="menu-item">Redo <span class="shortcut-hint">Ctrl+Shift+Z</span></button>
       </div>
     </div>
     <div class="menu">

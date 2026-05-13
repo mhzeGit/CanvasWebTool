@@ -78,6 +78,11 @@ canvas#gridCanvas {
   cursor: ew-resize;
 }
 
+.panel-static {
+  opacity: .8;
+  padding: 4px 6px;
+}
+
 .panel-empty {
   opacity: .7;
 }
@@ -289,4 +294,10 @@ canvas#gridCanvas {
   font-size: 12px;
   text-align: left;
   line-height: 14px;
+}
+.shortcut-hint {
+  opacity: 0.5;
+  font-size: 11px;
+  margin-left: 12px;
+  float: right;
 }
