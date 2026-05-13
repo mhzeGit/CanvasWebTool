@@ -38,3 +38,7 @@ export const DEFAULT_CONN_COLOR = '#6bb5ff';
 export const DEFAULT_ARROW_COLOR = '#6bb5ff';
 
 export const MAX_HISTORY_SIZE = 200;
+
+export const PLACEHOLDER_COLOR = '#777';
+export const TITLE_PLACEHOLDER = 'Add Title';
+export const TEXT_PLACEHOLDER = 'Add description...';

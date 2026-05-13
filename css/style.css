@@ -166,58 +166,44 @@ canvas#gridCanvas {
 
 .context-menu {
   position: fixed;
-  min-width: 160px;
-  background: #202020;
-  color: #ddd;
-  border: 1px solid #2a2a2a;
-  border-radius: 6px;
-  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
-  padding: 6px;
+  min-width: 150px;
+  background: #1a1a1a;
+  color: #c8c8c8;
+  border: 1px solid #333;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+  padding: 4px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
   z-index: 1000;
+  font-size: 13px;
 }
 
 .context-item {
   display: block;
   width: 100%;
-  background: #2a2a2a;
+  background: transparent;
   border: 0;
   color: inherit;
+  font: inherit;
   text-align: left;
-  padding: 8px 10px;
+  padding: 5px 10px;
   border-radius: 4px;
   cursor: pointer;
+  transition: background 0.1s;
 }
 
 .context-item:hover {
-  background: #353535;
+  background: rgba(255,255,255,0.07);
 }
 
 .context-item[disabled] {
-  opacity: 0.5;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
-/* Fallback spacing between context items if flex gap is not applied */
-.context-item + .context-item {
-  margin-top: 6px;
-}
-.context-submenu-trigger + .context-item {
-  margin-top: 6px;
-}
-.context-item + .context-submenu-trigger {
-  margin-top: 6px;
-}
-.context-submenu-trigger + .context-submenu-trigger {
-  margin-top: 6px;
-}
-
-/* Context submenu support */
 .context-submenu-trigger {
   position: relative;
-  /* Create an invisible hover bridge so moving right into submenu doesn't drop hover */
   padding-right: 6px;
 }
 
@@ -228,24 +214,25 @@ canvas#gridCanvas {
 }
 
 .context-item .submenu-arrow {
-  opacity: 0.7;
+  font-size: 10px;
+  color: #888;
+  margin-left: 16px;
 }
 
 .context-submenu {
   position: absolute;
-  top: -6px;
+  top: -5px;
   left: 100%;
   margin-left: 0;
-  min-width: 160px;
-  background: #202020;
-  color: #ddd;
-  border: 1px solid #2a2a2a;
-  border-radius: 6px;
-  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
-  padding: 6px;
+  min-width: 140px;
+  background: #1a1a1a;
+  color: #c8c8c8;
+  border: 1px solid #333;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+  padding: 4px;
   display: none;
   flex-direction: column;
-  gap: 6px;
   z-index: 1001;
 }
 
@@ -253,18 +240,13 @@ canvas#gridCanvas {
   display: flex;
 }
 
-/* Keep submenu open while pointer is between parent and submenu */
 .context-submenu-trigger::after {
   content: "";
   position: absolute;
-  top: -6px;
-  bottom: -6px;
+  top: -5px;
+  bottom: -5px;
   left: 100%;
-  width: 8px; /* invisible hover bridge */
-}
-
-.context-submenu .context-item + .context-item {
-  margin-top: 6px;
+  width: 10px;
 }
 
 /* Inline editor overlay for double-click editing */
@@ -295,6 +277,15 @@ canvas#gridCanvas {
   text-align: left;
   line-height: 14px;
 }
+.inline-editor::placeholder {
+  color: #777;
+  opacity: 1;
+}
+.panel-input::placeholder {
+  color: #777;
+  opacity: 1;
+}
+
 .shortcut-hint {
   opacity: 0.5;
   font-size: 11px;

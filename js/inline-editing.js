@@ -5,6 +5,7 @@ import { hitTestConnection } from './connections.js';
 import { createPropertyChangeCmd } from './undo.js';
 import { refreshSidePanel } from './side-panel.js';
 import { history } from './history.js';
+import { TITLE_PLACEHOLDER, TEXT_PLACEHOLDER } from './config.js';
 
 export function setupInlineEditing() {
   state.canvas.addEventListener('dblclick', onDblClick);
@@ -67,6 +68,7 @@ export function startEditing(idx, field, worldX, worldY, worldW, worldH) {
   const el = document.createElement(isTitle ? 'input' : 'textarea');
   el.className = isTitle ? 'inline-editor inline-editor-title' : 'inline-editor inline-editor-text';
   el.value = n[field] || '';
+  el.placeholder = isTitle ? TITLE_PLACEHOLDER : TEXT_PLACEHOLDER;
   el.style.position = 'fixed';
   el.style.left = (screen.x + canvasRect.left) + 'px';
   el.style.top = (screen.y + canvasRect.top) + 'px';

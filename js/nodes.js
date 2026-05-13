@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { EDGE_MARGIN, DEFAULT_TITLE_COLOR, DEFAULT_TEXT_COLOR } from './config.js';
+import { EDGE_MARGIN, DEFAULT_TITLE_COLOR, DEFAULT_TEXT_COLOR, PLACEHOLDER_COLOR, TITLE_PLACEHOLDER, TEXT_PLACEHOLDER } from './config.js';
 import { drawRoundedRect, drawRoundedRectTopOnly, getDarkerColor } from './utils.js';
 import { renderMarkdownTitle, renderMarkdownBody } from './markdown.js';
 
@@ -119,6 +119,20 @@ export function drawNodes() {
         n.titleColor || DEFAULT_TITLE_COLOR
       );
       ctx.restore();
+    } else {
+      ctx.save();
+      ctx.fillStyle = PLACEHOLDER_COLOR;
+      ctx.font = `bold 15px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const ellipsis = ctx.measureText(TITLE_PLACEHOLDER).width > maxTitleWidth ? '…' : '';
+      ctx.fillText(
+        ellipsis ? ellipsis : TITLE_PLACEHOLDER,
+        n.x + n.w / 2,
+        n.y + padding,
+        maxTitleWidth
+      );
+      ctx.restore();
     }
 
     if (n.text && n.text.length > 0) {
@@ -135,6 +149,21 @@ export function drawNodes() {
         12,
         DEFAULT_TEXT_COLOR,
         14
+      );
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.fillStyle = PLACEHOLDER_COLOR;
+      ctx.font = `12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      const maxTextWidth = Math.max(0, n.w - padding * 2);
+      const ellipsis = ctx.measureText(TEXT_PLACEHOLDER).width > maxTextWidth ? '…' : '';
+      ctx.fillText(
+        ellipsis ? ellipsis : TEXT_PLACEHOLDER,
+        n.x + padding,
+        n.y + titleH + padding,
+        maxTextWidth
       );
       ctx.restore();
     }
