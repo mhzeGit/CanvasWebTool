@@ -1,11 +1,8 @@
-// gridScripts/undoManager.js
-// Modular, extensible undo/redo system for the canvas tool.
-
 let _nextId = 1;
 export function nextNodeId() { return _nextId++; }
 export function initNodeId(v) { _nextId = v; }
 
-export function findNodeById(nodes, id) {
+function findNodeById(nodes, id) {
   for (let i = 0; i < nodes.length; i++) {
     if (nodes[i].id === id) return { node: nodes[i], index: i };
   }
@@ -56,9 +53,6 @@ export function createHistoryManager() {
   };
 }
 
-// --- Command factory helpers ---
-// Each factory takes state references and mutation data, returns { undo, redo, description }
-
 export function createAddNodeCmd(nodes, selected, refreshPanelFn, node, insertedAt) {
   const nodeId = node.id;
   return {
@@ -79,7 +73,6 @@ export function createAddNodeCmd(nodes, selected, refreshPanelFn, node, inserted
 }
 
 export function createDeleteNodesCmd(nodes, selected, refreshPanelFn, deletedEntries) {
-  // deletedEntries: [{node, index}] sorted by index ascending
   return {
     undo() {
       for (let i = 0; i < deletedEntries.length; i++) {
@@ -102,7 +95,6 @@ export function createDeleteNodesCmd(nodes, selected, refreshPanelFn, deletedEnt
 }
 
 export function createMoveNodesCmd(nodes, selected, refreshPanelFn, moves) {
-  // moves: [{id, fromX, fromY, toX, toY}]
   return {
     undo() {
       for (const m of moves) {
@@ -173,7 +165,6 @@ export function createPropertyChangeCmd(nodes, selected, refreshPanelFn, nodeId,
 }
 
 export function createPasteNodesCmd(nodes, selected, refreshPanelFn, pastedNodes) {
-  // pastedNodes: [{node, index}]
   return {
     undo() {
       const ids = new Set(pastedNodes.map(e => e.node.id));
@@ -195,24 +186,7 @@ export function createPasteNodesCmd(nodes, selected, refreshPanelFn, pastedNodes
   };
 }
 
-export function createMoveArrowEndCmd(arrows, arrowIdx, fromState, toState) {
-  return {
-    undo() {
-      const arrow = arrows[arrowIdx];
-      if (!arrow) return;
-      Object.assign(arrow, fromState);
-    },
-    redo() {
-      const arrow = arrows[arrowIdx];
-      if (!arrow) return;
-      Object.assign(arrow, toState);
-    },
-    description: 'Move Arrow Point'
-  };
-}
-
 export function createDuplicateNodesCmd(nodes, selected, refreshPanelFn, entries) {
-  // entries: [{node, index}]
   return {
     undo() {
       const ids = new Set(entries.map(e => e.node.id));
@@ -231,5 +205,21 @@ export function createDuplicateNodesCmd(nodes, selected, refreshPanelFn, entries
       refreshPanelFn();
     },
     description: entries.length === 1 ? 'Duplicate Node' : `Duplicate ${entries.length} Nodes`
+  };
+}
+
+export function createMoveArrowEndCmd(arrows, arrowIdx, fromState, toState) {
+  return {
+    undo() {
+      const arrow = arrows[arrowIdx];
+      if (!arrow) return;
+      Object.assign(arrow, fromState);
+    },
+    redo() {
+      const arrow = arrows[arrowIdx];
+      if (!arrow) return;
+      Object.assign(arrow, toState);
+    },
+    description: 'Move Arrow Point'
   };
 }

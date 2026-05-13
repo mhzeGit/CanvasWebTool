@@ -1,4 +1,4 @@
-import { gridSettings } from './gridSettings.js';
+import { GRID } from './config.js';
 
 function gridOpacity(visiblePx, minPx, peakPx, maxPx) {
   if (visiblePx <= minPx || visiblePx >= maxPx) return 0;
@@ -18,13 +18,13 @@ export function drawGrid(ctx, canvas, offsetX, offsetY, scale, dpr = 1) {
   const minWorldY = (0 - offsetY) / scale;
   const maxWorldY = (canvas.height / dpr - offsetY) / scale;
 
-  ctx.fillStyle = gridSettings.backgroundColor;
+  ctx.fillStyle = GRID.backgroundColor;
   ctx.fillRect(minWorldX, minWorldY, maxWorldX - minWorldX, maxWorldY - minWorldY);
 
-  const baseLineWidth = gridSettings.lineWidth / (scale * dpr);
-  const [r, g, b] = gridSettings.lineColor;
+  const baseLineWidth = GRID.lineWidth / (scale * dpr);
+  const [r, g, b] = GRID.lineColor;
 
-  for (const level of gridSettings.gridLevels) {
+  for (const level of GRID.gridLevels) {
     const visiblePx = level.spacing * scale;
     const opacity = gridOpacity(visiblePx, level.minPx, level.peakPx, level.maxPx);
     if (opacity <= 0.001) continue;

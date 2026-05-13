@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Background Grid</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="css/style.css">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 </head>
 <body>
@@ -50,7 +50,7 @@
     <h2 style="margin:0 0 8px 0; font-weight:600;">This page needs to be served over HTTP</h2>
     <p style="margin:0 0 12px 0;">You're opening the file directly from disk. ES module imports are blocked on the <code>file://</code> protocol, so nothing runs.</p>
     <p style="margin:0;">Run a local server in this folder and visit <a href="http://localhost:5173" style="color:#4FC3F7;">http://localhost:5173</a>. For example:</p>
-    <pre style="background:#222; padding:12px; border-radius:6px; margin-top:8px;">python -m http.server 5173</pre>
+    <pre style="background:#222; padding:12px; border-radius:6px; margin-top:8px;">python serve.py --port 5173</pre>
   </div>
 
   <script>
@@ -61,7 +61,6 @@
     })();
   </script>
 
-  <!-- Include the module from the folder -->
-  <script type="module" src="gridScripts/gridControl.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>

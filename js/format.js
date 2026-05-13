@@ -1,9 +1,3 @@
-// gridScripts/documentFormat.js
-// Generic, versioned document format for the canvas web tool.
-// The format is intentionally feature-agnostic: elements carry a `type`
-// discriminator and a generic `properties` bag so that new element types
-// and new fields can be added without changing the file schema.
-
 export const FORMAT_IDENTIFIER = 'canvaswebtool-document';
 export const FORMAT_VERSION = 1;
 export const FILE_EXTENSION = '.cvdoc';
@@ -117,15 +111,5 @@ export function deserializeDocument(doc) {
 }
 
 export function migrateDocument(doc) {
-  let migrated = { ...doc };
-  let version = migrated.version ?? 0;
-
-  // Future migration steps go here.
-  // Example:
-  // if (version < 2) {
-  //   migrated = migrateV1ToV2(migrated);
-  //   version = 2;
-  // }
-
-  return migrated;
+  return { ...doc };
 }

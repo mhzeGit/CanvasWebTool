@@ -1,8 +1,4 @@
-// gridScripts/fileIO.js
-// Handles reading and writing document files using the File System Access
-// API when available, with a download/upload fallback for older browsers.
-
-import { FILE_EXTENSION } from './documentFormat.js';
+import { FILE_EXTENSION } from './format.js';
 
 const MIME_TYPE = 'application/json';
 const FILE_DESCRIPTION = 'Canvas Web Document';
