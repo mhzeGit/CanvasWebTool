@@ -49,8 +49,29 @@ let rmbDownTime = 0;
 let rmbMoved = false;
 let rmbPending = false;
 
+// Resize state
+let isResizing = false;
+let resizeNodeIdx = -1;
+let resizeHandle = '';
+let resizeStartWorldX = 0;
+let resizeStartWorldY = 0;
+let resizeStartNode = null;
+const EDGE_MARGIN = 12;
+const NODE_MIN_W = 100;
+const NODE_MIN_H = 60;
+
+// Inline editing
+let editingState = null;
+
+// Hovered resize handle (for visual feedback only)
+let hoveredHandleInfo = null;
+
 function screenToWorld(sx, sy) {
   return { x: (sx - offsetX) / scale, y: (sy - offsetY) / scale };
+}
+
+function worldToScreen(wx, wy) {
+  return { x: wx * scale + offsetX, y: wy * scale + offsetY };
 }
 
 function hitTestNode(wx, wy) {
@@ -59,6 +80,52 @@ function hitTestNode(wx, wy) {
     if (wx >= n.x && wx <= n.x + n.w && wy >= n.y && wy <= n.y + n.h) return i;
   }
   return -1;
+}
+
+function findNodeAtEdge(wx, wy) {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    const onLeft = Math.abs(wx - n.x) <= EDGE_MARGIN;
+    const onRight = Math.abs(wx - (n.x + n.w)) <= EDGE_MARGIN;
+    const onTop = Math.abs(wy - n.y) <= EDGE_MARGIN;
+    const onBottom = Math.abs(wy - (n.y + n.h)) <= EDGE_MARGIN;
+    const inX = wx >= n.x - EDGE_MARGIN && wx <= n.x + n.w + EDGE_MARGIN;
+    const inY = wy >= n.y - EDGE_MARGIN && wy <= n.y + n.h + EDGE_MARGIN;
+    if (!inX || !inY) continue;
+    if (onLeft && onTop) return { idx: i, handle: 'tl', cursor: 'nw-resize' };
+    if (onRight && onTop) return { idx: i, handle: 'tr', cursor: 'ne-resize' };
+    if (onLeft && onBottom) return { idx: i, handle: 'bl', cursor: 'sw-resize' };
+    if (onRight && onBottom) return { idx: i, handle: 'br', cursor: 'se-resize' };
+    if (onLeft) return { idx: i, handle: 'left', cursor: 'ew-resize' };
+    if (onRight) return { idx: i, handle: 'right', cursor: 'ew-resize' };
+    if (onTop) return { idx: i, handle: 'top', cursor: 'ns-resize' };
+    if (onBottom) return { idx: i, handle: 'bottom', cursor: 'ns-resize' };
+  }
+  return null;
+}
+
+function getEdgeAt(wx, wy) {
+  for (const i of selected) {
+    const n = nodes[i];
+    const onLeft = Math.abs(wx - n.x) <= EDGE_MARGIN;
+    const onRight = Math.abs(wx - (n.x + n.w)) <= EDGE_MARGIN;
+    const onTop = Math.abs(wy - n.y) <= EDGE_MARGIN;
+    const onBottom = Math.abs(wy - (n.y + n.h)) <= EDGE_MARGIN;
+
+    const inX = wx >= n.x - EDGE_MARGIN && wx <= n.x + n.w + EDGE_MARGIN;
+    const inY = wy >= n.y - EDGE_MARGIN && wy <= n.y + n.h + EDGE_MARGIN;
+    if (!inX || !inY) continue;
+
+    if (onLeft && onTop) return { idx: i, handle: 'tl', cursor: 'nw-resize' };
+    if (onRight && onTop) return { idx: i, handle: 'tr', cursor: 'ne-resize' };
+    if (onLeft && onBottom) return { idx: i, handle: 'bl', cursor: 'sw-resize' };
+    if (onRight && onBottom) return { idx: i, handle: 'br', cursor: 'se-resize' };
+    if (onLeft) return { idx: i, handle: 'left', cursor: 'ew-resize' };
+    if (onRight) return { idx: i, handle: 'right', cursor: 'ew-resize' };
+    if (onTop) return { idx: i, handle: 'top', cursor: 'ns-resize' };
+    if (onBottom) return { idx: i, handle: 'bottom', cursor: 'ns-resize' };
+  }
+  return null;
 }
 
 function addNodeAtCenter() {
@@ -70,7 +137,7 @@ function addNodeAtCenter() {
 }
 
 function addNodeAt(worldX, worldY) {
-  const w = 140; const h = 80;
+  const w = 240; const h = 160;
   const idx = nodes.length;
   nodes.push({ x: worldX - w / 2, y: worldY - h / 2, w, h, color: '#2b2b2b', title: '', titleColor: '#e7e7e7', text: '' });
   selected.clear();
@@ -368,6 +435,11 @@ canvas.addEventListener('pointerdown', (e) => {
   const sy = e.clientY - rect.top;
   const world = screenToWorld(sx, sy);
 
+  // Close inline editor on any canvas click
+  if (editingState) {
+    commitEditing();
+  }
+
   if (e.button === 2) {
     // Right button: prepare for possible panning or context menu
     lastPanX = e.clientX;
@@ -379,7 +451,35 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 
   if (e.button === 0) {
-    const hit = hitTestNode(world.x, world.y);
+    let hit = hitTestNode(world.x, world.y);
+
+    // Check for edge resize — also catches clicks just outside node bounds (within EDGE_MARGIN)
+    let edgeHit = null;
+    if (hit !== -1) {
+      edgeHit = getEdgeAt(world.x, world.y);
+    } else {
+      const nearHit = findNodeAtEdge(world.x, world.y);
+      if (nearHit) {
+        edgeHit = nearHit;
+        hit = nearHit.idx;
+      }
+    }
+    if (edgeHit) {
+      if (!selected.has(edgeHit.idx)) {
+        selected.clear();
+        selected.add(edgeHit.idx);
+      }
+      isResizing = true;
+      resizeNodeIdx = edgeHit.idx;
+      resizeHandle = edgeHit.handle;
+      resizeStartWorldX = world.x;
+      resizeStartWorldY = world.y;
+      resizeStartNode = { x: nodes[edgeHit.idx].x, y: nodes[edgeHit.idx].y, w: nodes[edgeHit.idx].w, h: nodes[edgeHit.idx].h };
+      canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
+
     if (hit !== -1) {
       // Defer selection change until we know it's not a drag
       pointerDownScreenX = sx;
@@ -429,6 +529,39 @@ canvas.addEventListener('pointermove', (e) => {
   window._lastMouseY = sy;
   const world = screenToWorld(sx, sy);
 
+  // Handle resize
+  if (isResizing) {
+    const dx = world.x - resizeStartWorldX;
+    const dy = world.y - resizeStartWorldY;
+    const start = resizeStartNode;
+    const n = nodes[resizeNodeIdx];
+    let newX = start.x, newY = start.y, newW = start.w, newH = start.h;
+
+    switch (resizeHandle) {
+      case 'left':   newX = start.x + dx; newW = start.w - dx; break;
+      case 'right':  newW = start.w + dx; break;
+      case 'top':    newY = start.y + dy; newH = start.h - dy; break;
+      case 'bottom': newH = start.h + dy; break;
+      case 'tl':     newX = start.x + dx; newY = start.y + dy; newW = start.w - dx; newH = start.h - dy; break;
+      case 'tr':     newY = start.y + dy; newW = start.w + dx; newH = start.h - dy; break;
+      case 'bl':     newX = start.x + dx; newW = start.w - dx; newH = start.h + dy; break;
+      case 'br':     newW = start.w + dx; newH = start.h + dy; break;
+    }
+
+    if (newW < NODE_MIN_W) {
+      if (resizeHandle.includes('l')) newX = start.x + start.w - NODE_MIN_W;
+      newW = NODE_MIN_W;
+    }
+    if (newH < NODE_MIN_H) {
+      if (resizeHandle.includes('t')) newY = start.y + start.h - NODE_MIN_H;
+      newH = NODE_MIN_H;
+    }
+
+    n.x = newX; n.y = newY; n.w = newW; n.h = newH;
+    e.preventDefault();
+    return;
+  }
+
   if (isDraggingNode) {
     const dx = world.x - dragStartWorldX;
     const dy = world.y - dragStartWorldY;
@@ -473,15 +606,28 @@ canvas.addEventListener('pointermove', (e) => {
       dragGroupStarts = Array.from(selected).map(i => ({ i, x: nodes[i].x, y: nodes[i].y }));
     }
   }
-  // Hover feedback: move cursor if hovering any selected node
-  let overSelected = false;
-  for (const i of selected) {
-    const n = nodes[i];
-    if (world.x >= n.x && world.x <= n.x + n.w && world.y >= n.y && world.y <= n.y + n.h) {
-      overSelected = true; break;
+
+  // Hover feedback: cursor for resize handles, move, or grab
+  let cursorSet = false;
+  hoveredHandleInfo = null;
+  if (!isDraggingNode && !isResizing && !isPanning && !isSelectingBox && selected.size > 0) {
+    const handleHit = getEdgeAt(world.x, world.y);
+    if (handleHit) {
+      canvas.style.cursor = handleHit.cursor;
+      hoveredHandleInfo = handleHit;
+      cursorSet = true;
     }
   }
-  canvas.style.cursor = overSelected ? 'move' : 'grab';
+  if (!cursorSet) {
+    let overSelected = false;
+    for (const i of selected) {
+      const n = nodes[i];
+      if (world.x >= n.x && world.x <= n.x + n.w && world.y >= n.y && world.y <= n.y + n.h) {
+        overSelected = true; break;
+      }
+    }
+    canvas.style.cursor = overSelected ? 'move' : 'grab';
+  }
 
   if (isSelectingBox) {
     boxEndX = world.x;
@@ -522,6 +668,9 @@ canvas.addEventListener('pointermove', (e) => {
 });
 
 canvas.addEventListener('pointerup', (e) => {
+  if (isResizing) {
+    isResizing = false;
+  }
   if (isPanning) {
     isPanning = false;
   }
@@ -584,9 +733,49 @@ canvas.addEventListener('pointerup', (e) => {
   refreshSidePanel();
 });
 
+// --- Double-click inline editing ---
+canvas.addEventListener('dblclick', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+  const world = screenToWorld(sx, sy);
+
+  const hit = hitTestNode(world.x, world.y);
+  if (hit === -1) return;
+
+  const n = nodes[hit];
+  const padding = 8;
+  const titleFont = `bold ${15}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+  const titleLineHeight = 18;
+  const maxTitleHeight = n.h / 3;
+  const maxTitleWidth = Math.max(0, n.w - padding * 2);
+  const titleLines = wrapTextLines(ctx, titleFont, n.title || '', maxTitleWidth);
+  const requiredTitleHeight = Math.max(0, titleLines.length * titleLineHeight + padding * 2);
+  const minTitleHeight = Math.min(maxTitleHeight, Math.max(24, padding * 2 + titleLineHeight));
+  const titleH = Math.min(maxTitleHeight, Math.max(minTitleHeight, requiredTitleHeight));
+
+  // Ensure node is selected
+  if (!selected.has(hit)) {
+    selected.clear();
+    selected.add(hit);
+  }
+
+  if (world.y >= n.y && world.y <= n.y + titleH) {
+    startEditing(hit, 'title', n.x, n.y, n.w, titleH);
+  } else {
+    const contentY = n.y + titleH + padding;
+    const maxTextHeight = Math.max(0, n.h - titleH - padding * 2);
+    startEditing(hit, 'text', n.x + padding - 4, contentY - 4, maxTitleWidth + 8, maxTextHeight + 8);
+  }
+});
+
 // --- Zoom handling ---
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
+  // Close inline editor on zoom
+  if (editingState) {
+    commitEditing();
+  }
   const zoomDir = e.deltaY < 0 ? 1 : -1;
   const zoomFactor = Math.pow(gridSettings.zoomFactor, zoomDir);
   const newScale = targetScale * zoomFactor;
@@ -605,6 +794,15 @@ canvas.addEventListener('wheel', (e) => {
 
 // --- Keyboard handling ---
 window.addEventListener('keydown', (e) => {
+  // If inline editor is open, only handle Escape to cancel
+  if (editingState) {
+    if (e.key === 'Escape') {
+      cancelEditing();
+      e.preventDefault();
+    }
+    return;
+  }
+
   // Avoid interfering with typing in inputs
   const active = document.activeElement;
   const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
@@ -738,6 +936,46 @@ function animate() {
       const contentY = n.y + titleH + padding;
       const maxTextHeight = Math.max(0, n.h - titleH - padding * 2);
       drawWrappedTextWithEllipsis(ctx, n.text, n.x + padding, contentY, maxTextWidth, maxTextHeight, 14);
+    }
+
+    // Draw edge highlight on hover — thin elegant line
+    if (hoveredHandleInfo && hoveredHandleInfo.idx === i) {
+      const h = hoveredHandleInfo.handle;
+      ctx.save();
+      ctx.strokeStyle = '#5aa0ff';
+      ctx.lineWidth = 2;
+      if (h === 'left' || h === 'right') {
+        const ex = h === 'left' ? n.x : n.x + n.w;
+        ctx.beginPath();
+        ctx.moveTo(ex, n.y - 4);
+        ctx.lineTo(ex, n.y + n.h + 4);
+        ctx.stroke();
+      } else if (h === 'top' || h === 'bottom') {
+        const ey = h === 'top' ? n.y : n.y + n.h;
+        ctx.beginPath();
+        ctx.moveTo(n.x - 4, ey);
+        ctx.lineTo(n.x + n.w + 4, ey);
+        ctx.stroke();
+      } else {
+        const cx = h.includes('l') ? n.x : n.x + n.w;
+        const cy = h.includes('t') ? n.y : n.y + n.h;
+        const signX = h.includes('l') ? -1 : 1;
+        const signY = h.includes('t') ? -1 : 1;
+        ctx.beginPath();
+        ctx.moveTo(cx + signX * 3, cy);
+        ctx.lineTo(cx, cy);
+        ctx.lineTo(cx, cy + signY * 3);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx + signX * 6, cy);
+        ctx.lineTo(cx + signX * 3, cy);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + signY * 6);
+        ctx.lineTo(cx, cy + signY * 3);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
   }
 
@@ -891,7 +1129,7 @@ function attachDragNumber(inputEl, onDelta) {
 }
 
 function updateNodeWidth(n, newWidth) {
-  const minW = 140;
+  const minW = 100;
   const targetW = Math.max(minW, newWidth);
   const delta = targetW - n.w;
   if (delta === 0) return;
@@ -901,7 +1139,7 @@ function updateNodeWidth(n, newWidth) {
 }
 
 function updateNodeHeight(n, newHeight) {
-  const minH = 80;
+  const minH = 60;
   const targetH = Math.max(minH, newHeight);
   const delta = targetH - n.h;
   if (delta === 0) return;
@@ -1066,6 +1304,63 @@ function drawWrappedTextWithEllipsisAligned(ctx, font, text, cx, y, maxWidth, ma
     ctx.fillText(line, x, y + li * lineHeight);
   }
   ctx.restore();
+}
+
+function commitEditing() {
+  if (!editingState) return;
+  const { idx, field, el } = editingState;
+  nodes[idx][field] = el.value;
+  editingState = null;
+  try { document.body.removeChild(el); } catch {}
+  refreshSidePanel();
+}
+
+function cancelEditing() {
+  if (!editingState) return;
+  const { el } = editingState;
+  editingState = null;
+  try { document.body.removeChild(el); } catch {}
+}
+
+function startEditing(idx, field, worldX, worldY, worldW, worldH) {
+  cancelEditing();
+
+  const n = nodes[idx];
+  const canvasRect = canvas.getBoundingClientRect();
+  const screen = worldToScreen(worldX, worldY);
+  const screenW = worldW * scale;
+  const screenH = worldH * scale;
+
+  const isTitle = field === 'title';
+  const el = document.createElement(isTitle ? 'input' : 'textarea');
+  el.className = isTitle ? 'inline-editor inline-editor-title' : 'inline-editor inline-editor-text';
+  el.value = n[field] || '';
+  el.style.position = 'fixed';
+  el.style.left = (screen.x + canvasRect.left) + 'px';
+  el.style.top = (screen.y + canvasRect.top) + 'px';
+  el.style.width = screenW + 'px';
+  el.style.height = screenH + 'px';
+  el.style.zIndex = '1000';
+  const baseColor = n.color || '#2b2b2b';
+  el.style.background = isTitle ? getDarkerColor(baseColor, 0.6) : baseColor;
+  el.style.color = isTitle ? (n.titleColor || '#e7e7e7') : '#ddd';
+
+  document.body.appendChild(el);
+  el.focus();
+  el.select();
+
+  editingState = { idx, field, el };
+
+  const commit = () => { commitEditing(); };
+  el.addEventListener('blur', commit);
+  el.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && isTitle) {
+      ev.preventDefault();
+      el.blur();
+    } else if (ev.key === 'Escape') {
+      cancelEditing();
+    }
+  });
 }
 
 function computeSelectionKey() {

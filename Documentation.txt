@@ -1,0 +1,5 @@
+How To Start:
+
+1.Open CMD
+2. Direct To Your Location: cd /d D:\Projects\Web\CanvasWebTool
+3. Start Local Server live: npx live-server D:\Projects\Web\CanvasWebTool --port=5173
