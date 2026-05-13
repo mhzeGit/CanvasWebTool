@@ -1342,8 +1342,11 @@ function startEditing(idx, field, worldX, worldY, worldW, worldH) {
   el.style.height = screenH + 'px';
   el.style.zIndex = '1000';
   const baseColor = n.color || '#2b2b2b';
-  el.style.background = isTitle ? getDarkerColor(baseColor, 0.6) : baseColor;
+  el.style.background = isTitle ? 'transparent' : baseColor;
   el.style.color = isTitle ? (n.titleColor || '#e7e7e7') : '#ddd';
+  if (isTitle) {
+    el.style.borderRadius = '0';
+  }
 
   document.body.appendChild(el);
   el.focus();

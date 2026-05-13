@@ -6,6 +6,6 @@ export const gridSettings = {
   panLerp: 0.2,
   zoomLerp: 0.2,
   zoomFactor: 1.1,
-  minScale: 0.8,
+  minScale: 0.05,
   maxScale: 5
 };
