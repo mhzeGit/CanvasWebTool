@@ -105,7 +105,7 @@ function findNodeAtEdge(wx, wy) {
 }
 
 function getEdgeAt(wx, wy) {
-  for (const i of selected) {
+  for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i];
     const onLeft = Math.abs(wx - n.x) <= EDGE_MARGIN;
     const onRight = Math.abs(wx - (n.x + n.w)) <= EDGE_MARGIN;
@@ -610,7 +610,7 @@ canvas.addEventListener('pointermove', (e) => {
   // Hover feedback: cursor for resize handles, move, or grab
   let cursorSet = false;
   hoveredHandleInfo = null;
-  if (!isDraggingNode && !isResizing && !isPanning && !isSelectingBox && selected.size > 0) {
+  if (!isDraggingNode && !isResizing && !isPanning && !isSelectingBox) {
     const handleHit = getEdgeAt(world.x, world.y);
     if (handleHit) {
       canvas.style.cursor = handleHit.cursor;
@@ -856,17 +856,25 @@ function animate() {
     // Base style
     const baseColor = n.color || 'rgb(43, 43, 43)';
     
-    // Draw shadow
-    ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetX = 4;
-    ctx.shadowOffsetY = 4;
-    
-    // Rounded rect path with shadow
+    // Shadow (layered fills — simulates gaussian blur in world space, consistent at any zoom)
     const nodeRadius = Math.min(12, Math.min(n.w, n.h) * 0.2);
-    drawRoundedRect(ctx, n.x, n.y, n.w, n.h, nodeRadius);
+    ctx.save();
+    // Draw outer layers first so inner layers build on top — creates a smooth falloff
+    [
+      { dx: 10, dy: 10, ex: 10, ey: 10, rr: 3, a: 0.03 },
+      { dx: 7, dy: 7, ex: 6, ey: 6, rr: 2, a: 0.06 },
+      { dx: 5, dy: 5, ex: 3, ey: 3, rr: 1, a: 0.12 },
+      { dx: 4, dy: 4, ex: 0, ey: 0, rr: 0, a: 0.22 },
+    ].forEach(l => {
+      ctx.fillStyle = `rgba(0, 0, 0, ${l.a})`;
+      drawRoundedRect(ctx, n.x + l.dx, n.y + l.dy, n.w + l.ex, n.h + l.ey, nodeRadius + l.rr);
+      ctx.fill();
+    });
+    ctx.restore();
+
+    ctx.save();
     ctx.fillStyle = baseColor;
+    drawRoundedRect(ctx, n.x, n.y, n.w, n.h, nodeRadius);
     ctx.fill();
     ctx.restore();
 
@@ -878,27 +886,31 @@ function animate() {
     drawRoundedRect(ctx, n.x - outlineOffset, n.y - outlineOffset, n.w + outlineOffset * 2, n.h + outlineOffset * 2, nodeRadius + outlineOffset);
     ctx.stroke();
 
-    // Selection outline around the whole node (exterior)
+    // Selection outline around the whole node (screen-space thickness)
     if (selected.has(i)) {
       ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const screenX = (n.x * scale + offsetX) * dpr;
+      const screenY = (n.y * scale + offsetY) * dpr;
+      const screenW = n.w * scale * dpr;
+      const screenH = n.h * scale * dpr;
+      const screenRadius = nodeRadius * scale * dpr;
       ctx.strokeStyle = '#f0c800';
-      ctx.lineWidth = 0.8;
+      ctx.lineWidth = 1.5;
       const selectionOffset = ctx.lineWidth / 2;
-      drawRoundedRect(ctx, n.x - selectionOffset, n.y - selectionOffset, n.w + selectionOffset * 2, n.h + selectionOffset * 2, nodeRadius + selectionOffset);
+      drawRoundedRect(ctx, screenX - selectionOffset, screenY - selectionOffset, screenW + selectionOffset * 2, screenH + selectionOffset * 2, screenRadius + selectionOffset);
       ctx.stroke();
       ctx.restore();
     }
 
-         // Title bar background (auto height up to 1/3 of node)
+         // Title bar background (height based on content, never compressed)
      const padding = 8;
      const titleFont = `bold ${15}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
      const titleLineHeight = 18;
-     const maxTitleHeight = n.h / 3;
      const maxTitleWidth = Math.max(0, n.w - padding * 2);
      const titleLines = wrapTextLines(ctx, titleFont, n.title || '', maxTitleWidth);
      const requiredTitleHeight = Math.max(0, titleLines.length * titleLineHeight + padding * 2);
-     const minTitleHeight = Math.min(maxTitleHeight, Math.max(24, padding * 2 + titleLineHeight));
-     const titleH = Math.min(maxTitleHeight, Math.max(minTitleHeight, requiredTitleHeight));
+     const titleH = Math.max(24, requiredTitleHeight);
      ctx.save();
      ctx.fillStyle = getDarkerColor(baseColor, 0.6);
      drawRoundedRectTopOnly(ctx, n.x, n.y, n.w, titleH, nodeRadius);
