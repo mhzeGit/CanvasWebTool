@@ -55,15 +55,23 @@ export function drawArrows() {
     const len = Math.sqrt(dx * dx + dy * dy);
     if (len < 0.001) continue;
 
+    const headLen = ARROW_HEAD_LENGTH;
+    const headAngle = ARROW_HEAD_ANGLE;
+    const nx = dx / len;
+    const ny = dy / len;
+    const shorten = headLen * Math.cos(headAngle);
+    const lineLen = Math.max(len - shorten, 0);
+    const t = lineLen / len;
+    const lineEndX = x1 + dx * t;
+    const lineEndY = y1 + dy * t;
+
     ctx.strokeStyle = arrow.color || DEFAULT_ARROW_COLOR;
     ctx.lineWidth = isWholeSelected ? 3 : 2;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
+    ctx.lineTo(lineEndX, lineEndY);
     ctx.stroke();
 
-    const headLen = ARROW_HEAD_LENGTH;
-    const headAngle = ARROW_HEAD_ANGLE;
     ctx.fillStyle = arrow.color || DEFAULT_ARROW_COLOR;
     ctx.beginPath();
     ctx.moveTo(x2, y2);

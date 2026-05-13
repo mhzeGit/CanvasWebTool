@@ -152,7 +152,9 @@ function onPointerDown(e) {
     if (hit !== -1) {
       state.selectedConnection = null;
       state.arrowDragTarget = null;
-      state.selectedArrows.clear();
+      if (!e.shiftKey && !state.selected.has(hit)) {
+        state.selectedArrows.clear();
+      }
       state.pointerDownScreenX = sx;
       state.pointerDownScreenY = sy;
       state.pendingClickIndex = hit;
@@ -175,18 +177,26 @@ function onPointerDown(e) {
       return;
     }
 
-    if (!e.ctrlKey) {
+    {
       const bodyHit = hitTestArrowBody(world.x, world.y);
       if (bodyHit !== -1) {
         state.selected.clear();
         state.selectedConnection = null;
-        if (!e.shiftKey) {
-          state.selectedArrows.clear();
-          state.arrowDragTarget = null;
+        if (e.ctrlKey) {
+          if (state.selectedArrows.has(bodyHit)) state.selectedArrows.delete(bodyHit);
+          if (state.selectedArrows.size === 0) state.arrowDragTarget = null;
+          refreshSidePanel();
+          e.preventDefault();
+          return;
+        }
+        if (e.shiftKey) {
           state.selectedArrows.add(bodyHit);
         } else {
-          if (state.selectedArrows.has(bodyHit)) state.selectedArrows.delete(bodyHit);
-          else state.selectedArrows.add(bodyHit);
+          if (!state.selectedArrows.has(bodyHit)) {
+            state.selectedArrows.clear();
+            state.arrowDragTarget = null;
+            state.selectedArrows.add(bodyHit);
+          }
         }
         if (state.selectedArrows.size === 0) state.arrowDragTarget = null;
         state.pointerDownScreenX = sx;
@@ -335,6 +345,15 @@ function onPointerMove(e) {
       n.x = item.x + dx;
       n.y = item.y + dy;
     }
+    for (const s of state.dragArrowStarts) {
+      const a = state.arrows[s.idx];
+      if (a && a.connectedFrom === null && a.connectedTo === null) {
+        a.x1 = s.x1 + dx;
+        a.y1 = s.y1 + dy;
+        a.x2 = s.x2 + dx;
+        a.y2 = s.y2 + dy;
+      }
+    }
     e.preventDefault();
     return;
   }
@@ -365,6 +384,19 @@ function onPointerMove(e) {
       state.dragStartWorldX = world.x;
       state.dragStartWorldY = world.y;
       state.dragGroupStarts = state.getDragGroup(state.selected).map(it => ({ ...it, id: state.nodes[it.i].id }));
+      state.dragArrowStarts = [];
+      for (const ai of state.selectedArrows) {
+        const a = state.arrows[ai];
+        if (a) {
+          state.dragArrowStarts.push({
+            idx: ai,
+            x1: a.x1, y1: a.y1,
+            x2: a.x2, y2: a.y2,
+            connectedFrom: a.connectedFrom,
+            connectedTo: a.connectedTo
+          });
+        }
+      }
     }
   }
 
@@ -453,11 +485,10 @@ function onPointerMove(e) {
       if (ix2 >= ix1 && iy2 >= iy1) hits.push(i);
     }
 
-    let boxArrowHit = -1;
+    const boxArrowHits = [];
     for (let ai = 0; ai < state.arrows.length; ai++) {
       if (isArrowInBox(state.arrows[ai], bx1, by1, bx2, by2)) {
-        boxArrowHit = ai;
-        break;
+        boxArrowHits.push(ai);
       }
     }
 
@@ -466,15 +497,15 @@ function onPointerMove(e) {
       newSelected = new Set(hits);
       state.selectedArrows.clear();
       state.arrowDragTarget = null;
-      if (boxArrowHit !== -1) state.selectedArrows.add(boxArrowHit);
+      for (const ai of boxArrowHits) state.selectedArrows.add(ai);
     } else if (state.boxMode === 'add') {
       newSelected = new Set(state.boxBaseSelection);
       for (const i of hits) newSelected.add(i);
-      if (boxArrowHit !== -1) state.selectedArrows.add(boxArrowHit);
+      for (const ai of boxArrowHits) state.selectedArrows.add(ai);
     } else {
       newSelected = new Set(state.boxBaseSelection);
       for (const i of hits) newSelected.delete(i);
-      if (boxArrowHit !== -1) { state.selectedArrows.delete(boxArrowHit); state.arrowDragTarget = null; }
+      for (const ai of boxArrowHits) { state.selectedArrows.delete(ai); state.arrowDragTarget = null; }
     }
     state.selected.clear();
     for (const i of newSelected) state.selected.add(i);
@@ -523,6 +554,18 @@ function onPointerUp(e) {
       }
     }
     state.isDraggingNode = false;
+    if (state.dragArrowStarts && state.dragArrowStarts.length > 0) {
+      for (const s of state.dragArrowStarts) {
+        const a = state.arrows[s.idx];
+        if (a && (a.x1 !== s.x1 || a.y1 !== s.y1 || a.x2 !== s.x2 || a.y2 !== s.y2)) {
+          _history.push(createMoveArrowEndCmd(state.arrows, s.idx,
+            { x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2, connectedFrom: s.connectedFrom, connectedTo: s.connectedTo },
+            { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2, connectedFrom: a.connectedFrom, connectedTo: a.connectedTo }
+          ));
+        }
+      }
+      state.dragArrowStarts = [];
+    }
   }
   if (state.isDraggingArrowEnd && state.arrowDragTarget) {
     const arrow = state.arrows[state.arrowDragTarget.arrowIdx];
@@ -590,11 +633,10 @@ function onPointerUp(e) {
       if (ix2 >= ix1 && iy2 >= iy1) hits.push(i);
     }
 
-    let boxArrowHit = -1;
+    const boxArrowHits = [];
     for (let ai = 0; ai < state.arrows.length; ai++) {
       if (isArrowInBox(state.arrows[ai], bx1, by1, bx2, by2)) {
-        boxArrowHit = ai;
-        break;
+        boxArrowHits.push(ai);
       }
     }
 
@@ -603,13 +645,13 @@ function onPointerUp(e) {
       hits.forEach(i => state.selected.add(i));
       state.selectedArrows.clear();
       state.arrowDragTarget = null;
-      if (boxArrowHit !== -1) state.selectedArrows.add(boxArrowHit);
+      for (const ai of boxArrowHits) state.selectedArrows.add(ai);
     } else if (state.boxMode === 'add') {
       hits.forEach(i => state.selected.add(i));
-      if (boxArrowHit !== -1) state.selectedArrows.add(boxArrowHit);
+      for (const ai of boxArrowHits) state.selectedArrows.add(ai);
     } else if (state.boxMode === 'remove') {
       hits.forEach(i => state.selected.delete(i));
-      if (boxArrowHit !== -1) { state.selectedArrows.delete(boxArrowHit); state.arrowDragTarget = null; }
+      for (const ai of boxArrowHits) { state.selectedArrows.delete(ai); state.arrowDragTarget = null; }
     }
 
     state.isSelectingBox = false;
