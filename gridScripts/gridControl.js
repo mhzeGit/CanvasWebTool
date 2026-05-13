@@ -1219,30 +1219,43 @@ canvas.addEventListener('pointermove', (e) => {
     boxEndY = world.y;
 
     // Live update selection while dragging the marquee
-    const x1 = Math.min(boxStartX, boxEndX);
-    const y1 = Math.min(boxStartY, boxEndY);
-    const x2 = Math.max(boxStartX, boxEndX);
-    const y2 = Math.max(boxStartY, boxEndY);
+    const bx1 = Math.min(boxStartX, boxEndX);
+    const by1 = Math.min(boxStartY, boxEndY);
+    const bx2 = Math.max(boxStartX, boxEndX);
+    const by2 = Math.max(boxStartY, boxEndY);
     const hits = [];
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i];
-      const ix1 = Math.max(x1, n.x);
-      const iy1 = Math.max(y1, n.y);
-      const ix2 = Math.min(x2, n.x + n.w);
-      const iy2 = Math.min(y2, n.y + n.h);
+      const ix1 = Math.max(bx1, n.x);
+      const iy1 = Math.max(by1, n.y);
+      const ix2 = Math.min(bx2, n.x + n.w);
+      const iy2 = Math.min(by2, n.y + n.h);
       if (ix2 >= ix1 && iy2 >= iy1) hits.push(i);
+    }
+
+    // Check arrow endpoints and body inside the box
+    let boxArrowHit = -1;
+    for (let ai = 0; ai < arrows.length; ai++) {
+      if (isArrowInBox(arrows[ai], bx1, by1, bx2, by2)) {
+        boxArrowHit = ai;
+        break;
+      }
     }
 
     let newSelected;
     if (boxMode === 'replace') {
       newSelected = new Set(hits);
+      if (boxArrowHit !== -1) { selectedArrow = boxArrowHit; selectedArrowEnd = null; }
+      else { selectedArrow = null; selectedArrowEnd = null; }
     } else if (boxMode === 'add') {
       newSelected = new Set(boxBaseSelection);
       for (const i of hits) newSelected.add(i);
+      if (boxArrowHit !== -1) selectedArrow = boxArrowHit;
     } else {
       // remove
       newSelected = new Set(boxBaseSelection);
       for (const i of hits) newSelected.delete(i);
+      if (boxArrowHit !== -1) { selectedArrow = null; selectedArrowEnd = null; }
     }
     selected.clear();
     for (const i of newSelected) selected.add(i);
@@ -1339,28 +1352,41 @@ canvas.addEventListener('pointerup', (e) => {
 
   if (isSelectingBox) {
     // finalize box selection
-    const x1 = Math.min(boxStartX, boxEndX);
-    const y1 = Math.min(boxStartY, boxEndY);
-    const x2 = Math.max(boxStartX, boxEndX);
-    const y2 = Math.max(boxStartY, boxEndY);
+    const bx1 = Math.min(boxStartX, boxEndX);
+    const by1 = Math.min(boxStartY, boxEndY);
+    const bx2 = Math.max(boxStartX, boxEndX);
+    const by2 = Math.max(boxStartY, boxEndY);
 
     const hits = [];
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i];
-      const ix1 = Math.max(x1, n.x);
-      const iy1 = Math.max(y1, n.y);
-      const ix2 = Math.min(x2, n.x + n.w);
-      const iy2 = Math.min(y2, n.y + n.h);
+      const ix1 = Math.max(bx1, n.x);
+      const iy1 = Math.max(by1, n.y);
+      const ix2 = Math.min(bx2, n.x + n.w);
+      const iy2 = Math.min(by2, n.y + n.h);
       if (ix2 >= ix1 && iy2 >= iy1) hits.push(i);
+    }
+
+    // Check arrow endpoints and body inside the box
+    let boxArrowHit = -1;
+    for (let ai = 0; ai < arrows.length; ai++) {
+      if (isArrowInBox(arrows[ai], bx1, by1, bx2, by2)) {
+        boxArrowHit = ai;
+        break;
+      }
     }
 
     if (boxMode === 'replace') {
       selected.clear();
       hits.forEach(i => selected.add(i));
+      if (boxArrowHit !== -1) { selectedArrow = boxArrowHit; selectedArrowEnd = null; }
+      else { selectedArrow = null; selectedArrowEnd = null; }
     } else if (boxMode === 'add') {
       hits.forEach(i => selected.add(i));
+      if (boxArrowHit !== -1) selectedArrow = boxArrowHit;
     } else if (boxMode === 'remove') {
       hits.forEach(i => selected.delete(i));
+      if (boxArrowHit !== -1) { selectedArrow = null; selectedArrowEnd = null; }
     }
 
     isSelectingBox = false;
@@ -3082,6 +3108,25 @@ function findNodeAtPoint(wx, wy) {
     if (wx >= n.x && wx <= n.x + n.w && wy >= n.y && wy <= n.y + n.h) return idx;
   }
   return -1;
+}
+
+function isArrowInBox(arrow, bx1, by1, bx2, by2) {
+  const startPt = getArrowEndpoint(arrow, 'start');
+  const endPt = getArrowEndpoint(arrow, 'end');
+  const x1 = startPt.x, y1 = startPt.y;
+  const x2 = endPt.x, y2 = endPt.y;
+
+  // Check if either endpoint is inside the box
+  if (x1 >= bx1 && x1 <= bx2 && y1 >= by1 && y1 <= by2) return true;
+  if (x2 >= bx1 && x2 <= bx2 && y2 >= by1 && y2 <= by2) return true;
+
+  // Check if the arrow body line segment intersects the box
+  // Use Cohen-Sutherland style rejection: if both points are on the same side of any edge, no intersection
+  const x1l = x1 < bx1, x1r = x1 > bx2, y1t = y1 < by1, y1b = y1 > by2;
+  const x2l = x2 < bx1, x2r = x2 > bx2, y2t = y2 < by1, y2b = y2 > by2;
+  if ((x1l && x2l) || (x1r && x2r) || (y1t && y2t) || (y1b && y2b)) return false;
+
+  return true;
 }
 
 function deleteArrowFn(ai) {

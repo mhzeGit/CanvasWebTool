@@ -421,7 +421,7 @@ async function buildPreview() {
   }
 
   // Insert import map before first script
-  const mapScript = `<script type="importmap">\n${JSON.stringify({imports:importMap},null,2)}\n</script>`;
+  const mapScript = `<script type="importmap">\n${JSON.stringify({imports:importMap},null,2)}\n<` + `/script>`;
   html = html.replace(/<script/, mapScript + '\n<script');
 
   // Create preview blob
