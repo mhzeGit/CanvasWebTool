@@ -1049,7 +1049,7 @@ canvas.addEventListener('pointerup', (e) => {
   }
   // Apply deferred click selection (no drag happened)
   if (pendingClickIndex !== -1 && !didDragSincePointerDown) {
-    if (selected.has(pendingClickIndex) && selected.size > 1) {
+    if (selected.has(pendingClickIndex) && selected.size > 1 && !pendingShiftKey) {
       selected.clear();
       selected.add(pendingClickIndex);
     } else if (!selected.has(pendingClickIndex) && !pendingShiftKey && !pendingCtrlKey) {
