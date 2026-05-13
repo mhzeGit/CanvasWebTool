@@ -195,6 +195,22 @@ export function createPasteNodesCmd(nodes, selected, refreshPanelFn, pastedNodes
   };
 }
 
+export function createMoveArrowEndCmd(arrows, arrowIdx, fromState, toState) {
+  return {
+    undo() {
+      const arrow = arrows[arrowIdx];
+      if (!arrow) return;
+      Object.assign(arrow, fromState);
+    },
+    redo() {
+      const arrow = arrows[arrowIdx];
+      if (!arrow) return;
+      Object.assign(arrow, toState);
+    },
+    description: 'Move Arrow Point'
+  };
+}
+
 export function createDuplicateNodesCmd(nodes, selected, refreshPanelFn, entries) {
   // entries: [{node, index}]
   return {

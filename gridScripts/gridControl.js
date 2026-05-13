@@ -1,7 +1,7 @@
 // gridScripts/gridControl.js
 import { drawGrid } from './gridDraw.js';
 import { gridSettings } from './gridSettings.js';
-import { nextNodeId, initNodeId, findNodeById, createHistoryManager, createAddNodeCmd, createDeleteNodesCmd, createMoveNodesCmd, createResizeNodeCmd, createPropertyChangeCmd, createPasteNodesCmd, createDuplicateNodesCmd } from './undoManager.js';
+import { nextNodeId, initNodeId, findNodeById, createHistoryManager, createAddNodeCmd, createDeleteNodesCmd, createMoveNodesCmd, createResizeNodeCmd, createPropertyChangeCmd, createPasteNodesCmd, createDuplicateNodesCmd, createMoveArrowEndCmd } from './undoManager.js';
 import { serializeDocument, deserializeDocument, FILE_EXTENSION } from './documentFormat.js';
 import { saveToFile, loadFromFile } from './fileIO.js';
 
@@ -90,6 +90,28 @@ let nextConnectionId = 1;
 let selectedConnection = null;
 let connectingFrom = null;
 let connectingMouseWorld = { x: 0, y: 0 };
+
+// --- Arrow state ---
+const arrows = [];
+let nextArrowId = 1;
+let selectedArrow = null;
+let selectedArrowEnd = null;
+let isDraggingArrowEnd = false;
+let dragArrowEndSnapshot = null;
+let dragArrowEndWhich = null;
+
+let isDraggingArrowBody = false;
+let dragArrowBodyIdx = -1;
+let dragArrowBodyStartWorld = null;
+let dragArrowBodySnapshot = null;
+
+let hoveredArrowEnd = null;
+
+const ARROW_END_RADIUS = 8;
+const ARROW_END_HIT_RADIUS = 14;
+const ARROW_BODY_HIT_THRESHOLD = 6;
+const ARROW_HEAD_LENGTH = 14;
+const ARROW_HEAD_ANGLE = Math.PI / 6;
 
 // Drag/selection thresholds and pending click state
 const DRAG_THRESHOLD_PX = 3;
@@ -301,6 +323,60 @@ if (addNodeBtn) {
   });
 }
 
+// --- Arrow creation ---
+function addArrowAtCenter() {
+  flushPanelEdit();
+  const rect = canvas.getBoundingClientRect();
+  const centerCssX = rect.width / 2;
+  const centerCssY = rect.height / 2;
+  const world = screenToWorld(centerCssX, centerCssY);
+  addArrowAt(world.x, world.y);
+}
+
+function addArrowAt(worldX, worldY, connectNodeIdx) {
+  flushPanelEdit();
+  const offset = 60;
+  let x1 = worldX - offset;
+  let y1 = worldY;
+  let x2 = worldX + offset;
+  let y2 = worldY;
+  let connectedFrom = null;
+  let connectedTo = null;
+
+  if (connectNodeIdx !== undefined && connectNodeIdx !== null && nodes[connectNodeIdx]) {
+    const edge = getNodeEdgePoint(nodes[connectNodeIdx], worldX, worldY);
+    x1 = edge.x;
+    y1 = edge.y;
+    connectedFrom = connectNodeIdx;
+    x2 = worldX;
+    y2 = worldY;
+  }
+
+  const arrow = {
+    id: nextArrowId++,
+    x1, y1, x2, y2,
+    connectedFrom,
+    connectedTo,
+    color: '#6bb5ff'
+  };
+
+  const idx = arrows.length;
+  arrows.push(arrow);
+  selected.clear();
+  selectedConnection = null;
+  selectedArrow = null;
+  selectedArrowEnd = { arrowIdx: idx, end: 'end' };
+  refreshSidePanel();
+}
+
+const addArrowBtn = document.getElementById('actionAddArrow');
+if (addArrowBtn) {
+  addArrowBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    addArrowAtCenter();
+  });
+}
+
 // --- Resize handling ---
 function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
@@ -324,15 +400,22 @@ document.addEventListener('pointerdown', (e) => {
   const target = e.target;
   if (target === canvas) return;
   if (target && (target.closest && (target.closest('#sidePanel') || target.closest('#contextMenu') || target.closest('.top-bar')))) return;
+  let didClear = false;
   if (selected.size > 0) {
     selected.clear();
     selectedConnection = null;
-    refreshSidePanel();
+    didClear = true;
   }
   if (selectedConnection !== null) {
     selectedConnection = null;
-    refreshSidePanel();
+    didClear = true;
   }
+  if (selectedArrow !== null || selectedArrowEnd !== null) {
+    selectedArrow = null;
+    selectedArrowEnd = null;
+    didClear = true;
+  }
+  if (didClear) refreshSidePanel();
 });
 
 // Disable native context menu on the canvas
@@ -355,6 +438,8 @@ function openContextMenu(e) {
   const world = screenToWorld(sx, sy);
   const hit = hitTestNode(world.x, world.y);
   const connHit = hit === -1 ? hitTestConnection(world.x, world.y) : null;
+  const arrowEndHit = hit === -1 ? hitTestArrowEnd(world.x, world.y) : null;
+  const arrowBodyHit = (hit === -1 && connHit === null && arrowEndHit === null) ? hitTestArrowBody(world.x, world.y) : -1;
 
   const menu = document.getElementById('contextMenu');
   if (!menu) return;
@@ -383,6 +468,14 @@ function openContextMenu(e) {
       closeContextMenu();
     });
     sub.appendChild(addNode);
+    const addArrow = document.createElement('button');
+    addArrow.className = 'context-item';
+    addArrow.textContent = 'Add Arrow';
+    addArrow.addEventListener('click', () => {
+      addArrowAt(world.x, world.y, hit);
+      closeContextMenu();
+    });
+    sub.appendChild(addArrow);
     addWrap.appendChild(addBtn);
     addWrap.appendChild(sub);
     items.push(addWrap);
@@ -438,6 +531,23 @@ function openContextMenu(e) {
       items.push(paste);
     }
 
+  } else if (arrowBodyHit !== -1) {
+    // Arrow body hit
+    selected.clear();
+    selectedConnection = null;
+    selectedArrowEnd = null;
+    selectedArrow = arrowBodyHit;
+    const delArrow = document.createElement('button');
+    delArrow.className = 'context-item';
+    delArrow.textContent = 'Delete Arrow';
+    delArrow.addEventListener('click', () => {
+      deleteArrowFn(selectedArrow);
+      selectedArrow = null;
+      refreshSidePanel();
+      closeContextMenu();
+    });
+    items.push(delArrow);
+
   } else if (connHit !== null) {
     // Connection hit: show Delete Connection
     selectedConnection = connHit;
@@ -468,6 +578,14 @@ function openContextMenu(e) {
       closeContextMenu();
     });
     sub.appendChild(addNode);
+    const addArrow = document.createElement('button');
+    addArrow.className = 'context-item';
+    addArrow.textContent = 'Add Arrow';
+    addArrow.addEventListener('click', () => {
+      addArrowAt(world.x, world.y);
+      closeContextMenu();
+    });
+    sub.appendChild(addArrow);
     addWrap.appendChild(addBtn);
     addWrap.appendChild(sub);
     items.push(addWrap);
@@ -560,6 +678,18 @@ function deleteSelectedNodes() {
   }
   connections.length = 0;
   for (const c of newConnections) connections.push(c);
+
+  // Re-index arrow connections after node deletion
+  for (const arrow of arrows) {
+    if (arrow.connectedFrom !== null) {
+      const newIdx = indexMap[arrow.connectedFrom];
+      arrow.connectedFrom = newIdx !== undefined ? newIdx : null;
+    }
+    if (arrow.connectedTo !== null) {
+      const newIdx = indexMap[arrow.connectedTo];
+      arrow.connectedTo = newIdx !== undefined ? newIdx : null;
+    }
+  }
 
   if (connectingFrom !== null && toDelete.has(connectingFrom)) {
     connectingFrom = null;
@@ -734,6 +864,28 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 
   if (e.button === 0) {
+    // Check for arrow endpoint hit first (highest priority)
+    const arrowEndHit = hitTestArrowEnd(world.x, world.y);
+    if (arrowEndHit) {
+      selected.clear();
+      selectedConnection = null;
+      selectedArrow = null;
+      selectedArrowEnd = arrowEndHit;
+      isDraggingArrowEnd = true;
+      dragArrowEndWhich = arrowEndHit.end;
+      const arrow = arrows[arrowEndHit.arrowIdx];
+      dragArrowEndSnapshot = {
+        x1: arrow.x1, y1: arrow.y1,
+        x2: arrow.x2, y2: arrow.y2,
+        connectedFrom: arrow.connectedFrom,
+        connectedTo: arrow.connectedTo
+      };
+      refreshSidePanel();
+      canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
+
     let hit = hitTestNode(world.x, world.y);
 
     // Check for edge resize — also catches clicks just outside node bounds (within EDGE_MARGIN)
@@ -767,6 +919,8 @@ canvas.addEventListener('pointerdown', (e) => {
 
     if (hit !== -1) {
       selectedConnection = null;
+      selectedArrowEnd = null;
+      selectedArrow = null;
       // Defer selection change until we know it's not a drag
       pointerDownScreenX = sx;
       pointerDownScreenY = sy;
@@ -792,11 +946,33 @@ canvas.addEventListener('pointerdown', (e) => {
       return;
     }
 
+    // Check for arrow body hit
+    if (!e.shiftKey && !e.ctrlKey) {
+      const bodyHit = hitTestArrowBody(world.x, world.y);
+      if (bodyHit !== -1) {
+        selected.clear();
+        selectedConnection = null;
+        selectedArrowEnd = null;
+        selectedArrow = bodyHit;
+        // Prepare for possible body drag
+        pointerDownScreenX = sx;
+        pointerDownScreenY = sy;
+        pendingClickIndex = -2; // sentinel: body drag pending
+        didDragSincePointerDown = false;
+        refreshSidePanel();
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
+
     // Background: check for connection hit
     if (hit === -1 && !e.shiftKey && !e.ctrlKey) {
       const connHit = hitTestConnection(world.x, world.y);
       if (connHit !== null) {
         selected.clear();
+        selectedArrow = null;
+        selectedArrowEnd = null;
         selectedConnection = connHit;
         refreshSidePanel();
         e.preventDefault();
@@ -807,6 +983,8 @@ canvas.addEventListener('pointerdown', (e) => {
     // Background: start selection box
     isSelectingBox = true;
     selectedConnection = null;
+    selectedArrow = null;
+    selectedArrowEnd = null;
     boxStartX = world.x;
     boxStartY = world.y;
     boxEndX = world.x;
@@ -831,6 +1009,58 @@ canvas.addEventListener('pointermove', (e) => {
   // Track mouse for connection preview
   if (connectingFrom !== null) {
     connectingMouseWorld = { x: world.x, y: world.y };
+  }
+
+  // Handle arrow endpoint drag
+  if (isDraggingArrowEnd && selectedArrowEnd) {
+    const arrow = arrows[selectedArrowEnd.arrowIdx];
+    if (arrow) {
+      if (selectedArrowEnd.end === 'start') {
+        arrow.x1 = world.x;
+        arrow.y1 = world.y;
+        const snapNode = findNodeAtPoint(world.x, world.y);
+        if (snapNode !== -1 && snapNode !== arrow.connectedTo) {
+          arrow.connectedFrom = snapNode;
+          const edge = getNodeEdgePoint(nodes[snapNode], arrow.x2, arrow.y2);
+          arrow.x1 = edge.x;
+          arrow.y1 = edge.y;
+        } else if (snapNode === -1) {
+          arrow.connectedFrom = null;
+        }
+      } else {
+        arrow.x2 = world.x;
+        arrow.y2 = world.y;
+        const snapNode = findNodeAtPoint(world.x, world.y);
+        if (snapNode !== -1 && snapNode !== arrow.connectedFrom) {
+          arrow.connectedTo = snapNode;
+          const edge = getNodeEdgePoint(nodes[snapNode], arrow.x1, arrow.y1);
+          arrow.x2 = edge.x;
+          arrow.y2 = edge.y;
+        } else if (snapNode === -1) {
+          arrow.connectedTo = null;
+        }
+      }
+    }
+    e.preventDefault();
+    return;
+  }
+
+  // Handle arrow body drag (both endpoints move together)
+  if (isDraggingArrowBody && dragArrowBodyIdx !== -1) {
+    const arrow = arrows[dragArrowBodyIdx];
+    if (arrow && dragArrowBodyStartWorld) {
+      const dx = world.x - dragArrowBodyStartWorld.x;
+      const dy = world.y - dragArrowBodyStartWorld.y;
+      arrow.x1 = dragArrowBodySnapshot.x1 + dx;
+      arrow.y1 = dragArrowBodySnapshot.y1 + dy;
+      arrow.x2 = dragArrowBodySnapshot.x2 + dx;
+      arrow.y2 = dragArrowBodySnapshot.y2 + dy;
+      // Disconnect from nodes when dragging body
+      arrow.connectedFrom = null;
+      arrow.connectedTo = null;
+    }
+    e.preventDefault();
+    return;
   }
 
   // Handle resize
@@ -892,7 +1122,7 @@ canvas.addEventListener('pointermove', (e) => {
   }
 
   // If we have a pending click on a node and moved past threshold, start dragging
-  if (pendingClickIndex !== -1 && (e.buttons & 1) === 1) {
+  if (pendingClickIndex >= 0 && (e.buttons & 1) === 1) {
     const moveDx = Math.abs(sx - pointerDownScreenX);
     const moveDy = Math.abs(sy - pointerDownScreenY);
     if (moveDx >= DRAG_THRESHOLD_PX || moveDy >= DRAG_THRESHOLD_PX) {
@@ -910,15 +1140,36 @@ canvas.addEventListener('pointermove', (e) => {
       dragGroupStarts = getDragGroup(selected).map(it => ({ ...it, id: nodes[it.i].id }));
     }
   }
+  // Arrow body drag initiation
+  if (pendingClickIndex === -2 && selectedArrow !== null && (e.buttons & 1) === 1) {
+    const moveDx = Math.abs(sx - pointerDownScreenX);
+    const moveDy = Math.abs(sy - pointerDownScreenY);
+    if (moveDx >= DRAG_THRESHOLD_PX || moveDy >= DRAG_THRESHOLD_PX) {
+      const arrow = arrows[selectedArrow];
+      if (arrow) {
+        isDraggingArrowBody = true;
+        dragArrowBodyIdx = selectedArrow;
+        dragArrowBodyStartWorld = { x: world.x, y: world.y };
+        dragArrowBodySnapshot = {
+          x1: arrow.x1, y1: arrow.y1,
+          x2: arrow.x2, y2: arrow.y2,
+          connectedFrom: arrow.connectedFrom,
+          connectedTo: arrow.connectedTo
+        };
+        didDragSincePointerDown = true;
+      }
+    }
+  }
 
   // Hover feedback: cursor for resize handles, move, or grab
   let cursorSet = false;
   hoveredHandleInfo = null;
+  hoveredArrowEnd = null;
   if (connectingFrom !== null) {
     canvas.style.cursor = 'crosshair';
     cursorSet = true;
   }
-  if (!isDraggingNode && !isResizing && !isPanning && !isSelectingBox) {
+  if (!isDraggingNode && !isResizing && !isPanning && !isSelectingBox && !isDraggingArrowEnd) {
     const handleHit = getEdgeAt(world.x, world.y);
     if (handleHit) {
       canvas.style.cursor = handleHit.cursor;
@@ -926,9 +1177,27 @@ canvas.addEventListener('pointermove', (e) => {
       cursorSet = true;
     }
   }
-  if (!cursorSet && !isDraggingNode && !isResizing && !isPanning && !isSelectingBox && connectingFrom === null) {
+  if (!cursorSet && !isDraggingNode && !isResizing && !isPanning && !isSelectingBox && connectingFrom === null && !isDraggingArrowEnd) {
     const connHit = hitTestConnection(world.x, world.y);
     if (connHit !== null) {
+      canvas.style.cursor = 'pointer';
+      cursorSet = true;
+    }
+  }
+  if (isDraggingArrowBody) {
+    canvas.style.cursor = 'move';
+    cursorSet = true;
+  }
+  if (!cursorSet && !isDraggingNode && !isResizing && !isPanning && !isSelectingBox && !isDraggingArrowEnd && !isDraggingArrowBody) {
+    const bodyHit = hitTestArrowBody(world.x, world.y);
+    if (bodyHit !== -1) {
+      canvas.style.cursor = 'pointer';
+      cursorSet = true;
+    }
+  }
+  if (!cursorSet && !isDraggingNode && !isResizing && !isPanning && !isSelectingBox && !isDraggingArrowEnd) {
+    const bodyHit = hitTestArrowBody(world.x, world.y);
+    if (bodyHit !== -1) {
       canvas.style.cursor = 'pointer';
       cursorSet = true;
     }
@@ -1018,6 +1287,55 @@ canvas.addEventListener('pointerup', (e) => {
     }
     isDraggingNode = false;
   }
+  if (isDraggingArrowEnd && selectedArrowEnd) {
+    const arrow = arrows[selectedArrowEnd.arrowIdx];
+    if (arrow && dragArrowEndSnapshot) {
+      const moved = arrow.x1 !== dragArrowEndSnapshot.x1 || arrow.y1 !== dragArrowEndSnapshot.y1 ||
+                    arrow.x2 !== dragArrowEndSnapshot.x2 || arrow.y2 !== dragArrowEndSnapshot.y2 ||
+                    arrow.connectedFrom !== dragArrowEndSnapshot.connectedFrom ||
+                    arrow.connectedTo !== dragArrowEndSnapshot.connectedTo;
+      if (moved) {
+        history.push(createMoveArrowEndCmd(arrows, selectedArrowEnd.arrowIdx,
+          { x1: dragArrowEndSnapshot.x1, y1: dragArrowEndSnapshot.y1,
+            x2: dragArrowEndSnapshot.x2, y2: dragArrowEndSnapshot.y2,
+            connectedFrom: dragArrowEndSnapshot.connectedFrom,
+            connectedTo: dragArrowEndSnapshot.connectedTo },
+          { x1: arrow.x1, y1: arrow.y1,
+            x2: arrow.x2, y2: arrow.y2,
+            connectedFrom: arrow.connectedFrom,
+            connectedTo: arrow.connectedTo }
+        ));
+      }
+    }
+    isDraggingArrowEnd = false;
+    dragArrowEndSnapshot = null;
+    refreshSidePanel();
+  }
+
+  if (isDraggingArrowBody && dragArrowBodyIdx !== -1) {
+    const arrow = arrows[dragArrowBodyIdx];
+    if (arrow && dragArrowBodySnapshot) {
+      const moved = arrow.x1 !== dragArrowBodySnapshot.x1 || arrow.y1 !== dragArrowBodySnapshot.y1 ||
+                    arrow.x2 !== dragArrowBodySnapshot.x2 || arrow.y2 !== dragArrowBodySnapshot.y2;
+      if (moved) {
+        history.push(createMoveArrowEndCmd(arrows, dragArrowBodyIdx,
+          { x1: dragArrowBodySnapshot.x1, y1: dragArrowBodySnapshot.y1,
+            x2: dragArrowBodySnapshot.x2, y2: dragArrowBodySnapshot.y2,
+            connectedFrom: dragArrowBodySnapshot.connectedFrom,
+            connectedTo: dragArrowBodySnapshot.connectedTo },
+          { x1: arrow.x1, y1: arrow.y1,
+            x2: arrow.x2, y2: arrow.y2,
+            connectedFrom: null, connectedTo: null }
+        ));
+      }
+    }
+    isDraggingArrowBody = false;
+    dragArrowBodyIdx = -1;
+    dragArrowBodySnapshot = null;
+    dragArrowBodyStartWorld = null;
+    refreshSidePanel();
+  }
+
   if (isSelectingBox) {
     // finalize box selection
     const x1 = Math.min(boxStartX, boxEndX);
@@ -1048,7 +1366,7 @@ canvas.addEventListener('pointerup', (e) => {
     refreshSidePanel();
   }
   // Apply deferred click selection (no drag happened)
-  if (pendingClickIndex !== -1 && !didDragSincePointerDown) {
+  if (pendingClickIndex !== -1 && pendingClickIndex !== -2 && !didDragSincePointerDown) {
     if (selected.has(pendingClickIndex) && selected.size > 1 && !pendingShiftKey) {
       selected.clear();
       selected.add(pendingClickIndex);
@@ -1169,6 +1487,13 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (!isInput && (e.key === 'Delete' || e.key === 'Backspace')) {
+    if (selectedArrow !== null) {
+      deleteArrowFn(selectedArrow);
+      selectedArrow = null;
+      refreshSidePanel();
+      e.preventDefault();
+      return;
+    }
     if (selectedConnection !== null) {
       deleteSelectedConnection();
       e.preventDefault();
@@ -1200,6 +1525,18 @@ window.addEventListener('keydown', (e) => {
       return;
     }
     closeContextMenu();
+    if (isDraggingArrowBody) {
+      isDraggingArrowBody = false;
+      dragArrowBodyIdx = -1;
+      dragArrowBodySnapshot = null;
+      dragArrowBodyStartWorld = null;
+    }
+    if (selectedArrow !== null || selectedArrowEnd !== null) {
+      selectedArrow = null;
+      selectedArrowEnd = null;
+      refreshSidePanel();
+      return;
+    }
     if (selectedConnection !== null) {
       selectedConnection = null;
       refreshSidePanel();
@@ -1212,6 +1549,7 @@ function getDocumentState() {
   return {
     nodes,
     connections,
+    arrows,
     viewport: {
       offsetX: targetOffsetX,
       offsetY: targetOffsetY,
@@ -1224,8 +1562,11 @@ function getDocumentState() {
 function restoreDocumentState(state) {
   nodes.length = 0;
   connections.length = 0;
+  arrows.length = 0;
   selected.clear();
   selectedConnection = null;
+  selectedArrow = null;
+  selectedArrowEnd = null;
   clipboard = [];
   connectingFrom = null;
   history.clear();
@@ -1236,6 +1577,9 @@ function restoreDocumentState(state) {
   }
   for (const c of (state.connections || [])) {
     connections.push(c);
+  }
+  for (const a of (state.arrows || [])) {
+    arrows.push(a);
   }
 
   let maxNodeId = 0;
@@ -1249,6 +1593,12 @@ function restoreDocumentState(state) {
     if (c.id > maxConnId) maxConnId = c.id;
   }
   nextConnectionId = maxConnId + 1;
+
+  let maxArrowId = 0;
+  for (const a of arrows) {
+    if (a.id > maxArrowId) maxArrowId = a.id;
+  }
+  nextArrowId = Math.max(nextArrowId, maxArrowId + 1);
 
   const vp = state.viewport || {};
   offsetX = targetOffsetX = vp.offsetX ?? 0;
@@ -1326,6 +1676,10 @@ function animate() {
     }
   }
 
+  // Update arrow endpoint positions from connections, then draw arrows
+  updateArrowPositionsFromConnections();
+  drawArrows(ctx);
+
   // Draw nodes (world space; drawGrid already set the world transform)
   const drawOrder = getDrawOrder();
   for (const idx of drawOrder) {
@@ -1382,7 +1736,6 @@ function animate() {
 
          // Title bar background (fixed height, consistent with or without title)
      const padding = 8;
-     const titleFont = `bold ${15}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
      const titleLineHeight = 18;
      const maxTitleWidth = Math.max(0, n.w - padding * 2);
      const titleH = padding * 2 + titleLineHeight;
@@ -1392,37 +1745,40 @@ function animate() {
      ctx.fill();
      ctx.restore();
 
-    // Title text (bold, larger)
+    // Title text (bold, larger) with markdown support
     if (n.title && n.title.length > 0) {
       ctx.save();
-      ctx.fillStyle = n.titleColor || '#e7e7e7';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      drawWrappedTextWithEllipsisAligned(
+      const titleBaseFontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
+      renderMarkdownTitle(
         ctx,
-        titleFont,
         n.title,
         n.x + n.w / 2,
         n.y + padding,
         maxTitleWidth,
-        Math.max(0, titleH - padding * 2),
-        titleLineHeight,
-        'center'
+        titleBaseFontFamily,
+        15,
+        n.titleColor || '#e7e7e7'
       );
       ctx.restore();
     }
 
-    // Body text with wrapping and ellipsis (below title area)
+    // Body text with markdown support (below title area)
     if (n.text && n.text.length > 0) {
-      ctx.fillStyle = '#ddd';
-      ctx.font = `${12}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      const padding = 8;
-      const maxTextWidth = Math.max(0, n.w - padding * 2);
-      const contentY = n.y + titleH + padding;
-      const maxTextHeight = Math.max(0, n.h - titleH - padding * 2);
-      drawWrappedTextWithEllipsis(ctx, n.text, n.x + padding, contentY, maxTextWidth, maxTextHeight, 14);
+      ctx.save();
+      const bodyBaseFontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
+      renderMarkdownBody(
+        ctx,
+        n.text,
+        n.x + padding,
+        n.y + titleH + padding,
+        Math.max(0, n.w - padding * 2),
+        Math.max(0, n.h - titleH - padding * 2),
+        bodyBaseFontFamily,
+        12,
+        '#ddd',
+        14
+      );
+      ctx.restore();
     }
 
   }
@@ -1457,6 +1813,46 @@ animate();
 
 function refreshSidePanel() {
   if (!sidePanelContent) return;
+
+  // Arrow end selected
+  if (selectedArrowEnd !== null && arrows[selectedArrowEnd.arrowIdx]) {
+    flushPanelEdit();
+    const arrow = arrows[selectedArrowEnd.arrowIdx];
+    const endLabel = selectedArrowEnd.end === 'start' ? 'Start (Tail)' : 'End (Tip)';
+    const connNodeIdx = selectedArrowEnd.end === 'start' ? arrow.connectedFrom : arrow.connectedTo;
+    const connLabel = connNodeIdx !== null && nodes[connNodeIdx]
+      ? (nodes[connNodeIdx].title || `Node ${connNodeIdx}`) : 'None';
+    const pt = getArrowEndpoint(arrow, selectedArrowEnd.end);
+    const html = `
+      <div class=\"panel-section-title\">Arrow Point (${endLabel})</div>
+      <div class=\"panel-row\"><label>Connected to</label><span class=\"panel-static\">${connLabel}</span></div>
+      <div class=\"panel-row\"><label>X</label><span class=\"panel-static\">${Math.round(pt.x)}</span></div>
+      <div class=\"panel-row\"><label>Y</label><span class=\"panel-static\">${Math.round(pt.y)}</span></div>
+    `;
+    sidePanelContent.innerHTML = html;
+    return;
+  }
+
+  // Whole arrow selected
+  if (selectedArrow !== null && arrows[selectedArrow]) {
+    flushPanelEdit();
+    const arrow = arrows[selectedArrow];
+    const fromLabel = arrow.connectedFrom !== null && nodes[arrow.connectedFrom]
+      ? (nodes[arrow.connectedFrom].title || `Node ${arrow.connectedFrom}`) : 'Free';
+    const toLabel = arrow.connectedTo !== null && nodes[arrow.connectedTo]
+      ? (nodes[arrow.connectedTo].title || `Node ${arrow.connectedTo}`) : 'Free';
+    const html = `
+      <div class=\"panel-section-title\">Arrow</div>
+      <div class=\"panel-row\"><label>From</label><span class=\"panel-static\">${fromLabel}</span></div>
+      <div class=\"panel-row\"><label>To</label><span class=\"panel-static\">${toLabel}</span></div>
+      <div class=\"panel-row\"><label>Color</label><input id=\"panelArrowColor\" class=\"panel-input\" type=\"color\" value=\"${arrow.color || '#6bb5ff'}\" /></div>
+    `;
+    sidePanelContent.innerHTML = html;
+
+    const colorInput = document.getElementById('panelArrowColor');
+    if (colorInput) colorInput.addEventListener('input', (ev) => { arrow.color = ev.target.value; });
+    return;
+  }
 
   // Connection selected
   if (selectedConnection !== null && connections[selectedConnection]) {
@@ -1836,6 +2232,310 @@ function drawWrappedTextWithEllipsisAligned(ctx, font, text, cx, y, maxWidth, ma
     ctx.fillText(line, x, y + li * lineHeight);
   }
   ctx.restore();
+}
+
+// --- Markdown Parser ---
+
+function parseInlineSpans(text) {
+  const spans = [];
+  let pos = 0;
+  let buf = '';
+
+  function flush() {
+    if (buf) { spans.push({ text: buf, bold: false, italic: false, code: false, strike: false }); buf = ''; }
+  }
+
+  while (pos < text.length) {
+    if (text.slice(pos, pos + 2) === '**') {
+      flush();
+      const end = text.indexOf('**', pos + 2);
+      if (end !== -1) {
+        const inner = text.slice(pos + 2, end);
+        if (inner) spans.push({ text: inner, bold: true, italic: false, code: false, strike: false });
+        pos = end + 2;
+        continue;
+      }
+      buf += '**';
+      pos += 2;
+    } else if (text.slice(pos, pos + 2) === '~~') {
+      flush();
+      const end = text.indexOf('~~', pos + 2);
+      if (end !== -1) {
+        const inner = text.slice(pos + 2, end);
+        if (inner) spans.push({ text: inner, bold: false, italic: false, code: false, strike: true });
+        pos = end + 2;
+        continue;
+      }
+      buf += '~~';
+      pos += 2;
+    } else if (text[pos] === '`') {
+      flush();
+      const end = text.indexOf('`', pos + 1);
+      if (end !== -1) {
+        const inner = text.slice(pos + 1, end);
+        if (inner) spans.push({ text: inner, bold: false, italic: false, code: true, strike: false });
+        pos = end + 1;
+        continue;
+      }
+      buf += '`';
+      pos += 1;
+    } else if (text[pos] === '*' && text[pos + 1] !== '*') {
+      flush();
+      const end = text.indexOf('*', pos + 1);
+      if (end !== -1 && text[end + 1] !== '*') {
+        const inner = text.slice(pos + 1, end);
+        if (inner) spans.push({ text: inner, bold: false, italic: true, code: false, strike: false });
+        pos = end + 1;
+        continue;
+      }
+      buf += '*';
+      pos += 1;
+    } else {
+      buf += text[pos];
+      pos += 1;
+    }
+  }
+  flush();
+  return spans;
+}
+
+function parseMarkdownLines(text) {
+  if (!text) return [];
+  const rawLines = text.split('\n');
+  const result = [];
+  for (const line of rawLines) {
+    const trimmed = line.trimStart();
+    if (!trimmed) continue;
+
+    let type = 'paragraph';
+    let checked = false;
+    let prefix = '';
+    let content = trimmed;
+
+    const checkboxMatch = trimmed.match(/^-\s*\[(\s|x|X)\]\s+(.+)/);
+    if (checkboxMatch) {
+      type = 'checkbox';
+      checked = checkboxMatch[1].toLowerCase() === 'x';
+      prefix = `- [${checkboxMatch[1]}] `;
+      content = checkboxMatch[2];
+    } else {
+      const numberedMatch = trimmed.match(/^(\d+\.\s+)(.+)/);
+      if (numberedMatch) {
+        type = 'numbered';
+        prefix = numberedMatch[1];
+        content = numberedMatch[2];
+      } else {
+        const bulletMatch = trimmed.match(/^(-\s+)(.+)/);
+        if (bulletMatch) {
+          type = 'bullet';
+          prefix = '- ';
+          content = bulletMatch[2];
+        } else {
+          const starBulletMatch = trimmed.match(/^(\*\s+)(.+)/);
+          if (starBulletMatch) {
+            type = 'bullet';
+            prefix = '* ';
+            content = starBulletMatch[2];
+          }
+        }
+      }
+    }
+
+    const spans = parseInlineSpans(content);
+    if (spans.length > 0) {
+      result.push({ type, checked, prefix, spans });
+    }
+  }
+  return result;
+}
+
+// --- Markdown Span Utilities ---
+
+function getSpanFont(span, baseFontSize, baseFontFamily) {
+  const weight = span.bold ? 'bold ' : '';
+  const style = span.italic ? 'italic ' : '';
+  const family = span.code ? 'Consolas, "Cascadia Code", "Fira Code", monospace' : baseFontFamily;
+  return `${style}${weight}${baseFontSize}px ${family}`;
+}
+
+function getSpanWidth(ctx, span, baseFontSize, baseFontFamily) {
+  ctx.save();
+  ctx.font = getSpanFont(span, baseFontSize, baseFontFamily);
+  const w = ctx.measureText(span.text).width;
+  ctx.restore();
+  return w;
+}
+
+function drawSpan(ctx, span, x, y, fillStyle, baseFontFamily, baseFontSize) {
+  ctx.save();
+  ctx.font = getSpanFont(span, baseFontSize, baseFontFamily);
+  ctx.fillStyle = fillStyle;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(span.text, x, y);
+  if (span.strike) {
+    const w = ctx.measureText(span.text).width;
+    const strikeY = y + baseFontSize * 0.45;
+    ctx.beginPath();
+    ctx.moveTo(x, strikeY);
+    ctx.lineTo(x + w, strikeY);
+    ctx.strokeStyle = fillStyle;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function buildDisplayLines(ctx, spans, maxWidth, baseFontSize, baseFontFamily) {
+  const words = [];
+  for (const span of spans) {
+    const parts = span.text.split(/\s+/);
+    for (const part of parts) {
+      if (part.length === 0) continue;
+      words.push({ text: part, bold: span.bold, italic: span.italic, code: span.code, strike: span.strike });
+    }
+  }
+
+  if (words.length === 0) return [[]];
+
+  const lines = [];
+  let currentLine = [];
+  let currentWidth = 0;
+  const spaceWidth = getSpanWidth(ctx, { text: ' ', bold: false, italic: false, code: false, strike: false }, baseFontSize, baseFontFamily);
+
+  for (const word of words) {
+    const w = getSpanWidth(ctx, word, baseFontSize, baseFontFamily);
+    const needSpace = currentLine.length > 0;
+    if (needSpace && currentWidth + spaceWidth + w > maxWidth) {
+      lines.push(currentLine);
+      currentLine = [word];
+      currentWidth = w;
+    } else {
+      currentWidth += (needSpace ? spaceWidth : 0) + w;
+      currentLine.push(word);
+    }
+  }
+  if (currentLine.length > 0) lines.push(currentLine);
+  return lines;
+}
+
+// --- Markdown Body Renderer ---
+
+function renderMarkdownBody(ctx, text, x, y, maxWidth, maxHeight, baseFontFamily, baseFontSize, color, lineHeight) {
+  if (!text || maxWidth <= 0 || maxHeight <= 0) return;
+
+  const ml = parseMarkdownLines(text);
+  if (ml.length === 0) return;
+
+  let currentY = y;
+  const prefixPad = 4;
+
+  for (let li = 0; li < ml.length; li++) {
+    const line = ml[li];
+    if (currentY + lineHeight > y + maxHeight) return;
+
+    let prefixW = 0;
+    if (line.type === 'checkbox') {
+      const ps = { text: line.checked ? '[x]' : '[ ]', bold: false, italic: false, code: false, strike: false };
+      drawSpan(ctx, ps, x, currentY, color, baseFontFamily, baseFontSize);
+      prefixW = getSpanWidth(ctx, ps, baseFontSize, baseFontFamily) + prefixPad;
+    } else if (line.type === 'bullet') {
+      const ps = { text: '\u2022', bold: true, italic: false, code: false, strike: false };
+      drawSpan(ctx, ps, x, currentY, color, baseFontFamily, baseFontSize);
+      prefixW = getSpanWidth(ctx, ps, baseFontSize, baseFontFamily) + prefixPad;
+    } else if (line.type === 'numbered') {
+      const ps = { text: line.prefix, bold: false, italic: false, code: false, strike: false };
+      drawSpan(ctx, ps, x, currentY, color, baseFontFamily, baseFontSize);
+      prefixW = getSpanWidth(ctx, ps, baseFontSize, baseFontFamily) + prefixPad;
+    }
+
+    const contentMaxW = maxWidth - prefixW;
+    if (contentMaxW <= 0) break;
+
+    const displayLines = buildDisplayLines(ctx, line.spans, contentMaxW, baseFontSize, baseFontFamily);
+
+    for (let dl = 0; dl < displayLines.length; dl++) {
+      if (currentY + lineHeight > y + maxHeight) return;
+
+      let cx = x + prefixW;
+      const words = displayLines[dl];
+      for (let wi = 0; wi < words.length; wi++) {
+        drawSpan(ctx, words[wi], cx, currentY, color, baseFontFamily, baseFontSize);
+        cx += getSpanWidth(ctx, words[wi], baseFontSize, baseFontFamily);
+        if (wi < words.length - 1) {
+          cx += getSpanWidth(ctx, { text: ' ', bold: false, italic: false, code: false, strike: false }, baseFontSize, baseFontFamily);
+        }
+      }
+      currentY += lineHeight;
+    }
+  }
+}
+
+// --- Markdown Title Renderer (single-line, centered) ---
+
+function renderMarkdownTitle(ctx, text, cx, y, maxWidth, baseFontFamily, baseFontSize, color) {
+  if (!text || maxWidth <= 0) return;
+
+  const spans = parseInlineSpans(text);
+  if (spans.length === 0) return;
+
+  for (const s of spans) s.bold = true;
+
+  let totalWidth = 0;
+  for (const span of spans) {
+    totalWidth += getSpanWidth(ctx, span, baseFontSize, baseFontFamily);
+  }
+
+  if (totalWidth > maxWidth) {
+    const ellipsis = { text: '\u2026', bold: true, italic: false, code: false, strike: false };
+    const ellipsisW = getSpanWidth(ctx, ellipsis, baseFontSize, baseFontFamily);
+    const targetW = maxWidth - ellipsisW;
+    const truncated = [];
+    let running = 0;
+
+    for (let i = 0; i < spans.length; i++) {
+      const span = spans[i];
+      let t = span.text;
+      let w = getSpanWidth(ctx, { text: t, bold: span.bold, italic: span.italic, code: span.code, strike: span.strike }, baseFontSize, baseFontFamily);
+
+      if (running + w <= targetW) {
+        truncated.push(span);
+        running += w;
+      } else {
+        while (t.length > 0) {
+          t = t.slice(0, -1);
+          w = getSpanWidth(ctx, { text: t, bold: span.bold, italic: span.italic, code: span.code, strike: span.strike }, baseFontSize, baseFontFamily);
+          if (running + w <= targetW) {
+            if (t.length > 0) truncated.push({ text: t, bold: span.bold, italic: span.italic, code: span.code, strike: span.strike });
+            break;
+          }
+        }
+        break;
+      }
+    }
+
+    if (truncated.length === 0 && ellipsisW <= maxWidth) {
+      truncated.push(ellipsis);
+    } else if (truncated.length > 0) {
+      truncated.push(ellipsis);
+    }
+
+    let trTotal = 0;
+    for (const s of truncated) trTotal += getSpanWidth(ctx, s, baseFontSize, baseFontFamily);
+
+    let curX = cx - trTotal / 2;
+    for (const s of truncated) {
+      drawSpan(ctx, s, curX, y, color, baseFontFamily, baseFontSize);
+      curX += getSpanWidth(ctx, s, baseFontSize, baseFontFamily);
+    }
+    return;
+  }
+
+  let curX = cx - totalWidth / 2;
+  for (const s of spans) {
+    drawSpan(ctx, s, curX, y, color, baseFontFamily, baseFontSize);
+    curX += getSpanWidth(ctx, s, baseFontSize, baseFontFamily);
+  }
 }
 
 function commitEditing() {
@@ -2224,7 +2924,183 @@ function drawConnectionPreview(ctx, fromNode, mouseWorldX, mouseWorldY) {
   ctx.setLineDash([]);
 }
 
+// --- Arrow drawing & hit-testing ---
+
+function getArrowEndpoint(arrow, which) {
+  if (which === 'start') {
+    if (arrow.connectedFrom !== null && nodes[arrow.connectedFrom]) {
+      return getNodeEdgePoint(nodes[arrow.connectedFrom], arrow.x2, arrow.y2);
+    }
+    return { x: arrow.x1, y: arrow.y1 };
+  } else {
+    if (arrow.connectedTo !== null && nodes[arrow.connectedTo]) {
+      return getNodeEdgePoint(nodes[arrow.connectedTo], arrow.x1, arrow.y1);
+    }
+    return { x: arrow.x2, y: arrow.y2 };
+  }
+}
+
+function updateArrowPositionsFromConnections() {
+  for (const arrow of arrows) {
+    if (arrow.connectedFrom !== null && nodes[arrow.connectedFrom]) {
+      const edge = getNodeEdgePoint(nodes[arrow.connectedFrom], arrow.x2, arrow.y2);
+      arrow.x1 = edge.x;
+      arrow.y1 = edge.y;
+    }
+    if (arrow.connectedTo !== null && nodes[arrow.connectedTo]) {
+      const edge = getNodeEdgePoint(nodes[arrow.connectedTo], arrow.x1, arrow.y1);
+      arrow.x2 = edge.x;
+      arrow.y2 = edge.y;
+    }
+  }
+}
+
+function drawArrows(ctx) {
+  for (let ai = 0; ai < arrows.length; ai++) {
+    const arrow = arrows[ai];
+    const startPt = getArrowEndpoint(arrow, 'start');
+    const endPt = getArrowEndpoint(arrow, 'end');
+
+    const x1 = startPt.x;
+    const y1 = startPt.y;
+    const x2 = endPt.x;
+    const y2 = endPt.y;
+
+    const isWholeSelected = selectedArrow === ai;
+    const isEndSelected = selectedArrowEnd && selectedArrowEnd.arrowIdx === ai;
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 0.001) continue;
+
+    const ux = dx / len;
+    const uy = dy / len;
+
+    // Draw line
+    ctx.strokeStyle = arrow.color || '#6bb5ff';
+    ctx.lineWidth = isWholeSelected ? 3 : 2;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    // Draw arrow head at the tip
+    const headLen = ARROW_HEAD_LENGTH;
+    const headAngle = ARROW_HEAD_ANGLE;
+    ctx.fillStyle = arrow.color || '#6bb5ff';
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(
+      x2 - headLen * Math.cos(Math.atan2(dy, dx) - headAngle),
+      y2 - headLen * Math.sin(Math.atan2(dy, dx) - headAngle)
+    );
+    ctx.lineTo(
+      x2 - headLen * Math.cos(Math.atan2(dy, dx) + headAngle),
+      y2 - headLen * Math.sin(Math.atan2(dy, dx) + headAngle)
+    );
+    ctx.closePath();
+    ctx.fill();
+
+    // Draw endpoint handle circles (only on hover or when specifically selected)
+    const isStartSel = isEndSelected && selectedArrowEnd.end === 'start';
+    const isEndSel = isEndSelected && selectedArrowEnd.end === 'end';
+    const isStartHover = hoveredArrowEnd && hoveredArrowEnd.arrowIdx === ai && hoveredArrowEnd.end === 'start';
+    const isEndHover = hoveredArrowEnd && hoveredArrowEnd.arrowIdx === ai && hoveredArrowEnd.end === 'end';
+
+    if (isStartSel || isStartHover) {
+      drawArrowHandle(ctx, x1, y1, isStartSel);
+    }
+    if (isEndSel || isEndHover) {
+      drawArrowHandle(ctx, x2, y2, isEndSel);
+    }
+  }
+}
+
+function drawArrowHandle(ctx, x, y, isSelected) {
+  const r = ARROW_END_RADIUS;
+  ctx.save();
+
+  // Handle circle fill
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Handle border
+  ctx.strokeStyle = isSelected ? '#f0c800' : '#6bb5ff';
+  ctx.lineWidth = isSelected ? 2.5 : 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function hitTestArrowEnd(wx, wy) {
+  let best = null;
+  let bestDist = ARROW_END_HIT_RADIUS;
+  for (let ai = 0; ai < arrows.length; ai++) {
+    const arrow = arrows[ai];
+    for (const which of ['start', 'end']) {
+      const pt = getArrowEndpoint(arrow, which);
+      const d = Math.sqrt((wx - pt.x) ** 2 + (wy - pt.y) ** 2);
+      if (d < bestDist) {
+        bestDist = d;
+        best = { arrowIdx: ai, end: which };
+      }
+    }
+  }
+  return best;
+}
+
+function hitTestArrowBody(wx, wy) {
+  for (let ai = 0; ai < arrows.length; ai++) {
+    const arrow = arrows[ai];
+    const startPt = getArrowEndpoint(arrow, 'start');
+    const endPt = getArrowEndpoint(arrow, 'end');
+    const x1 = startPt.x;
+    const y1 = startPt.y;
+    const x2 = endPt.x;
+    const y2 = endPt.y;
+
+    // Distance from point to line segment
+    const abx = x2 - x1;
+    const aby = y2 - y1;
+    const len2 = abx * abx + aby * aby;
+    if (len2 < 0.001) continue;
+    let t = ((wx - x1) * abx + (wy - y1) * aby) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const px = x1 + t * abx;
+    const py = y1 + t * aby;
+    const d = Math.sqrt((wx - px) ** 2 + (wy - py) ** 2);
+    if (d < ARROW_BODY_HIT_THRESHOLD) return ai;
+  }
+  return -1;
+}
+
+function findNodeAtPoint(wx, wy) {
+  const drawOrder = getDrawOrder();
+  for (let i = drawOrder.length - 1; i >= 0; i--) {
+    const idx = drawOrder[i];
+    const n = nodes[idx];
+    if (wx >= n.x && wx <= n.x + n.w && wy >= n.y && wy <= n.y + n.h) return idx;
+  }
+  return -1;
+}
+
+function deleteArrowFn(ai) {
+  if (ai < 0 || ai >= arrows.length) return;
+  arrows.splice(ai, 1);
+  if (selectedArrow === ai) selectedArrow = null;
+  else if (selectedArrow > ai) selectedArrow--;
+  if (selectedArrowEnd && selectedArrowEnd.arrowIdx === ai) selectedArrowEnd = null;
+  else if (selectedArrowEnd && selectedArrowEnd.arrowIdx > ai) selectedArrowEnd.arrowIdx--;
+}
+
 function computeSelectionKey() {
+  if (selectedArrowEnd) return `arrowEnd:${selectedArrowEnd.arrowIdx}:${selectedArrowEnd.end}`;
+  if (selectedArrow !== null) return `arrow:${selectedArrow}`;
   if (selectedConnection !== null) return `conn:${selectedConnection}`;
   if (selected.size === 0) return 'none';
   if (selected.size > 1) return `multi:${selected.size}`;

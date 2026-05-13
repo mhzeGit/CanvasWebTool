@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Style Palette — CanvasWebTool</title>
+<style>
+  :root {
+    --bg: #121212;
+    --surface: #1a1a1a;
+    --surface2: #222;
+    --border: #2a2a2a;
+    --text: #ddd;
+    --text-dim: #999;
+    --accent: #6bb5ff;
+    --accent-dim: #3a7cc3;
+    --danger: #e05555;
+    --success: #4caf84;
+    --radius: 6px;
+    --font: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  header h1 { font-size: 17px; font-weight: 600; white-space: nowrap; }
+
+  .header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .btn {
+    padding: 7px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s, border-color .15s;
+  }
+  .btn:hover { background: #2a2a2a; border-color: #444; }
+  .btn.primary { background: var(--accent-dim); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.primary:hover { background: var(--accent); }
+  .btn.success { background: #2a5a40; border-color: var(--success); color: #fff; }
+  .btn.success:hover { background: #3a7a55; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  #main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Sidebar */
+  #sidebar {
+    width: 220px;
+    min-width: 220px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 8px 0;
+    flex-shrink: 0;
+  }
+  #sidebar h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--text-dim);
+    padding: 8px 14px 4px;
+  }
+  .cat-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .cat-btn:hover { background: var(--surface2); }
+  .cat-btn.active { background: var(--accent-dim); color: #fff; font-weight: 600; }
+  .cat-badge {
+    float: right;
+    font-size: 10px;
+    background: var(--surface2);
+    color: var(--text-dim);
+    border-radius: 10px;
+    padding: 1px 6px;
+    margin-top: 1px;
+  }
+  .cat-btn.active .cat-badge { background: rgba(255,255,255,.15); color: #fff; }
+
+  /* Content */
+  #content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    scroll-behavior: smooth;
+  }
+
+  .category-section { margin-bottom: 20px; }
+  .category-header {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-dim);
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .token-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 10px;
+  }
+
+  .token-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: border-color .15s;
+  }
+  .token-card:hover { border-color: #444; }
+  .token-card.modified { border-color: var(--accent-dim); }
+  .token-card .token-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .3px;
+  }
+  .token-card .token-selector {
+    font-size: 11px;
+    color: #666;
+    font-family: 'Consolas', 'Monaco', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .token-card .token-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Color swatch + picker */
+  .color-swatch {
+    width: 28px; height: 28px;
+    border-radius: 4px;
+    border: 1px solid #444;
+    cursor: pointer;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .color-swatch input[type=color] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  .token-value {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    padding: 5px 8px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .token-value:focus { border-color: var(--accent); }
+  .token-value.modified { border-color: var(--accent-dim); background: #1e2a36; }
+
+  /* Number input */
+  .token-num {
+    width: 70px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    padding: 5px 8px;
+    outline: none;
+  }
+  .token-num:focus { border-color: var(--accent); }
+  .token-num.modified { border-color: var(--accent-dim); background: #1e2a36; }
+
+  .token-unit {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 600;
+    min-width: 22px;
+  }
+
+  .token-reset {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    background: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font: inherit;
+  }
+  .token-reset:hover { border-color: #444; color: var(--text); }
+  .token-reset.hidden { visibility: hidden; }
+
+  /* Range slider */
+  .token-slider {
+    width: 100%; accent-color: var(--accent); margin-top: 2px;
+  }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 20px;
+    font-size: 13px;
+    color: var(--text);
+    box-shadow: 0 4px 16px rgba(0,0,0,.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+    z-index: 1000;
+  }
+  #toast.show { opacity: 1; }
+  #toast.error { border-color: var(--danger); }
+  #toast.success { border-color: var(--success); }
+
+  /* Status bar */
+  #status {
+    padding: 6px 14px;
+    font-size: 11px;
+    color: var(--text-dim);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  #status .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #666;
+  }
+  #status .dot.loaded { background: var(--success); }
+
+  /* Responsive */
+  @media (max-width: 700px) {
+    #sidebar { display: none; }
+    .token-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Style Palette</h1>
+  <div class="header-actions">
+    <button class="btn primary" id="btnLoad">Load Source</button>
+    <button class="btn success" id="btnApply" disabled>Apply &amp; Write Files</button>
+    <button class="btn" id="btnDownload" disabled>Download Files</button>
+  </div>
+</header>
+
+<div id="main">
+  <nav id="sidebar">
+    <h2>Categories</h2>
+    <div id="categoryNav"></div>
+  </nav>
+  <main id="content">
+    <div style="padding: 40px; text-align: center; color: #666;" id="emptyState">
+      <p style="font-size: 16px; margin-bottom: 8px;">No styles loaded</p>
+      <p style="font-size: 13px;">Click <strong>Load Source</strong> to scan the project for styling values.</p>
+    </div>
+  </main>
+</div>
+
+<div id="toast"></div>
+<div id="status"><span class="dot" id="statusDot"></span><span id="statusText">Not loaded</span></div>
+
+<script>
+// ──────────────────────────────────────────
+// POLYFILLS
+// ──────────────────────────────────────────
+(function() {
+  if (typeof CSS === 'undefined') window.CSS = {};
+  if (!CSS.escape) CSS.escape = function(v) { return String(v).replace(/([^\w-])/g, '\\$1'); };
+})();
+
+// ──────────────────────────────────────────
+// CONFIG
+// ──────────────────────────────────────────
+const FILE_PATHS = [
+  { key: 'style',        path: '../style.css',                     type: 'css' },
+  { key: 'gridSettings', path: '../gridScripts/gridSettings.js',   type: 'js'  },
+  { key: 'gridControl',  path: '../gridScripts/gridControl.js',    type: 'js'  },
+];
+
+// ──────────────────────────────────────────
+// STATE
+// ──────────────────────────────────────────
+const tokens = [];          // { id, category, label, selector, property, value, originalValue, type, source, sourceLine, metadata, cssIndex }
+const categories = [];     // { id, name }
+let fileContents = {};     // { style: '...', gridControl: '...', gridSettings: '...' }
+let dirHandle = null;
+
+// ──────────────────────────────────────────
+// CSS PARSER
+// ──────────────────────────────────────────
+function parseCSS(text) {
+  const results = [];
+  const clean = text.replace(/\/\*[\s\S]*?\*\//g, ''); // remove comments
+  const blocks = clean.split('}');
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i].trim();
+    if (!block) continue;
+
+    const braceIdx = block.lastIndexOf('{');
+    if (braceIdx === -1) continue;
+
+    const selector = block.substring(0, braceIdx).trim().replace(/\s+/g, ' ');
+    const body = block.substring(braceIdx + 1).trim();
+    if (!selector || !body) continue;
+
+    const declarations = body.split(';');
+    for (const decl of declarations) {
+      const colonIdx = decl.indexOf(':');
+      if (colonIdx === -1) continue;
+      const prop = decl.substring(0, colonIdx).trim();
+      const val = decl.substring(colonIdx + 1).trim();
+      if (!prop || !val) continue;
+
+      results.push({ selector, property: prop, value: val, cssIndex: i });
+    }
+  }
+  return results;
+}
+
+function classifyCSSValue(prop, val) {
+  const valueLower = val.toLowerCase();
+
+  if (prop === 'font-family' || prop === 'font-weight' || prop === 'font-style' ||
+      prop === 'line-height' || prop === 'letter-spacing' || prop === 'word-spacing' ||
+      prop === 'text-transform') {
+    return 'typography';
+  }
+
+  if (prop === 'border-radius' || prop === 'border-top-left-radius' || prop === 'border-top-right-radius' ||
+      prop === 'border-bottom-left-radius' || prop === 'border-bottom-right-radius') {
+    return 'radius';
+  }
+
+  if (prop === 'box-shadow' || prop === 'text-shadow') {
+    return 'shadow';
+  }
+
+  if (prop === 'opacity') {
+    return 'opacity';
+  }
+
+  if (prop === 'border-width' || prop === 'border-top-width' || prop === 'border-right-width' ||
+      prop === 'border-bottom-width' || prop === 'border-left-width' ||
+      prop === 'outline-width' || prop === 'column-rule-width') {
+    return 'border';
+  }
+
+  const colorMatch = valueLower.match(/#[0-9a-f]{3,8}|rgb\(|rgba\(|hsl\(|hsla\(/);
+  const isColorProp = prop === 'color' || prop === 'background' || prop === 'background-color' ||
+                      prop === 'border-color' || prop === 'caret-color' || prop === 'fill' ||
+                      prop === 'stroke' || prop === 'outline-color' || prop === 'text-decoration-color' ||
+                      prop.endsWith('-color');
+
+  if (isColorProp && colorMatch) return 'color';
+
+  if (prop === 'font-size') return 'font-size';
+
+  if (/^(width|height|min-width|max-width|min-height|max-height|padding|margin|gap|top|right|bottom|left|border-spacing|outline-width|outline-offset|inset)$/.test(prop)) {
+    return 'size';
+  }
+
+  return null;
+}
+
+function extractCSSSelectors(selectorText) {
+  return selectorText.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function assignCategory(selector, property, value) {
+  const sel = selector.toLowerCase();
+
+  if (sel.includes('body') || sel.includes('html') || sel.includes('canvas') && !sel.includes('grid')) return 'Page & Canvas';
+  if (sel.includes('top-bar') || sel.includes('menu-button')) return 'Top Bar';
+  if (sel.includes('side-panel') || sel.includes('panel-section') || sel.includes('panel-row') ||
+      sel.includes('panel-input') || sel.includes('panel-select') || sel.includes('panel-static') || sel.includes('panel-empty')) return 'Side Panel';
+  if (sel.includes('menu-dropdown') || sel.includes('menu-item') || sel.includes('menu.open') || sel.includes('menu:hover')) return 'Menus & Dropdowns';
+  if (sel.includes('context-menu') || sel.includes('context-item') || sel.includes('context-submenu')) return 'Context Menus';
+  if (sel.includes('inline-editor') || sel.includes('shortcut-hint')) return 'Inline Editors';
+
+  return 'Other CSS';
+}
+
+// ──────────────────────────────────────────
+// JS INLINE STYLE EXTRACTOR
+// ──────────────────────────────────────────
+function extractJSTokens(fileKey, content) {
+  const results = [];
+
+  if (fileKey === 'gridControl') {
+    // Default node color (line 282)
+    results.push({
+      source: 'gridControl.js', selector: 'new node', category: 'Nodes',
+      label: 'Default Node Color', type: 'color', property: 'color',
+      originalValue: '#2b2b2b', value: '#2b2b2b',
+      find: "color: '#2b2b2b'",
+      replace: (v) => `color: '${v}'`,
+    });
+
+    // Default node title color (line 282)
+    results.push({
+      source: 'gridControl.js', selector: 'new node', category: 'Nodes',
+      label: 'Default Title Color', type: 'color', property: 'titleColor',
+      originalValue: '#e7e7e7', value: '#e7e7e7',
+      find: "titleColor: '#e7e7e7'",
+      replace: (v) => `titleColor: '${v}'`,
+    });
+
+    // Default connection color (line 710)
+    results.push({
+      source: 'gridControl.js', selector: 'new connection', category: 'Connections',
+      label: 'Default Connection Color', type: 'color', property: 'color',
+      originalValue: '#6bb5ff', value: '#6bb5ff',
+      find: "color: '#6bb5ff'",
+      replace: (v) => `color: '${v}'`,
+    });
+
+    // Selection outline color (line 1375)
+    results.push({
+      source: 'gridControl.js', selector: 'selected node', category: 'Nodes',
+      label: 'Selection Outline Color', type: 'color', property: 'strokeStyle',
+      originalValue: '#f0c800', value: '#f0c800',
+      find: "ctx.strokeStyle = '#f0c800'",
+      replace: (v) => `ctx.strokeStyle = '${v}'`,
+    });
+
+    // Node body text color (line 1417)
+    results.push({
+      source: 'gridControl.js', selector: 'node text', category: 'Nodes',
+      label: 'Node Text Color', type: 'color', property: 'fillStyle',
+      originalValue: '#ddd', value: '#ddd',
+      find: "ctx.fillStyle = '#ddd'",
+      replace: (v) => `ctx.fillStyle = '${v}'`,
+    });
+
+    // Selection marquee stroke (line 1437)
+    results.push({
+      source: 'gridControl.js', selector: 'selection marquee', category: 'Nodes',
+      label: 'Marquee Stroke Color', type: 'color', property: 'strokeStyle',
+      originalValue: '#5aa0ff', value: '#5aa0ff',
+      find: "ctx.strokeStyle = 'rgba(90,160,255,0.9)'",
+      replace: (v) => {
+        const r = parseInt(v.slice(1,3),16);
+        const g = parseInt(v.slice(3,5),16);
+        const b = parseInt(v.slice(5,7),16);
+        return `ctx.strokeStyle = 'rgba(${r},${g},${b},0.9)'`;
+      },
+    });
+
+    // Selection marquee fill (line 1438)
+    results.push({
+      source: 'gridControl.js', selector: 'selection marquee', category: 'Nodes',
+      label: 'Marquee Fill Color', type: 'color', property: 'fillStyle',
+      originalValue: '#5aa0ff', value: '#5aa0ff',
+      find: "ctx.fillStyle = 'rgba(90,160,255,0.15)'",
+      replace: (v) => {
+        const r = parseInt(v.slice(1,3),16);
+        const g = parseInt(v.slice(3,5),16);
+        const b = parseInt(v.slice(5,7),16);
+        return `ctx.fillStyle = 'rgba(${r},${g},${b},0.15)'`;
+      },
+    });
+
+    // Connection label text color (line 2184) — only ctx.fillStyle = '#fff' matches
+    results.push({
+      source: 'gridControl.js', selector: 'connection label', category: 'Connections',
+      label: 'Connection Label Text Color', type: 'color', property: 'fillStyle',
+      originalValue: '#fff', value: '#fff',
+      find: "ctx.fillStyle = '#fff'",
+      replace: (v) => `ctx.fillStyle = '${v}'`,
+    });
+
+    // Drag info label background (line 1973)
+    results.push({
+      source: 'gridControl.js', selector: 'drag label', category: 'Nodes',
+      label: 'Drag Label Background', type: 'color', property: 'background',
+      originalValue: '#000000', value: '#000000',
+      find: "el.style.background = 'rgba(0,0,0,0.85)'",
+      replace: (v) => {
+        const r = parseInt(v.slice(1,3),16);
+        const g = parseInt(v.slice(3,5),16);
+        const b = parseInt(v.slice(5,7),16);
+        return `el.style.background = 'rgba(${r},${g},${b},0.85)'`;
+      },
+    });
+
+    // Drag info label text color (line 1974)
+    results.push({
+      source: 'gridControl.js', selector: 'drag label', category: 'Nodes',
+      label: 'Drag Label Text Color', type: 'color', property: 'color',
+      originalValue: '#fff', value: '#fff',
+      find: "el.style.color = '#fff'",
+      replace: (v) => `el.style.color = '${v}'`,
+    });
+
+    // Drag info label border (line 1978)
+    results.push({
+      source: 'gridControl.js', selector: 'drag label', category: 'Nodes',
+      label: 'Drag Label Border Color', type: 'color', property: 'border',
+      originalValue: '#f0c800', value: '#f0c800',
+      find: "el.style.border = '1px solid #f0c800'",
+      replace: (v) => `el.style.border = '1px solid ${v}'`,
+    });
+
+    // Dangling connection preview color (line 2220)
+    results.push({
+      source: 'gridControl.js', selector: 'dangling connection', category: 'Connections',
+      label: 'Dangling Connection Color', type: 'color', property: 'strokeStyle',
+      originalValue: '#6bb5ff', value: '#6bb5ff',
+      find: "ctx.strokeStyle = 'rgba(107, 181, 255, 0.5)'",
+      replace: (v) => {
+        const r = parseInt(v.slice(1,3),16);
+        const g = parseInt(v.slice(3,5),16);
+        const b = parseInt(v.slice(5,7),16);
+        return `ctx.strokeStyle = 'rgba(${r}, ${g}, ${b}, 0.5)'`;
+      },
+    });
+
+    // Title bar / header darken factor (lines 1390 + 1897, replace both)
+    results.push({
+      source: 'gridControl.js', selector: 'node header', category: 'Nodes',
+      label: 'Header Darken Factor', type: 'number', property: 'darkenFactor',
+      originalValue: '0.6', value: '0.6',
+      find: 'getDarkerColor(baseColor, 0.6)',
+      replace: (v) => `getDarkerColor(baseColor, ${v})`,
+      replaceAll: true,
+    });
+
+    // Node border darken factor (line 1359)
+    results.push({
+      source: 'gridControl.js', selector: 'node border', category: 'Nodes',
+      label: 'Node Border Darken Factor', type: 'number', property: 'darkenFactor',
+      originalValue: '0.7', value: '0.7',
+      find: 'getDarkerColor(baseColor, 0.7)',
+      replace: (v) => `getDarkerColor(baseColor, ${v})`,
+    });
+  }
+
+  if (fileKey === 'gridSettings') {
+    results.push({
+      source: 'gridSettings.js', selector: 'grid', category: 'Grid',
+      label: 'Grid Background Color', type: 'color', property: 'backgroundColor',
+      originalValue: '#181818', value: '#181818',
+      find: "backgroundColor: 'rgb(24, 24, 24)'",
+      replace: (v) => `backgroundColor: '${v}'`,
+    });
+
+    results.push({
+      source: 'gridSettings.js', selector: 'grid', category: 'Grid',
+      label: 'Grid Line Color', type: 'color', property: 'lineColor',
+      originalValue: '#1e1e1e', value: '#1e1e1e',
+      find: 'lineColor: [30, 30, 30]',
+      replace: (v) => {
+        const r = parseInt(v.slice(1,3),16);
+        const g = parseInt(v.slice(3,5),16);
+        const b = parseInt(v.slice(5,7),16);
+        return `lineColor: [${r}, ${g}, ${b}]`;
+      },
+    });
+
+    results.push({
+      source: 'gridSettings.js', selector: 'grid', category: 'Grid',
+      label: 'Grid Line Width', type: 'number', property: 'lineWidth',
+      originalValue: '2', value: '2',
+      find: 'lineWidth: 2',
+      replace: (v) => `lineWidth: ${v}`,
+    });
+
+    results.push({
+      source: 'gridSettings.js', selector: 'grid', category: 'Grid',
+      label: 'Grid Base Spacing', type: 'number', property: 'spacing',
+      originalValue: '20', value: '20',
+      find: 'spacing: 20',
+      replace: (v) => `spacing: ${v}`,
+    });
+  }
+
+  return results;
+}
+
+// ──────────────────────────────────────────
+// COLORS
+// ──────────────────────────────────────────
+const CSS_NAMED_COLORS = {
+  transparent: 'rgba(0,0,0,0)', white: '#ffffff', black: '#000000',
+  red: '#ff0000', blue: '#0000ff', green: '#008000',
+  inherit: null, currentcolor: null, initial: null, none: null,
+};
+
+function normalizeColor(val) {
+  if (!val) return val;
+  // Already a hex
+  if (/^#[0-9a-fA-F]{6}$/.test(val.trim())) return val.trim();
+  if (/^#[0-9a-fA-F]{3}$/.test(val.trim())) {
+    const h = val.trim();
+    return `#${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}`;
+  }
+  // rgb(r, g, b)
+  const rgbMatch = val.trim().match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/);
+  if (rgbMatch) {
+    return '#' + [rgbMatch[1], rgbMatch[2], rgbMatch[3]]
+      .map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
+  }
+  // rgba with alpha=1 => treat as hex
+  const rgbaMatch = val.trim().match(/^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*1\s*\)$/);
+  if (rgbaMatch) {
+    return '#' + [rgbaMatch[1], rgbaMatch[2], rgbaMatch[3]]
+      .map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
+  }
+  // named color
+  if (CSS_NAMED_COLORS[val.trim().toLowerCase()]) {
+    return CSS_NAMED_COLORS[val.trim().toLowerCase()];
+  }
+  // Keep rgba as-is (has transparency)
+  return val.trim();
+}
+
+function isDisplayableColor(val) {
+  if (!val) return false;
+  const n = normalizeColor(val);
+  return n && /^#[0-9a-fA-F]{6}$/.test(n);
+}
+
+function toCSSValue(original, newVal) {
+  // Try to preserve the original format
+  if (/^rgb\(\s*\d+/.test(original)) {
+    const hex = newVal.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    if (/^rgba\(/.test(original)) {
+      const alphaMatch = original.match(/[\d.]+\)$/);
+      const alpha = alphaMatch ? alphaMatch[0].replace(')', '') : '1';
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+  return newVal;
+}
+
+// ──────────────────────────────────────────
+// TOKEN MANAGEMENT
+// ──────────────────────────────────────────
+let catOrder = [];
+
+function addToken(cat, label, sel, prop, value, type, src, srcLine, meta) {
+  const id = `t${tokens.length}`;
+  tokens.push({
+    id, category: cat, label, selector: sel, property: prop,
+    value, originalValue: value, type, source: src, sourceLine: srcLine || '',
+    metadata: meta || {}, modified: false, visible: true,
+  });
+  if (!catOrder.includes(cat)) catOrder.push(cat);
+}
+
+function processCSSResults(cssDeclarations) {
+  for (const decl of cssDeclarations) {
+    const propType = classifyCSSValue(decl.property, decl.value);
+    if (!propType) continue;
+
+    const cat = assignCategory(decl.selector, decl.property, decl.value);
+
+    const selShort = decl.selector.length > 50
+      ? decl.selector.substring(0, 47) + '...' : decl.selector;
+
+    let displayType = propType;
+    if (propType === 'radius' || propType === 'font-size' || propType === 'size' || propType === 'border') {
+      displayType = 'size';
+    } else if (propType === 'shadow' || propType === 'opacity') {
+      displayType = propType;
+    }
+
+    let val = decl.value;
+    if (propType === 'color') {
+      const n = normalizeColor(val);
+      if (n) val = n;
+    }
+
+    addToken(cat, formatLabel(decl.property), selShort, decl.property, val,
+      displayType, 'style.css', decl.cssIndex, { cssOriginalValue: decl.value, cssOriginalFormat: decl.value });
+  }
+}
+
+function formatLabel(prop) {
+  return prop
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .replace(/^(\w)/, c => c.toUpperCase());
+}
+
+// ──────────────────────────────────────────
+// LOADING
+// ──────────────────────────────────────────
+async function loadFiles() {
+  const loadBtn = document.getElementById('btnLoad');
+  loadBtn.disabled = true;
+  loadBtn.textContent = 'Loading...';
+
+  fileContents = {};
+  tokens.length = 0;
+  catOrder.length = 0;
+
+  try {
+    // Load all files in parallel
+    const results = await Promise.allSettled(
+      FILE_PATHS.map(f => fetch(f.path).then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      }).then(text => ({ key: f.key, text, type: f.type })))
+    );
+
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        toast(`Failed to load: ${result.reason.message}`, 'error');
+        continue;
+      }
+      const { key, text, type } = result.value;
+      fileContents[key] = text;
+
+      if (type === 'css') {
+        const decls = parseCSS(text);
+        processCSSResults(decls);
+      } else if (type === 'js') {
+        const jsTokens = extractJSTokens(key, text);
+        for (const t of jsTokens) {
+          addToken(t.category, t.label, t.selector, t.property, t.originalValue,
+            t.type, t.source, t.sourceLine || '',
+            { find: t.find, replace: t.replace, replaceAll: t.replaceAll });
+        }
+      }
+    }
+
+    // Remove duplicate CSS tokens (same selector + property)
+    const seen = new Set();
+    const deduped = [];
+    for (const t of tokens) {
+      const key = `${t.selector}::${t.property}`;
+      if (t.metadata.find) {
+        // JS tokens always keep
+        deduped.push(t);
+      } else if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(t);
+      }
+    }
+    tokens.length = 0;
+    tokens.push(...deduped);
+
+    // Rebuild catOrder
+    catOrder = [...new Set(deduped.map(t => t.category))];
+
+    renderAll();
+    document.getElementById('btnApply').disabled = false;
+    document.getElementById('btnDownload').disabled = false;
+    document.getElementById('statusText').textContent = `${tokens.length} tokens from ${Object.keys(fileContents).length} files`;
+    document.getElementById('statusDot').classList.add('loaded');
+    toast(`Loaded ${tokens.length} style tokens`, 'success');
+  } catch (err) {
+    toast(`Load failed: ${err.message}`, 'error');
+  } finally {
+    loadBtn.disabled = false;
+    loadBtn.textContent = 'Reload Source';
+  }
+}
+
+// ──────────────────────────────────────────
+// RENDER
+// ──────────────────────────────────────────
+function safeId(name) {
+  return name.replace(/[^a-zA-Z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+}
+
+function renderAll() {
+  const emptyState = document.getElementById('emptyState');
+  if (emptyState) emptyState.style.display = tokens.length ? 'none' : '';
+
+  // Build sidebar
+  const nav = document.getElementById('categoryNav');
+  nav.innerHTML = '';
+  for (const cat of catOrder) {
+    const count = tokens.filter(t => t.category === cat).length;
+    const btn = document.createElement('button');
+    btn.className = 'cat-btn';
+    btn.dataset.cat = safeId(cat);
+    btn.innerHTML = `${cat} <span class="cat-badge">${count}</span>`;
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const el = document.getElementById('cat-' + btn.dataset.cat);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    nav.appendChild(btn);
+  }
+
+  // Build content (clone emptyState before clearing)
+  const content = document.getElementById('content');
+  const emptyStateClone = emptyState ? emptyState.cloneNode(true) : null;
+  content.innerHTML = '';
+
+  for (const cat of catOrder) {
+    const catTokens = tokens.filter(t => t.category === cat);
+    if (catTokens.length === 0) continue;
+
+    const section = document.createElement('div');
+    section.className = 'category-section';
+    section.id = 'cat-' + safeId(cat);
+
+    const header = document.createElement('div');
+    header.className = 'category-header';
+    header.textContent = cat;
+    section.appendChild(header);
+
+    const grid = document.createElement('div');
+    grid.className = 'token-grid';
+
+    for (const token of catTokens) {
+      grid.appendChild(createTokenCard(token));
+    }
+
+    section.appendChild(grid);
+    content.appendChild(section);
+  }
+
+  if (emptyStateClone) {
+    emptyStateClone.id = 'emptyState';
+    emptyStateClone.style.display = tokens.length ? 'none' : '';
+    content.appendChild(emptyStateClone);
+  }
+
+  // Click first category
+  const firstBtn = nav.querySelector('.cat-btn');
+  if (firstBtn) firstBtn.click();
+}
+
+function createTokenCard(token) {
+  const card = document.createElement('div');
+  card.className = 'token-card';
+  card.id = 'token-' + token.id;
+
+  // Label line
+  const labelEl = document.createElement('div');
+  labelEl.className = 'token-label';
+  labelEl.textContent = token.label;
+  card.appendChild(labelEl);
+
+  // Selector line
+  const selEl = document.createElement('div');
+  selEl.className = 'token-selector';
+  selEl.textContent = `${token.selector}  ▸  ${token.property}`;
+  selEl.title = `${token.selector} ▸ ${token.property} (${token.source}${token.sourceLine ? ':' + token.sourceLine : ''})`;
+  card.appendChild(selEl);
+
+  // Controls
+  const controls = document.createElement('div');
+  controls.className = 'token-controls';
+
+  if (token.type === 'color') {
+    // Color swatch + picker
+    const swatch = document.createElement('div');
+    swatch.className = 'color-swatch';
+    swatch.style.backgroundColor = token.value;
+    const picker = document.createElement('input');
+    picker.type = 'color';
+    picker.value = token.value;
+    picker.title = 'Pick color';
+
+    const valueInput = document.createElement('input');
+    valueInput.className = 'token-value';
+    valueInput.type = 'text';
+    valueInput.value = token.value;
+    valueInput.spellcheck = false;
+
+    // Reset button
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'token-reset hidden';
+    resetBtn.textContent = '↺';
+    resetBtn.title = 'Reset to original';
+
+    function updateFromHex(hex) {
+      token.value = hex;
+      token.modified = token.value !== token.originalValue;
+      valueInput.value = hex;
+      valueInput.className = 'token-value' + (token.modified ? ' modified' : '');
+      picker.value = hex;
+      swatch.style.backgroundColor = hex;
+      card.classList.toggle('modified', token.modified);
+      resetBtn.classList.toggle('hidden', !token.modified);
+    }
+
+    picker.addEventListener('input', () => updateFromHex(picker.value));
+    valueInput.addEventListener('input', () => {
+      const v = valueInput.value.trim();
+      picker.value = v;
+      swatch.style.backgroundColor = v;
+      token.value = v;
+      token.modified = v !== token.originalValue;
+      valueInput.className = 'token-value' + (token.modified ? ' modified' : '');
+      card.classList.toggle('modified', token.modified);
+      resetBtn.classList.toggle('hidden', !token.modified);
+    });
+    valueInput.addEventListener('blur', () => {
+      if (/^#[0-9a-fA-F]{6}$/.test(token.value)) return;
+      // Try to normalize
+      const n = normalizeColor(token.value);
+      if (n) updateFromHex(n);
+    });
+
+    resetBtn.addEventListener('click', () => updateFromHex(token.originalValue));
+
+    swatch.appendChild(picker);
+    controls.appendChild(swatch);
+    controls.appendChild(valueInput);
+    controls.appendChild(resetBtn);
+  } else if (token.type === 'number' || token.type === 'size') {
+    const numInput = document.createElement('input');
+    numInput.className = 'token-num';
+    numInput.type = 'number';
+    numInput.step = token.type === 'number' ? '0.05' : '1';
+    numInput.value = parseFloat(token.value) || 0;
+    const unit = token.value.replace(/[\d.-]+/, '') || 'px';
+
+    const unitSpan = document.createElement('span');
+    unitSpan.className = 'token-unit';
+    unitSpan.textContent = unit;
+
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'token-reset hidden';
+    resetBtn.textContent = '↺';
+
+    function updateNum(val) {
+      token.value = String(val) + (unit === 'px' && token.type !== 'number' ? unit : '');
+      token.modified = token.value !== token.originalValue;
+      numInput.className = 'token-num' + (token.modified ? ' modified' : '');
+      card.classList.toggle('modified', token.modified);
+      resetBtn.classList.toggle('hidden', !token.modified);
+    }
+
+    numInput.addEventListener('input', () => updateNum(numInput.value));
+    resetBtn.addEventListener('click', () => {
+      numInput.value = parseFloat(token.originalValue) || 0;
+      updateNum(numInput.value);
+    });
+
+    controls.appendChild(numInput);
+    controls.appendChild(unitSpan);
+    controls.appendChild(resetBtn);
+  } else {
+    // Shadow, opacity, typography — text input
+    const textInput = document.createElement('input');
+    textInput.className = 'token-value';
+    textInput.type = 'text';
+    textInput.value = token.value;
+    textInput.spellcheck = false;
+
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'token-reset hidden';
+    resetBtn.textContent = '↺';
+
+    function updateText(val) {
+      token.value = val;
+      token.modified = token.value !== token.originalValue;
+      textInput.className = 'token-value' + (token.modified ? ' modified' : '');
+      card.classList.toggle('modified', token.modified);
+      resetBtn.classList.toggle('hidden', !token.modified);
+    }
+
+    textInput.addEventListener('input', () => updateText(textInput.value));
+    resetBtn.addEventListener('click', () => {
+      textInput.value = token.originalValue;
+      updateText(token.originalValue);
+    });
+
+    controls.appendChild(textInput);
+    controls.appendChild(resetBtn);
+  }
+
+  card.appendChild(controls);
+  return card;
+}
+
+// ──────────────────────────────────────────
+// APPLY & WRITE
+// ──────────────────────────────────────────
+function getModifiedTokens() {
+  return tokens.filter(t => t.modified);
+}
+
+function buildUpdatedCSS() {
+  if (!fileContents.style) return null;
+  let css = fileContents.style;
+
+  const cssTokens = tokens.filter(t => t.source === 'style.css' && t.modified);
+  if (cssTokens.length === 0) return fileContents.style;
+
+  for (const t of cssTokens) {
+    const origVal = t.metadata.cssOriginalFormat || t.originalValue;
+    const escProp = t.property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escVal = origVal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const propRegex = new RegExp(
+      '(' + escProp + '\\s*:\\s*)' + escVal + '(?=\\s*[;}])',
+      'g'
+    );
+    css = css.replace(propRegex, (match, prefix) => prefix + t.value);
+  }
+
+  return css;
+}
+
+function buildUpdatedJS(fileKey) {
+  if (!fileContents[fileKey]) return fileContents[fileKey] || '';
+
+  let content = fileContents[fileKey];
+  const jsTokens = tokens.filter(t =>
+    t.source === (fileKey === 'gridControl' ? 'gridControl.js' : 'gridSettings.js') && t.modified);
+
+  for (const t of jsTokens) {
+    const { find, replace, replaceAll } = t.metadata;
+    if (!find || !replace) continue;
+
+    const replacer = typeof replace === 'function'
+      ? replace(t.value) : t.value;
+
+    if (replaceAll) {
+      const escaped = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      content = content.replace(new RegExp(escaped, 'g'), replacer);
+    } else {
+      content = content.replace(find, replacer);
+    }
+  }
+
+  return content;
+}
+
+async function writeFilesViaFSAPI() {
+  if (!window.showDirectoryPicker) {
+    toast('File System Access API not available. Use Download instead.', 'error');
+    return false;
+  }
+
+  if (!dirHandle) {
+    try {
+      toast('Select the project root folder to write files...', '');
+      dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    } catch (err) {
+      if (err.name === 'AbortError') return false;
+      toast('Directory picker error: ' + err.message, 'error');
+      return false;
+    }
+  }
+
+  const writes = [
+    { name: 'style.css', content: buildUpdatedCSS(), path: '../style.css' },
+    { name: 'gridControl.js', content: buildUpdatedJS('gridControl'), path: '../gridScripts/gridControl.js' },
+    { name: 'gridSettings.js', content: buildUpdatedJS('gridSettings'), path: '../gridScripts/gridSettings.js' },
+  ];
+
+  for (const w of writes) {
+    if (!w.content) continue;
+
+    try {
+      // Navigate path
+      const parts = w.path.replace(/^\.\.\//, '').split('/');
+      let currentDir = dirHandle;
+      for (let i = 0; i < parts.length - 1; i++) {
+        try {
+          currentDir = await currentDir.getDirectoryHandle(parts[i]);
+        } catch {
+          currentDir = await currentDir.getDirectoryHandle(parts[i], { create: true });
+        }
+      }
+      const fileHandle = await currentDir.getFileHandle(parts[parts.length - 1], { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(w.content);
+      await writable.close();
+    } catch (err) {
+      toast(`Failed writing ${w.name}: ${err.message}`, 'error');
+      return false;
+    }
+  }
+
+  return true;
+}
+
+async function applyChanges() {
+  const modified = getModifiedTokens();
+  if (modified.length === 0) {
+    toast('No changes to apply', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btnApply');
+  btn.disabled = true;
+  btn.textContent = 'Writing...';
+
+  try {
+    const success = await writeFilesViaFSAPI();
+    if (success) {
+      // Update original values so tokens are no longer marked modified
+      for (const t of modified) {
+        t.originalValue = t.value;
+        t.modified = false;
+      }
+      // Rebuild content with fresh file contents
+      // Re-fetch the files after writing
+      toast('Files written! Reloading...', 'success');
+      setTimeout(() => loadFiles(), 500);
+    }
+  } catch (err) {
+    toast('Write failed: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Apply & Write Files';
+  }
+}
+
+async function downloadFiles() {
+  const files = [
+    { name: 'style.css', content: buildUpdatedCSS() || '' },
+    { name: 'gridControl.js', content: buildUpdatedJS('gridControl') || '' },
+    { name: 'gridSettings.js', content: buildUpdatedJS('gridSettings') || '' },
+  ];
+
+  // Use JSZip-like approach: create individual downloads
+  // But since we have no dependencies, we'll download them sequentially with a small delay
+  for (const file of files) {
+    if (!file.content) continue;
+    const blob = new Blob([file.content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    a.click();
+    URL.revokeObjectURL(url);
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  toast('Files downloaded', 'success');
+}
+
+// ──────────────────────────────────────────
+// UTILITY
+// ──────────────────────────────────────────
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = type || '';
+  el.classList.add('show');
+  clearTimeout(el._timeout);
+  el._timeout = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ──────────────────────────────────────────
+// INIT
+// ──────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btnLoad').addEventListener('click', loadFiles);
+  document.getElementById('btnApply').addEventListener('click', applyChanges);
+  document.getElementById('btnDownload').addEventListener('click', downloadFiles);
+});
+</script>
+</body>
+</html>

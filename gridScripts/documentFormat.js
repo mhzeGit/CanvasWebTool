@@ -41,8 +41,12 @@ function serializeConnection(conn, nodes) {
   };
 }
 
+function serializeArrow(arrow) {
+  return { ...arrow };
+}
+
 export function serializeDocument(state) {
-  const { nodes, connections, viewport, settings } = state;
+  const { nodes, connections, arrows, viewport, settings } = state;
   const now = new Date().toISOString();
 
   const elements = nodes.map(serializeElement);
@@ -65,7 +69,8 @@ export function serializeDocument(state) {
         scale: viewport.scale ?? 1
       },
       elements,
-      connections: conns
+      connections: conns,
+      arrows: (arrows || []).map(serializeArrow)
     }
   };
 }
@@ -101,6 +106,7 @@ export function deserializeDocument(doc) {
   return {
     nodes,
     connections,
+    arrows: docBody.arrows || [],
     viewport: {
       offsetX: vp.offsetX ?? 0,
       offsetY: vp.offsetY ?? 0,
