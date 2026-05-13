@@ -1082,7 +1082,18 @@ canvas.addEventListener('dblclick', (e) => {
   const world = screenToWorld(sx, sy);
 
   const hit = hitTestNode(world.x, world.y);
-  if (hit === -1) return;
+
+  // Double-click on connection → inline text editor
+  if (hit === -1) {
+    const connHit = hitTestConnection(world.x, world.y);
+    if (connHit !== null) {
+      selected.clear();
+      selectedConnection = connHit;
+      startConnectionEditing(connHit);
+      return;
+    }
+    return;
+  }
 
   const n = nodes[hit];
   const padding = 8;
@@ -1829,11 +1840,15 @@ function drawWrappedTextWithEllipsisAligned(ctx, font, text, cx, y, maxWidth, ma
 
 function commitEditing() {
   if (!editingState) return;
-  const { idx, field, el, originalValue } = editingState;
+  const { type, idx, field, el, originalValue } = editingState;
   const newValue = el.value;
-  nodes[idx][field] = newValue;
-  if (originalValue !== newValue) {
-    history.push(createPropertyChangeCmd(nodes, selected, refreshSidePanel, nodes[idx].id, field, originalValue, newValue));
+  if (type === 'connection') {
+    connections[idx].text = newValue;
+  } else {
+    nodes[idx][field] = newValue;
+    if (originalValue !== newValue && nodes[idx].id !== undefined) {
+      history.push(createPropertyChangeCmd(nodes, selected, refreshSidePanel, nodes[idx].id, field, originalValue, newValue));
+    }
   }
   editingState = null;
   try { document.body.removeChild(el); } catch {}
@@ -1842,8 +1857,12 @@ function commitEditing() {
 
 function cancelEditing() {
   if (!editingState) return;
-  const { idx, field, el, originalValue } = editingState;
-  nodes[idx][field] = originalValue;
+  const { type, idx, field, el, originalValue } = editingState;
+  if (type === 'connection') {
+    connections[idx].text = originalValue;
+  } else {
+    nodes[idx][field] = originalValue;
+  }
   editingState = null;
   try { document.body.removeChild(el); } catch {}
 }
@@ -1888,12 +1907,90 @@ function startEditing(idx, field, worldX, worldY, worldW, worldH) {
   el.select();
 
   const originalValue = n[field];
-  editingState = { idx, field, el, originalValue };
+  editingState = { type: 'node', idx, field, el, originalValue };
 
   const commit = () => { commitEditing(); };
   el.addEventListener('blur', commit);
   el.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter' && isTitle) {
+      ev.preventDefault();
+      el.blur();
+    } else if (ev.key === 'Escape') {
+      cancelEditing();
+    }
+  });
+}
+
+function startConnectionEditing(connIdx) {
+  cancelEditing();
+
+  const conn = connections[connIdx];
+  const fromNode = nodes[conn.from];
+  const toNode = nodes[conn.to];
+  if (!fromNode || !toNode) return;
+
+  const toCenterX = toNode.x + toNode.w / 2;
+  const toCenterY = toNode.y + toNode.h / 2;
+  const fromPt = getNodeEdgePoint(fromNode, toCenterX, toCenterY);
+  const fromCenterX = fromNode.x + fromNode.w / 2;
+  const fromCenterY = fromNode.y + fromNode.h / 2;
+  const toPt = getNodeEdgePoint(toNode, fromCenterX, fromCenterY);
+  const dx = toPt.x - fromPt.x;
+  const dy = toPt.y - fromPt.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const cpDist = Math.min(dist * 0.5, 80);
+
+  let cp1x = fromPt.x, cp1y = fromPt.y;
+  let cp2x = toPt.x, cp2y = toPt.y;
+  switch (fromPt.side) {
+    case 'right': cp1x += cpDist; break;
+    case 'left': cp1x -= cpDist; break;
+    case 'bottom': cp1y += cpDist; break;
+    case 'top': cp1y -= cpDist; break;
+  }
+  switch (toPt.side) {
+    case 'right': cp2x += cpDist; break;
+    case 'left': cp2x -= cpDist; break;
+    case 'bottom': cp2y += cpDist; break;
+    case 'top': cp2y -= cpDist; break;
+  }
+
+  const mid = getPointOnBezier(fromPt.x, fromPt.y, cp1x, cp1y, cp2x, cp2y, toPt.x, toPt.y, 0.5);
+
+  const canvasRect = canvas.getBoundingClientRect();
+  const screen = worldToScreen(mid.x, mid.y);
+
+  const el = document.createElement('input');
+  el.className = 'inline-editor inline-editor-conn-text';
+  el.value = conn.text || '';
+  el.style.position = 'fixed';
+  el.style.left = (screen.x + canvasRect.left) + 'px';
+  el.style.top = (screen.y + canvasRect.top) + 'px';
+  el.style.width = 'auto';
+  el.style.minWidth = '80px';
+  el.style.transform = 'translate(-50%, -50%)';
+  el.style.zIndex = '8';
+  el.style.background = 'rgba(0,0,0,0.85)';
+  el.style.color = '#fff';
+  el.style.fontSize = (13 * scale) + 'px';
+  el.style.fontWeight = 'bold';
+  el.style.textAlign = 'center';
+  el.style.border = '1px solid #f0c800';
+  el.style.borderRadius = (4 * scale) + 'px';
+  el.style.padding = (2 * scale) + 'px ' + (6 * scale) + 'px';
+  el.style.outline = 'none';
+
+  document.body.appendChild(el);
+  el.focus();
+  el.select();
+
+  const originalValue = conn.text;
+  editingState = { type: 'connection', idx: connIdx, el, originalValue };
+
+  const commit = () => { commitEditing(); };
+  el.addEventListener('blur', commit);
+  el.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
       ev.preventDefault();
       el.blur();
     } else if (ev.key === 'Escape') {
@@ -2028,17 +2125,11 @@ function drawConnection(ctx, fromNode, toNode, conn) {
   const selectedConn = selectedConnection !== null && connections[selectedConnection] === conn;
   const lineWidth = selectedConn ? 3 : 2;
 
-  ctx.beginPath();
-  ctx.moveTo(fromPt.x, fromPt.y);
-  ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, toPt.x, toPt.y);
-  ctx.strokeStyle = connColor;
-  ctx.lineWidth = lineWidth;
-  ctx.stroke();
-
   // Text on curve midpoint (always horizontal)
   if (conn.text && conn.text.length > 0) {
     const mid = getPointOnBezier(fromPt.x, fromPt.y, cp1x, cp1y, cp2x, cp2y, toPt.x, toPt.y, 0.5);
 
+    // Measure text to get pill dimensions
     ctx.save();
     ctx.translate(mid.x, mid.y);
     const fontSize = 13;
@@ -2046,21 +2137,65 @@ function drawConnection(ctx, fromNode, toNode, conn) {
     const metrics = ctx.measureText(conn.text);
     const textW = metrics.width;
     const textH = fontSize + 4;
-    const pad = 4;
-
-    // Background pill
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    const pad = 6;
     const rx = -textW / 2 - pad;
     const ry = -textH / 2;
-    drawRoundedRect(ctx, rx, ry, textW + pad * 2, textH, 4);
-    ctx.fill();
+    const bw = textW + pad * 2;
+    const bh = textH;
+    ctx.restore();
 
+    // Save the background (grid) in the pill area before drawing the curve
+    const dpr = window.devicePixelRatio || 1;
+    const pillSX = Math.floor(((mid.x + rx) * scale + offsetX) * dpr);
+    const pillSY = Math.floor(((mid.y + ry) * scale + offsetY) * dpr);
+    const pillSW = Math.ceil(bw * scale * dpr);
+    const pillSH = Math.ceil(bh * scale * dpr);
+    let saved = null;
+    if (pillSW > 0 && pillSH > 0) {
+      saved = ctx.getImageData(pillSX, pillSY, pillSW, pillSH);
+    }
+
+    // Draw the curve
+    ctx.beginPath();
+    ctx.moveTo(fromPt.x, fromPt.y);
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, toPt.x, toPt.y);
+    ctx.strokeStyle = connColor;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+
+    // Erase everything in the pill area (curve + grid)
+    ctx.save();
+    ctx.translate(mid.x, mid.y);
+    drawRoundedRect(ctx, rx, ry, bw, bh, 6);
+    ctx.clip();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
+    // Restore the saved background (brings back grid, but NOT the curve)
+    if (saved) ctx.putImageData(saved, pillSX, pillSY);
+
+    // Draw text
+    ctx.save();
+    ctx.translate(mid.x, mid.y);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fff';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 3;
     ctx.fillText(conn.text, 0, 0);
     ctx.restore();
+    return;
   }
+
+  // No text — draw curve directly
+  ctx.beginPath();
+  ctx.moveTo(fromPt.x, fromPt.y);
+  ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, toPt.x, toPt.y);
+  ctx.strokeStyle = connColor;
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
 }
 
 function drawConnectionPreview(ctx, fromNode, mouseWorldX, mouseWorldY) {
