@@ -941,20 +941,29 @@ function animate() {
     // Draw edge highlight on hover — thin elegant line
     if (hoveredHandleInfo && hoveredHandleInfo.idx === i) {
       const h = hoveredHandleInfo.handle;
+      const edgeInset = 2;
       ctx.save();
-      ctx.strokeStyle = '#5aa0ff';
+      ctx.strokeStyle = '#64b5f6';
       ctx.lineWidth = 2;
-      if (h === 'left' || h === 'right') {
-        const ex = h === 'left' ? n.x : n.x + n.w;
+      if (h === 'left') {
         ctx.beginPath();
-        ctx.moveTo(ex, n.y - 4);
-        ctx.lineTo(ex, n.y + n.h + 4);
+        ctx.moveTo(n.x + edgeInset, n.y + nodeRadius - 1);
+        ctx.lineTo(n.x + edgeInset, n.y + n.h - nodeRadius + 1);
         ctx.stroke();
-      } else if (h === 'top' || h === 'bottom') {
-        const ey = h === 'top' ? n.y : n.y + n.h;
+      } else if (h === 'right') {
         ctx.beginPath();
-        ctx.moveTo(n.x - 4, ey);
-        ctx.lineTo(n.x + n.w + 4, ey);
+        ctx.moveTo(n.x + n.w - edgeInset, n.y + nodeRadius - 1);
+        ctx.lineTo(n.x + n.w - edgeInset, n.y + n.h - nodeRadius + 1);
+        ctx.stroke();
+      } else if (h === 'top') {
+        ctx.beginPath();
+        ctx.moveTo(n.x + nodeRadius - 1, n.y + edgeInset);
+        ctx.lineTo(n.x + n.w - nodeRadius + 1, n.y + edgeInset);
+        ctx.stroke();
+      } else if (h === 'bottom') {
+        ctx.beginPath();
+        ctx.moveTo(n.x + nodeRadius - 1, n.y + n.h - edgeInset);
+        ctx.lineTo(n.x + n.w - nodeRadius + 1, n.y + n.h - edgeInset);
         ctx.stroke();
       } else {
         const cx = h.includes('l') ? n.x : n.x + n.w;
@@ -1317,7 +1326,8 @@ function commitEditing() {
 
 function cancelEditing() {
   if (!editingState) return;
-  const { el } = editingState;
+  const { idx, field, el, originalValue } = editingState;
+  nodes[idx][field] = originalValue;
   editingState = null;
   try { document.body.removeChild(el); } catch {}
 }
@@ -1342,17 +1352,22 @@ function startEditing(idx, field, worldX, worldY, worldW, worldH) {
   el.style.height = screenH + 'px';
   el.style.zIndex = '1000';
   const baseColor = n.color || '#2b2b2b';
-  el.style.background = isTitle ? 'transparent' : baseColor;
   el.style.color = isTitle ? (n.titleColor || '#e7e7e7') : '#ddd';
   if (isTitle) {
-    el.style.borderRadius = '0';
+    const nodeRadiusEditing = Math.min(12, Math.min(n.w, n.h) * 0.2);
+    el.style.background = getDarkerColor(baseColor, 0.6);
+    el.style.borderRadius = `${nodeRadiusEditing}px ${nodeRadiusEditing}px 0 0`;
+    el.style.border = 'none';
+  } else {
+    el.style.background = baseColor;
   }
 
   document.body.appendChild(el);
   el.focus();
   el.select();
 
-  editingState = { idx, field, el };
+  const originalValue = n[field];
+  editingState = { idx, field, el, originalValue };
 
   const commit = () => { commitEditing(); };
   el.addEventListener('blur', commit);
