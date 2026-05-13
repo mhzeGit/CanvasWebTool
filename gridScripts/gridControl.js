@@ -94,16 +94,15 @@ let connectingMouseWorld = { x: 0, y: 0 };
 // --- Arrow state ---
 const arrows = [];
 let nextArrowId = 1;
-let selectedArrow = null;
-let selectedArrowEnd = null;
+const selectedArrows = new Set();
+let arrowDragTarget = null; // { arrowIdx, end: 'start'|'end' } — which endpoint is being interacted with
 let isDraggingArrowEnd = false;
 let dragArrowEndSnapshot = null;
 let dragArrowEndWhich = null;
 
 let isDraggingArrowBody = false;
-let dragArrowBodyIdx = -1;
 let dragArrowBodyStartWorld = null;
-let dragArrowBodySnapshot = null;
+let dragArrowBodySnapshots = []; // [{ idx, x1, y1, x2, y2, connectedFrom, connectedTo }]
 
 const ARROW_END_RADIUS = 8;
 const ARROW_END_HIT_RADIUS = 14;
@@ -364,8 +363,9 @@ function addArrowAt(worldX, worldY, connectNodeIdx) {
   arrows.push(arrow);
   selected.clear();
   selectedConnection = null;
-  selectedArrow = null;
-  selectedArrowEnd = { arrowIdx: idx, end: 'end' };
+  selectedArrows.clear();
+  arrowDragTarget = { arrowIdx: idx, end: 'end' };
+  selectedArrows.add(idx);
   refreshSidePanel();
 }
 
@@ -410,9 +410,9 @@ document.addEventListener('pointerdown', (e) => {
     selectedConnection = null;
     didClear = true;
   }
-  if (selectedArrow !== null || selectedArrowEnd !== null) {
-    selectedArrow = null;
-    selectedArrowEnd = null;
+  if (selectedArrows.size > 0 || arrowDragTarget !== null) {
+    selectedArrows.clear();
+    arrowDragTarget = null;
     didClear = true;
   }
   if (didClear) refreshSidePanel();
@@ -535,14 +535,16 @@ function openContextMenu(e) {
     // Arrow body hit
     selected.clear();
     selectedConnection = null;
-    selectedArrowEnd = null;
-    selectedArrow = arrowBodyHit;
+    selectedArrows.clear();
+    arrowDragTarget = null;
+    selectedArrows.add(arrowBodyHit);
     const delArrow = document.createElement('button');
     delArrow.className = 'context-item';
     delArrow.textContent = 'Delete Arrow';
     delArrow.addEventListener('click', () => {
-      deleteArrowFn(selectedArrow);
-      selectedArrow = null;
+      for (const ai of selectedArrows) deleteArrowFn(ai);
+      selectedArrows.clear();
+      arrowDragTarget = null;
       refreshSidePanel();
       closeContextMenu();
     });
@@ -869,8 +871,9 @@ canvas.addEventListener('pointerdown', (e) => {
     if (arrowEndHit) {
       selected.clear();
       selectedConnection = null;
-      selectedArrow = null;
-      selectedArrowEnd = arrowEndHit;
+      selectedArrows.clear();
+      selectedArrows.add(arrowEndHit.arrowIdx);
+      arrowDragTarget = arrowEndHit;
       isDraggingArrowEnd = true;
       dragArrowEndWhich = arrowEndHit.end;
       const arrow = arrows[arrowEndHit.arrowIdx];
@@ -919,8 +922,8 @@ canvas.addEventListener('pointerdown', (e) => {
 
     if (hit !== -1) {
       selectedConnection = null;
-      selectedArrowEnd = null;
-      selectedArrow = null;
+      arrowDragTarget = null;
+      selectedArrows.clear();
       // Defer selection change until we know it's not a drag
       pointerDownScreenX = sx;
       pointerDownScreenY = sy;
@@ -947,13 +950,21 @@ canvas.addEventListener('pointerdown', (e) => {
     }
 
     // Check for arrow body hit
-    if (!e.shiftKey && !e.ctrlKey) {
+    if (!e.ctrlKey) {
       const bodyHit = hitTestArrowBody(world.x, world.y);
       if (bodyHit !== -1) {
         selected.clear();
         selectedConnection = null;
-        selectedArrowEnd = null;
-        selectedArrow = bodyHit;
+        if (!e.shiftKey) {
+          selectedArrows.clear();
+          arrowDragTarget = null;
+          selectedArrows.add(bodyHit);
+        } else {
+          if (selectedArrows.has(bodyHit)) selectedArrows.delete(bodyHit);
+          else selectedArrows.add(bodyHit);
+        }
+        // If no arrows left in selection, clear drag target
+        if (selectedArrows.size === 0) arrowDragTarget = null;
         // Prepare for possible body drag
         pointerDownScreenX = sx;
         pointerDownScreenY = sy;
@@ -971,8 +982,8 @@ canvas.addEventListener('pointerdown', (e) => {
       const connHit = hitTestConnection(world.x, world.y);
       if (connHit !== null) {
         selected.clear();
-        selectedArrow = null;
-        selectedArrowEnd = null;
+        selectedArrows.clear();
+        arrowDragTarget = null;
         selectedConnection = connHit;
         refreshSidePanel();
         e.preventDefault();
@@ -983,8 +994,8 @@ canvas.addEventListener('pointerdown', (e) => {
     // Background: start selection box
     isSelectingBox = true;
     selectedConnection = null;
-    selectedArrow = null;
-    selectedArrowEnd = null;
+    selectedArrows.clear();
+    arrowDragTarget = null;
     boxStartX = world.x;
     boxStartY = world.y;
     boxEndX = world.x;
@@ -1013,10 +1024,10 @@ canvas.addEventListener('pointermove', (e) => {
   }
 
   // Handle arrow endpoint drag
-  if (isDraggingArrowEnd && selectedArrowEnd) {
-    const arrow = arrows[selectedArrowEnd.arrowIdx];
+  if (isDraggingArrowEnd && arrowDragTarget) {
+    const arrow = arrows[arrowDragTarget.arrowIdx];
     if (arrow) {
-      if (selectedArrowEnd.end === 'start') {
+      if (arrowDragTarget.end === 'start') {
         arrow.x1 = world.x;
         arrow.y1 = world.y;
         const snapNode = findNodeAtPoint(world.x, world.y);
@@ -1141,24 +1152,27 @@ canvas.addEventListener('pointermove', (e) => {
       dragGroupStarts = getDragGroup(selected).map(it => ({ ...it, id: nodes[it.i].id }));
     }
   }
-  // Arrow body drag initiation
-  if (pendingClickIndex === -2 && selectedArrow !== null && (e.buttons & 1) === 1) {
+  // Arrow body drag initiation — moves all selected arrows
+  if (pendingClickIndex === -2 && selectedArrows.size > 0 && (e.buttons & 1) === 1) {
     const moveDx = Math.abs(sx - pointerDownScreenX);
     const moveDy = Math.abs(sy - pointerDownScreenY);
     if (moveDx >= DRAG_THRESHOLD_PX || moveDy >= DRAG_THRESHOLD_PX) {
-      const arrow = arrows[selectedArrow];
-      if (arrow) {
-        isDraggingArrowBody = true;
-        dragArrowBodyIdx = selectedArrow;
-        dragArrowBodyStartWorld = { x: world.x, y: world.y };
-        dragArrowBodySnapshot = {
-          x1: arrow.x1, y1: arrow.y1,
-          x2: arrow.x2, y2: arrow.y2,
-          connectedFrom: arrow.connectedFrom,
-          connectedTo: arrow.connectedTo
-        };
-        didDragSincePointerDown = true;
+      isDraggingArrowBody = true;
+      dragArrowBodyStartWorld = { x: world.x, y: world.y };
+      dragArrowBodySnapshots = [];
+      for (const ai of selectedArrows) {
+        const a = arrows[ai];
+        if (a) {
+          dragArrowBodySnapshots.push({
+            idx: ai,
+            x1: a.x1, y1: a.y1,
+            x2: a.x2, y2: a.y2,
+            connectedFrom: a.connectedFrom,
+            connectedTo: a.connectedTo
+          });
+        }
       }
+      didDragSincePointerDown = true;
     }
   }
 
@@ -1514,9 +1528,10 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (!isInput && (e.key === 'Delete' || e.key === 'Backspace')) {
-    if (selectedArrow !== null) {
-      deleteArrowFn(selectedArrow);
-      selectedArrow = null;
+    if (selectedArrows.size > 0) {
+      for (const ai of selectedArrows) deleteArrowFn(ai);
+      selectedArrows.clear();
+      arrowDragTarget = null;
       refreshSidePanel();
       e.preventDefault();
       return;
@@ -1554,13 +1569,12 @@ window.addEventListener('keydown', (e) => {
     closeContextMenu();
     if (isDraggingArrowBody) {
       isDraggingArrowBody = false;
-      dragArrowBodyIdx = -1;
-      dragArrowBodySnapshot = null;
+      dragArrowBodySnapshots = [];
       dragArrowBodyStartWorld = null;
     }
-    if (selectedArrow !== null || selectedArrowEnd !== null) {
-      selectedArrow = null;
-      selectedArrowEnd = null;
+    if (selectedArrows.size > 0 || arrowDragTarget !== null) {
+      selectedArrows.clear();
+      arrowDragTarget = null;
       refreshSidePanel();
       return;
     }
@@ -1592,8 +1606,8 @@ function restoreDocumentState(state) {
   arrows.length = 0;
   selected.clear();
   selectedConnection = null;
-  selectedArrow = null;
-  selectedArrowEnd = null;
+  selectedArrows.clear();
+  arrowDragTarget = null;
   clipboard = [];
   connectingFrom = null;
   history.clear();
@@ -2993,8 +3007,8 @@ function drawArrows(ctx) {
     const x2 = endPt.x;
     const y2 = endPt.y;
 
-    const isWholeSelected = selectedArrow === ai;
-    const isEndSelected = selectedArrowEnd && selectedArrowEnd.arrowIdx === ai;
+    const isWholeSelected = selectedArrows.has(ai);
+    const isEndSelected = arrowDragTarget && arrowDragTarget.arrowIdx === ai;
 
     const dx = x2 - x1;
     const dy = y2 - y1;
@@ -3030,8 +3044,8 @@ function drawArrows(ctx) {
     ctx.fill();
 
     // Draw endpoint handle circles (only on hover or while actively dragging)
-    const isStartDrag = isDraggingArrowEnd && isEndSelected && selectedArrowEnd.end === 'start';
-    const isEndDrag = isDraggingArrowEnd && isEndSelected && selectedArrowEnd.end === 'end';
+    const isStartDrag = isDraggingArrowEnd && arrowDragTarget && arrowDragTarget.arrowIdx === ai && arrowDragTarget.end === 'start';
+    const isEndDrag = isDraggingArrowEnd && arrowDragTarget && arrowDragTarget.arrowIdx === ai && arrowDragTarget.end === 'end';
     const dstStart = Math.sqrt((lastWorldMouse.x - x1) ** 2 + (lastWorldMouse.y - y1) ** 2);
     const dstEnd = Math.sqrt((lastWorldMouse.x - x2) ** 2 + (lastWorldMouse.y - y2) ** 2);
     const isStartHover = !isDraggingArrowEnd && !isDraggingArrowBody && dstStart <= ARROW_END_HIT_RADIUS;
@@ -3132,15 +3146,25 @@ function isArrowInBox(arrow, bx1, by1, bx2, by2) {
 function deleteArrowFn(ai) {
   if (ai < 0 || ai >= arrows.length) return;
   arrows.splice(ai, 1);
-  if (selectedArrow === ai) selectedArrow = null;
-  else if (selectedArrow > ai) selectedArrow--;
-  if (selectedArrowEnd && selectedArrowEnd.arrowIdx === ai) selectedArrowEnd = null;
-  else if (selectedArrowEnd && selectedArrowEnd.arrowIdx > ai) selectedArrowEnd.arrowIdx--;
+  // Shift selectedArrows set
+  const toReAdd = [];
+  for (const sa of selectedArrows) {
+    if (sa === ai) continue;
+    toReAdd.push(sa > ai ? sa - 1 : sa);
+  }
+  selectedArrows.clear();
+  for (const v of toReAdd) selectedArrows.add(v);
+  // Shift arrowDragTarget
+  if (arrowDragTarget) {
+    if (arrowDragTarget.arrowIdx === ai) arrowDragTarget = null;
+    else if (arrowDragTarget.arrowIdx > ai) arrowDragTarget.arrowIdx--;
+  }
 }
 
 function computeSelectionKey() {
-  if (selectedArrowEnd) return `arrowEnd:${selectedArrowEnd.arrowIdx}:${selectedArrowEnd.end}`;
-  if (selectedArrow !== null) return `arrow:${selectedArrow}`;
+  if (arrowDragTarget) return `arrowEnd:${arrowDragTarget.arrowIdx}:${arrowDragTarget.end}`;
+  if (selectedArrows.size === 1) return `arrow:${Array.from(selectedArrows)[0]}`;
+  if (selectedArrows.size > 1) return `arrows:${selectedArrows.size}`;
   if (selectedConnection !== null) return `conn:${selectedConnection}`;
   if (selected.size === 0) return 'none';
   if (selected.size > 1) return `multi:${selected.size}`;
