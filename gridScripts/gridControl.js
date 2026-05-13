@@ -58,7 +58,7 @@ let resizeStartWorldY = 0;
 let resizeStartNode = null;
 const EDGE_MARGIN = 12;
 const NODE_MIN_W = 100;
-const NODE_MIN_H = 60;
+const NODE_MIN_H = 70;
 
 // Inline editing
 let editingState = null;
@@ -264,15 +264,16 @@ function openContextMenu(e) {
     items.push(copy);
 
     // Paste item
-    const paste = document.createElement('button');
-    paste.className = 'context-item';
-    paste.textContent = 'Paste';
-    paste.disabled = clipboard.length === 0;
-    paste.addEventListener('click', () => {
-      pasteNodesAt(world.x, world.y);
-      closeContextMenu();
-    });
-    items.push(paste);
+    if (clipboard.length > 0) {
+      const paste = document.createElement('button');
+      paste.className = 'context-item';
+      paste.textContent = 'Paste';
+      paste.addEventListener('click', () => {
+        pasteNodesAt(world.x, world.y);
+        closeContextMenu();
+      });
+      items.push(paste);
+    }
 
   } else {
     // Background: Add submenu and Paste (Add at top)
@@ -295,15 +296,16 @@ function openContextMenu(e) {
     addWrap.appendChild(sub);
     items.push(addWrap);
 
-    const paste = document.createElement('button');
-    paste.className = 'context-item';
-    paste.textContent = 'Paste';
-    paste.disabled = clipboard.length === 0;
-    paste.addEventListener('click', () => {
-      pasteNodesAt(world.x, world.y);
-      closeContextMenu();
-    });
-    items.push(paste);
+    if (clipboard.length > 0) {
+      const paste = document.createElement('button');
+      paste.className = 'context-item';
+      paste.textContent = 'Paste';
+      paste.addEventListener('click', () => {
+        pasteNodesAt(world.x, world.y);
+        closeContextMenu();
+      });
+      items.push(paste);
+    }
   }
 
   if (items.length === 0) {
@@ -553,7 +555,7 @@ canvas.addEventListener('pointermove', (e) => {
       newW = NODE_MIN_W;
     }
     if (newH < NODE_MIN_H) {
-      if (resizeHandle.includes('t')) newY = start.y + start.h - NODE_MIN_H;
+      if (resizeHandle[0] === 't') newY = start.y + start.h - NODE_MIN_H;
       newH = NODE_MIN_H;
     }
 
@@ -903,14 +905,12 @@ function animate() {
       ctx.restore();
     }
 
-         // Title bar background (height based on content, never compressed)
+         // Title bar background (fixed height, consistent with or without title)
      const padding = 8;
      const titleFont = `bold ${15}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
      const titleLineHeight = 18;
      const maxTitleWidth = Math.max(0, n.w - padding * 2);
-     const titleLines = wrapTextLines(ctx, titleFont, n.title || '', maxTitleWidth);
-     const requiredTitleHeight = Math.max(0, titleLines.length * titleLineHeight + padding * 2);
-     const titleH = Math.max(24, requiredTitleHeight);
+     const titleH = padding * 2 + titleLineHeight;
      ctx.save();
      ctx.fillStyle = getDarkerColor(baseColor, 0.6);
      drawRoundedRectTopOnly(ctx, n.x, n.y, n.w, titleH, nodeRadius);
@@ -1314,7 +1314,7 @@ function startEditing(idx, field, worldX, worldY, worldW, worldH) {
   el.style.top = (screen.y + canvasRect.top) + 'px';
   el.style.width = screenW + 'px';
   el.style.height = screenH + 'px';
-  el.style.zIndex = '1000';
+  el.style.zIndex = '8';
   const baseColor = n.color || '#2b2b2b';
   el.style.color = isTitle ? (n.titleColor || '#e7e7e7') : '#ddd';
   el.style.fontSize = (isTitle ? 15 : 12) * scale + 'px';
