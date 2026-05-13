@@ -94,7 +94,7 @@ export function refreshSidePanel() {
     '<div class="panel-section-title">Node</div>',
     '<div class="panel-row"><label>Title</label><input id="panelTitle" class="panel-input" type="text" value="' + state.escAttr(n.title ?? '') + '" placeholder="' + state.escAttr(TITLE_PLACEHOLDER) + '" /></div>',
     '<div class="panel-row"><label>Title Color</label><input id="panelTitleColor" class="panel-input panel-input-color" type="color" value="' + (n.titleColor ?? '#e7e7e7') + '" /></div>',
-    '<div class="panel-row"><label>Color</label><input id="panelColor" class="panel-input panel-input-color" type="color" value="' + (n.color ?? '#2b2b2b') + '" /></div>',
+    '<div class="panel-row"><label>Color</label><input id="panelColor" class="panel-input panel-input-color" type="color" value="' + (n.color ?? '#1a1a1a') + '" /></div>',
     '<div class="panel-row"><label>Width</label><input id="panelW" class="panel-input" type="number" min="10" value="' + n.w + '" /></div>',
     '<div class="panel-row"><label>Height</label><input id="panelH" class="panel-input" type="number" min="10" value="' + n.h + '" /></div>',
     parentHtml,

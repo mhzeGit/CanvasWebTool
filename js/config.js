@@ -1,6 +1,6 @@
 export const GRID = {
-  backgroundColor: 'rgb(24, 24, 24)',
-  lineColor: [30, 30, 30],
+  backgroundColor: 'rgb(16, 16, 16)',
+  lineColor: [25, 25, 25],
   lineWidth: 2,
   spacing: 20,
   panLerp: 0.2,

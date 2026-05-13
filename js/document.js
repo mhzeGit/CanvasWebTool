@@ -10,6 +10,7 @@ import { serializeDocument, deserializeDocument, FILE_EXTENSION } from './format
 import { saveToFile, loadFromFile } from './file-io.js';
 import { screenToWorld, getNodeEdgePoint } from './utils.js';
 import { refreshSidePanel } from './side-panel.js';
+import { DEFAULT_NODE_COLOR } from './config.js';
 
 export function addNodeAtCenter() {
   flushPanelEdit();
@@ -24,7 +25,7 @@ export function addNodeAtCenter() {
 export function addNodeAt(worldX, worldY) {
   flushPanelEdit();
   const w = 240; const h = 160;
-  const node = { id: nextNodeId(), x: worldX - w / 2, y: worldY - h / 2, w, h, color: '#2b2b2b', title: '', titleColor: '#e7e7e7', text: '', parentId: null };
+  const node = { id: nextNodeId(), x: worldX - w / 2, y: worldY - h / 2, w, h, color: DEFAULT_NODE_COLOR, title: '', titleColor: '#e7e7e7', text: '', parentId: null };
   const idx = state.nodes.length;
   state.nodes.push(node);
   state.selected.clear();

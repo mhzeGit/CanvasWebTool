@@ -5,7 +5,7 @@ import { hitTestConnection } from './connections.js';
 import { createPropertyChangeCmd } from './undo.js';
 import { refreshSidePanel } from './side-panel.js';
 import { history } from './history.js';
-import { TITLE_PLACEHOLDER, TEXT_PLACEHOLDER } from './config.js';
+import { TITLE_PLACEHOLDER, TEXT_PLACEHOLDER, DEFAULT_NODE_COLOR } from './config.js';
 
 export function setupInlineEditing() {
   state.canvas.addEventListener('dblclick', onDblClick);
@@ -75,7 +75,7 @@ export function startEditing(idx, field, worldX, worldY, worldW, worldH) {
   el.style.width = screenW + 'px';
   el.style.height = screenH + 'px';
   el.style.zIndex = '8';
-  const baseColor = n.color || '#2b2b2b';
+  const baseColor = n.color || DEFAULT_NODE_COLOR;
   el.style.color = isTitle ? (n.titleColor || '#e7e7e7') : '#ddd';
   el.style.fontSize = (isTitle ? 15 : 12) * state.scale + 'px';
   el.style.lineHeight = (isTitle ? 18 : 14) * state.scale + 'px';
