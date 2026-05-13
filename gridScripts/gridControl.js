@@ -856,7 +856,7 @@ function animate() {
     // Base style
     const baseColor = n.color || 'rgb(43, 43, 43)';
     
-    // Draw shadow first
+    // Draw shadow
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
     ctx.shadowBlur = 8;
@@ -881,8 +881,8 @@ function animate() {
     // Selection outline around the whole node (exterior)
     if (selected.has(i)) {
       ctx.save();
-      ctx.strokeStyle = '#5aa0ff';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#f0c800';
+      ctx.lineWidth = 0.8;
       const selectionOffset = ctx.lineWidth / 2;
       drawRoundedRect(ctx, n.x - selectionOffset, n.y - selectionOffset, n.w + selectionOffset * 2, n.h + selectionOffset * 2, nodeRadius + selectionOffset);
       ctx.stroke();
@@ -938,54 +938,6 @@ function animate() {
       drawWrappedTextWithEllipsis(ctx, n.text, n.x + padding, contentY, maxTextWidth, maxTextHeight, 14);
     }
 
-    // Draw edge highlight on hover — thin elegant line
-    if (hoveredHandleInfo && hoveredHandleInfo.idx === i) {
-      const h = hoveredHandleInfo.handle;
-      const edgeInset = 2;
-      ctx.save();
-      ctx.strokeStyle = '#64b5f6';
-      ctx.lineWidth = 2;
-      if (h === 'left') {
-        ctx.beginPath();
-        ctx.moveTo(n.x + edgeInset, n.y + nodeRadius - 1);
-        ctx.lineTo(n.x + edgeInset, n.y + n.h - nodeRadius + 1);
-        ctx.stroke();
-      } else if (h === 'right') {
-        ctx.beginPath();
-        ctx.moveTo(n.x + n.w - edgeInset, n.y + nodeRadius - 1);
-        ctx.lineTo(n.x + n.w - edgeInset, n.y + n.h - nodeRadius + 1);
-        ctx.stroke();
-      } else if (h === 'top') {
-        ctx.beginPath();
-        ctx.moveTo(n.x + nodeRadius - 1, n.y + edgeInset);
-        ctx.lineTo(n.x + n.w - nodeRadius + 1, n.y + edgeInset);
-        ctx.stroke();
-      } else if (h === 'bottom') {
-        ctx.beginPath();
-        ctx.moveTo(n.x + nodeRadius - 1, n.y + n.h - edgeInset);
-        ctx.lineTo(n.x + n.w - nodeRadius + 1, n.y + n.h - edgeInset);
-        ctx.stroke();
-      } else {
-        const cx = h.includes('l') ? n.x : n.x + n.w;
-        const cy = h.includes('t') ? n.y : n.y + n.h;
-        const signX = h.includes('l') ? -1 : 1;
-        const signY = h.includes('t') ? -1 : 1;
-        ctx.beginPath();
-        ctx.moveTo(cx + signX * 3, cy);
-        ctx.lineTo(cx, cy);
-        ctx.lineTo(cx, cy + signY * 3);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx + signX * 6, cy);
-        ctx.lineTo(cx + signX * 3, cy);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx, cy + signY * 6);
-        ctx.lineTo(cx, cy + signY * 3);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
   }
 
   // Draw selection marquee if active
@@ -1353,11 +1305,16 @@ function startEditing(idx, field, worldX, worldY, worldW, worldH) {
   el.style.zIndex = '1000';
   const baseColor = n.color || '#2b2b2b';
   el.style.color = isTitle ? (n.titleColor || '#e7e7e7') : '#ddd';
+  el.style.fontSize = (isTitle ? 15 : 12) * scale + 'px';
+  el.style.lineHeight = (isTitle ? 18 : 14) * scale + 'px';
+  el.style.padding = (8 * scale) + 'px';
+
   if (isTitle) {
-    const nodeRadiusEditing = Math.min(12, Math.min(n.w, n.h) * 0.2);
+    const nodeRadiusEditing = Math.min(12, Math.min(n.w, n.h) * 0.2) * scale;
     el.style.background = getDarkerColor(baseColor, 0.6);
     el.style.borderRadius = `${nodeRadiusEditing}px ${nodeRadiusEditing}px 0 0`;
     el.style.border = 'none';
+    el.style.overflow = 'hidden';
   } else {
     el.style.background = baseColor;
   }

@@ -9,8 +9,9 @@ export const gridSettings = {
   minScale: 0.05,
   maxScale: 5,
   gridLevels: [
-    { spacing: 20,   weight: 1,   minPx: 4,  peakPx: 14, maxPx: 40  },
-    { spacing: 100,  weight: 1.5, minPx: 8,  peakPx: 35, maxPx: 90  },
-    { spacing: 500,  weight: 2.5, minPx: 15, peakPx: 60, maxPx: 180 },
+    { spacing: 10,   weight: 0.6, minPx: 8,  peakPx: 24, maxPx: 70  },
+    { spacing: 40,   weight: 0.8, minPx: 10, peakPx: 28, maxPx: 80  },
+    { spacing: 200,  weight: 1.1, minPx: 16, peakPx: 60, maxPx: 180 },
+    { spacing: 1000, weight: 1.4, minPx: 24, peakPx: 100, maxPx: 320 },
   ]
 };
