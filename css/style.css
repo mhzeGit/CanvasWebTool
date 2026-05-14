@@ -459,9 +459,9 @@ canvas#gridCanvas {
 
 .rt-paragraph { margin: 2px 0; }
 
-.rt-h1 { font-size: 21px; font-weight: 700; margin: 6px 0 4px; color: #e7e7e7; }
-.rt-h2 { font-size: 18px; font-weight: 700; margin: 5px 0 3px; color: #e0e0e0; }
-.rt-h3 { font-size: 15px; font-weight: 700; margin: 4px 0 2px; color: #d8d8d8; }
+.rt-h1 { font-size: 1.5em; font-weight: 700; margin: 6px 0 4px; color: #e7e7e7; }
+.rt-h2 { font-size: 1.3em; font-weight: 700; margin: 5px 0 3px; color: #e0e0e0; }
+.rt-h3 { font-size: 1.15em; font-weight: 700; margin: 4px 0 2px; color: #d8d8d8; }
 
 .rt-quote {
   margin: 4px 0;
@@ -472,6 +472,26 @@ canvas#gridCanvas {
 }
 
 .rt-bullet, .rt-numbered, .rt-checkbox { margin: 1px 0; }
+
+.rt-checkbox .rt-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  border: 1.5px solid #888;
+  border-radius: 3px;
+  margin-right: 0.3em;
+  vertical-align: middle;
+  color: transparent;
+}
+.rt-checkbox .rt-marker[data-checked="1"]::after {
+  content: '✓';
+  color: #4caf50;
+  font-weight: 700;
+  font-size: 0.75em;
+  line-height: 1;
+}
 
 .rt-marker {
   color: #888;
@@ -724,9 +744,9 @@ canvas#gridCanvas {
 .entity-node-body .rt-block:last-child { margin-bottom: 0; }
 
 .entity-node-body .rt-paragraph { margin: 0.1em 0; }
-.entity-node-body .rt-h1 { font-size: 21px; font-weight: 700; margin: 0.2em 0 0.15em; }
-.entity-node-body .rt-h2 { font-size: 18px; font-weight: 700; margin: 0.18em 0 0.12em; }
-.entity-node-body .rt-h3 { font-size: 15px; font-weight: 700; margin: 0.15em 0 0.1em; }
+.entity-node-body .rt-h1 { font-size: 1.5em; font-weight: 700; margin: 0.2em 0 0.15em; }
+.entity-node-body .rt-h2 { font-size: 1.3em; font-weight: 700; margin: 0.18em 0 0.12em; }
+.entity-node-body .rt-h3 { font-size: 1.15em; font-weight: 700; margin: 0.15em 0 0.1em; }
 .entity-node-body .rt-quote {
   margin: 0.15em 0;
   padding: 0.1em 0 0.1em 0.5em;
@@ -741,6 +761,14 @@ canvas#gridCanvas {
   user-select: none;
   -webkit-user-select: none;
   pointer-events: none;
+}
+.entity-node-body .rt-checkbox .rt-marker {
+  width: 1em;
+  height: 1em;
+  border: 1.5px solid #888;
+  border-radius: 3px;
+  margin-right: 0.3em;
+  color: transparent;
 }
 .entity-node-body .rt-divider hr {
   border: none;
@@ -837,9 +865,9 @@ canvas#gridCanvas {
 .entity-textbox-content .rt-block:last-child { margin-bottom: 0; }
 
 .entity-textbox-content .rt-paragraph { margin: 0.1em 0; }
-.entity-textbox-content .rt-h1 { font-size: 21px; font-weight: 700; margin: 0.2em 0 0.15em; }
-.entity-textbox-content .rt-h2 { font-size: 18px; font-weight: 700; margin: 0.18em 0 0.12em; }
-.entity-textbox-content .rt-h3 { font-size: 15px; font-weight: 700; margin: 0.15em 0 0.1em; }
+.entity-textbox-content .rt-h1 { font-size: 1.5em; font-weight: 700; margin: 0.2em 0 0.15em; }
+.entity-textbox-content .rt-h2 { font-size: 1.3em; font-weight: 700; margin: 0.18em 0 0.12em; }
+.entity-textbox-content .rt-h3 { font-size: 1.15em; font-weight: 700; margin: 0.15em 0 0.1em; }
 .entity-textbox-content .rt-quote {
   margin: 0.15em 0;
   padding: 0.1em 0 0.1em 0.5em;
@@ -853,6 +881,14 @@ canvas#gridCanvas {
   user-select: none;
   -webkit-user-select: none;
   pointer-events: none;
+}
+.entity-textbox-content .rt-checkbox .rt-marker {
+  width: 1em;
+  height: 1em;
+  border: 1.5px solid #888;
+  border-radius: 3px;
+  margin-right: 0.3em;
+  color: transparent;
 }
 .entity-textbox-content .rt-divider hr {
   border: none;

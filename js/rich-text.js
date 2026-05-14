@@ -95,7 +95,7 @@ export function blocksToHtml(blocks) {
       inner += t;
     }
     let prefix = '';
-    if (bl.t === 'chk') prefix = '<span class="rt-marker" contenteditable="false">' + (bl.c ? '[x]' : '[ ]') + '</span> ';
+    if (bl.t === 'chk') prefix = '<span class="rt-marker" data-checked="' + (bl.c ? '1' : '0') + '" contenteditable="false"></span> ';
     else if (bl.t === 'bul') prefix = '<span class="rt-marker" contenteditable="false">\u2022</span> ';
     else if (bl.t === 'num') prefix = '<span class="rt-marker" contenteditable="false">1.</span> ';
     let extraStyle = '';
@@ -187,7 +187,11 @@ export function htmlToBlocks(container) {
     else if (blockEl.style.textAlign === 'right') baseProps.al = 'r';
     if (bt === 'chk') {
       const marker = blockEl.querySelector('.rt-marker');
-      baseProps.c = marker && /x/i.test(marker.textContent || '');
+      if (marker && marker.dataset.checked !== undefined) {
+        baseProps.c = marker.dataset.checked === '1';
+      } else {
+        baseProps.c = marker && /x/i.test(marker.textContent || '');
+      }
     }
 
     const subBlocks = [];
@@ -377,9 +381,21 @@ export function renderRichText(ctx, blocks, x, y, maxW, maxH, fontFamily, baseFo
 
     let prefixW = 0;
     if (bl.t === 'chk') {
-      const ps = { t: bl.c ? '[x]' : '[ ]', b: false, i: false };
-      drawOneSpan(ctx, ps, x, currentY, brightenColor(textColor, 0.4), fontFamily, baseFontSize);
-      prefixW = spanWidth(ctx, ps, baseFontSize, fontFamily) + prefixPad;
+      const boxSize = baseFontSize * 0.85;
+      const boxY = currentY + (lh - boxSize) / 2;
+      ctx.save();
+      ctx.strokeStyle = brightenColor(textColor, 0.4);
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x, boxY, boxSize, boxSize);
+      if (bl.c) {
+        ctx.fillStyle = '#4caf50';
+        ctx.font = (boxSize * 0.8) + 'px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('✓', x + boxSize / 2, boxY + boxSize / 2 + 1);
+      }
+      ctx.restore();
+      prefixW = boxSize + prefixPad;
     } else if (bl.t === 'bul') {
       const ps = { t: '\u2022', b: true, i: false };
       drawOneSpan(ctx, ps, x, currentY, brightenColor(textColor, 0.4), fontFamily, baseFontSize);

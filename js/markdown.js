@@ -230,9 +230,21 @@ export function renderMarkdownBody(ctx, text, x, y, maxWidth, maxHeight, baseFon
 
     let prefixW = 0;
     if (line.type === 'checkbox') {
-      const ps = { text: line.checked ? '[x]' : '[ ]', bold: false, italic: false, code: false, strike: false };
-      drawSpan(ctx, ps, x, currentY, color, baseFontFamily, baseFontSize);
-      prefixW = getSpanWidth(ctx, ps, baseFontSize, baseFontFamily) + prefixPad;
+      const boxSize = baseFontSize * 0.85;
+      const boxY = currentY + (lh - boxSize) / 2;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x, boxY, boxSize, boxSize);
+      if (line.checked) {
+        ctx.fillStyle = '#4caf50';
+        ctx.font = (boxSize * 0.8) + 'px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('✓', x + boxSize / 2, boxY + boxSize / 2 + 1);
+      }
+      ctx.restore();
+      prefixW = boxSize + prefixPad;
     } else if (line.type === 'bullet') {
       const ps = { text: '\u2022', bold: true, italic: false, code: false, strike: false };
       drawSpan(ctx, ps, x, currentY, color, baseFontFamily, baseFontSize);

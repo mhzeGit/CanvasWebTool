@@ -6,7 +6,7 @@ import { hitTestTextBox } from './textboxes.js';
 import { createPropertyChangeCmd } from './undo.js';
 import { refreshSidePanel } from './side-panel.js';
 import { history } from './history.js';
-import { blocksToHtml, htmlToBlocks, markdownToBlocks, blocksToSimpleText } from './rich-text.js';
+import { blocksToHtml, htmlToBlocks, markdownToBlocks, blocksToMarkdown } from './rich-text.js';
 import { parseInlineSpans } from './markdown.js';
 import { TITLE_PLACEHOLDER, DEFAULT_NODE_COLOR } from './config.js';
 import { getEntityElement } from './dom-entities.js';
@@ -109,7 +109,7 @@ export function startEditing(idx, field) {
       if (_detectingMarkdown) return;
       _detectAndApplyMarkdown(body);
       n.blocks = htmlToBlocks(body);
-      n.text = blocksToSimpleText(n.blocks);
+      n.text = blocksToMarkdown(n.blocks);
     };
 
     const onKeyDown = (ev) => {
@@ -278,7 +278,7 @@ function startTextBoxEditing(tbIdx) {
     if (_detectingMarkdown) return;
     _detectAndApplyMarkdown(content);
     tb.blocks = htmlToBlocks(content);
-    tb.text = blocksToSimpleText(tb.blocks);
+    tb.text = blocksToMarkdown(tb.blocks);
   };
 
   const onKeyDown = (ev) => {
@@ -341,7 +341,7 @@ function handleEnter(editor, ev) {
     newBlock.className = block.className;
     if (isBullet) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span> <br>';
     else if (isNumbered) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">1.</span> <br>';
-    else if (isCheckbox) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">[ ]</span> <br>';
+    else if (isCheckbox) newBlock.innerHTML = '<span class="rt-marker" data-checked="0" contenteditable="false"></span> <br>';
     else newBlock.innerHTML = '<br>';
   } else {
     newBlock.className = 'rt-block rt-paragraph';
@@ -466,6 +466,16 @@ function _applyBlockMarkdown(block) {
     return true;
   }
 
+  const chkMatch = text.match(/^(?:-\s*)?\[(\s|x|X)\]\s+(.+)/);
+  if (chkMatch) {
+    const checked = chkMatch[1].toLowerCase() === 'x';
+    block.classList.remove('rt-paragraph');
+    block.classList.add('rt-checkbox');
+    block.innerHTML = '<span class="rt-marker" data-checked="' + (checked ? '1' : '0') + '" contenteditable="false"></span> ' + _renderInlineMarkdown(chkMatch[2]);
+    placeCursorAtEnd(block);
+    return true;
+  }
+
   const bulMatch = text.match(/^([-*])\s(.+)/);
   if (bulMatch) {
     block.classList.remove('rt-paragraph');
@@ -556,10 +566,10 @@ export function commitEditing() {
     const blocks = htmlToBlocks(el);
     if (type === 'textBox') {
       state.textBoxes[idx].blocks = blocks;
-      state.textBoxes[idx].text = blocksToSimpleText(blocks);
+      state.textBoxes[idx].text = blocksToMarkdown(blocks);
     } else if (type === 'node') {
       state.nodes[idx].blocks = blocks;
-      state.nodes[idx].text = blocksToSimpleText(blocks);
+      state.nodes[idx].text = blocksToMarkdown(blocks);
       const newValue = JSON.stringify(blocks);
       if (originalValue !== newValue && state.nodes[idx].id !== undefined) {
         history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, state.nodes[idx].id, field, originalValue, newValue));
@@ -603,10 +613,10 @@ export function cancelEditing() {
       const blocks = JSON.parse(originalValue);
       if (type === 'textBox') {
         state.textBoxes[idx].blocks = blocks;
-        state.textBoxes[idx].text = blocksToSimpleText(blocks);
+        state.textBoxes[idx].text = blocksToMarkdown(blocks);
       } else if (type === 'node') {
         state.nodes[idx].blocks = blocks;
-        state.nodes[idx].text = blocksToSimpleText(blocks);
+        state.nodes[idx].text = blocksToMarkdown(blocks);
       }
     } catch (e) { /* ignore */ }
   } else {
