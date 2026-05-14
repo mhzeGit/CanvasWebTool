@@ -1,5 +1,6 @@
 import { state } from './state.js';
-import { drawRoundedRect, drawWrappedTextWithEllipsis } from './utils.js';
+import { drawRoundedRect } from './utils.js';
+import { renderMarkdownBody } from './markdown.js';
 
 export function drawTextBoxes() {
   const ctx = state.ctx;
@@ -25,25 +26,24 @@ export function drawTextBoxes() {
     const padding = 8;
     const fontSize = tb.fontSize || 14;
     const lineHeight = fontSize * 1.4;
-    ctx.save();
-    ctx.fillStyle = tb.textColor || '#ddd';
-    ctx.font = `${fontSize}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
+    const fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
     const text = tb.text || '';
     if (text) {
-      drawWrappedTextWithEllipsis(
-        ctx, text,
+      renderMarkdownBody(ctx, text,
         tb.x + padding, tb.y + padding,
         Math.max(0, tb.w - padding * 2),
         Math.max(0, tb.h - padding * 2),
-        lineHeight
+        fontFamily, fontSize, tb.textColor || '#ddd', lineHeight
       );
     } else {
+      ctx.save();
       ctx.fillStyle = '#777';
+      ctx.font = `${fontSize}px ${fontFamily}`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
       ctx.fillText('Double-click to edit', tb.x + padding, tb.y + padding);
+      ctx.restore();
     }
-    ctx.restore();
 
     if (state.selectedTextBoxes.has(ti)) {
       ctx.save();
@@ -83,6 +83,29 @@ export function hitTestTextBox(wx, wy) {
     if (wx >= tb.x && wx <= tb.x + tb.w && wy >= tb.y && wy <= tb.y + tb.h) return i;
   }
   return -1;
+}
+
+export function drawTextBoxPreview() {
+  if (!state.drawingTool || state.drawingTool !== 'text') return;
+  const ctx = state.ctx;
+  const x = Math.min(state.drawingStartX, state.lastWorldMouse.x);
+  const y = Math.min(state.drawingStartY, state.lastWorldMouse.y);
+  const w = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
+  const h = Math.abs(state.lastWorldMouse.y - state.drawingStartY);
+
+  ctx.save();
+  ctx.fillStyle = '#1a1a1a';
+  drawRoundedRect(ctx, x, y, w, h, 6);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 1.5;
+  const outlineOffset = ctx.lineWidth / 2;
+  drawRoundedRect(ctx, x - outlineOffset, y - outlineOffset, w + outlineOffset * 2, h + outlineOffset * 2, 6 + outlineOffset);
+  ctx.stroke();
+  ctx.restore();
 }
 
 export function getTextBoxEdgeAt(wx, wy) {

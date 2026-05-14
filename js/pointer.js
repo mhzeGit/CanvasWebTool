@@ -38,6 +38,7 @@ function setupListeners() {
   state.canvas.addEventListener('pointerdown', onPointerDown);
   state.canvas.addEventListener('pointermove', onPointerMove);
   state.canvas.addEventListener('pointerup', onPointerUp);
+  state.canvas.addEventListener('pointercancel', onPointerCancel);
 }
 
 export function deleteArrowFn(ai) {
@@ -54,6 +55,16 @@ export function deleteArrowFn(ai) {
     if (state.arrowDragTarget.arrowIdx === ai) state.arrowDragTarget = null;
     else if (state.arrowDragTarget.arrowIdx > ai) state.arrowDragTarget.arrowIdx--;
   }
+}
+
+function onPointerCancel(e) {
+  if (state.drawingTool) {
+    state.drawingTool = null;
+    state.drawingShapeType = null;
+    state.drawingStartX = 0;
+    state.drawingStartY = 0;
+  }
+  try { state.canvas.releasePointerCapture(e.pointerId); } catch {}
 }
 
 function onPointerDown(e) {
@@ -127,8 +138,10 @@ function onPointerDown(e) {
       state.selectedTextBoxes.clear();
       state.selectedConnectors.clear();
       state.arrowDragTarget = null;
-      addTextBoxAt(world.x, world.y);
-      refreshSidePanel();
+      state.drawingTool = 'text';
+      state.drawingStartX = world.x;
+      state.drawingStartY = world.y;
+      canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
       return;
     }
@@ -1025,35 +1038,50 @@ function onPointerUp(e) {
   }
 
   if (state.drawingTool) {
-    if (state.drawingTool === 'arrow') {
-      const dx = world.x - state.drawingStartX;
-      const dy = world.y - state.drawingStartY;
-      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-        addArrowFromPoints(state.drawingStartX, state.drawingStartY, world.x, world.y);
+    try {
+      if (state.drawingTool === 'arrow') {
+        const dx = world.x - state.drawingStartX;
+        const dy = world.y - state.drawingStartY;
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+          addArrowFromPoints(state.drawingStartX, state.drawingStartY, world.x, world.y);
+        }
+      } else if (state.drawingTool === 'connector') {
+        const dx = world.x - state.drawingStartX;
+        const dy = world.y - state.drawingStartY;
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+          addConnector(state.drawingStartX, state.drawingStartY, world.x, world.y);
+        }
+      } else if (state.drawingTool === 'shape') {
+        const dx = world.x - state.drawingStartX;
+        const dy = world.y - state.drawingStartY;
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+          const x = Math.min(state.drawingStartX, world.x);
+          const y = Math.min(state.drawingStartY, world.y);
+          const w = Math.abs(dx);
+          const h = Math.abs(dy);
+          addShapeAt(x, y, state.drawingShapeType, w, h);
+        }
+      } else if (state.drawingTool === 'text') {
+        const dx = world.x - state.drawingStartX;
+        const dy = world.y - state.drawingStartY;
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+          const x = Math.min(state.drawingStartX, world.x);
+          const y = Math.min(state.drawingStartY, world.y);
+          const w = Math.abs(dx);
+          const h = Math.abs(dy);
+          addTextBoxAt(x, y, w, h);
+        } else {
+          addTextBoxAt(world.x, world.y);
+        }
       }
-    } else if (state.drawingTool === 'connector') {
-      const dx = world.x - state.drawingStartX;
-      const dy = world.y - state.drawingStartY;
-      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-        addConnector(state.drawingStartX, state.drawingStartY, world.x, world.y);
-      }
-    } else if (state.drawingTool === 'shape') {
-      const dx = world.x - state.drawingStartX;
-      const dy = world.y - state.drawingStartY;
-      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-        const x = Math.min(state.drawingStartX, world.x);
-        const y = Math.min(state.drawingStartY, world.y);
-        const w = Math.abs(dx);
-        const h = Math.abs(dy);
-        addShapeAt(x, y, state.drawingShapeType, w, h);
-      }
+    } finally {
+      state.drawingTool = null;
+      state.drawingShapeType = null;
+      state.drawingStartX = 0;
+      state.drawingStartY = 0;
+      try { canvas.releasePointerCapture(e.pointerId); } catch {}
+      refreshSidePanel();
     }
-    state.drawingTool = null;
-    state.drawingShapeType = null;
-    state.drawingStartX = 0;
-    state.drawingStartY = 0;
-    try { canvas.releasePointerCapture(e.pointerId); } catch {}
-    refreshSidePanel();
     return;
   }
   if (state.isDraggingArrowEnd && state.arrowDragTarget) {

@@ -424,10 +424,10 @@ function startTextBoxEditing(tbIdx) {
   const screenW = tb.w * state.scale;
   const screenH = tb.h * state.scale;
 
-  const el = document.createElement('textarea');
-  el.className = 'inline-editor inline-editor-text';
-  el.value = tb.text || '';
-  el.placeholder = 'Enter text...';
+  const el = document.createElement('div');
+  el.contentEditable = 'true';
+  el.className = 'inline-editor-richtext';
+  el.innerHTML = renderMarkdownToHtml(tb.text || '') || '<div class="md-block md-paragraph"><br></div>';
   el.style.position = 'fixed';
   el.style.left = (screen.x + canvasRect.left) + 'px';
   el.style.top = (screen.y + canvasRect.top) + 'px';
@@ -439,25 +439,35 @@ function startTextBoxEditing(tbIdx) {
   el.style.lineHeight = '1.4';
   el.style.padding = (8 * state.scale) + 'px';
   el.style.background = tb.color || '#1a1a1a';
-  el.style.borderRadius = (6 * state.scale) + 'px';
   el.style.border = '1px solid #f0c800';
+  el.style.overflow = 'hidden';
+  el.style.outline = 'none';
 
   document.body.appendChild(el);
   el.focus();
-  el.select();
 
   const originalValue = tb.text;
-  state.editingState = { type: 'textBox', idx: tbIdx, el, originalValue };
+  state.editingState = { type: 'textBox', idx: tbIdx, el, originalValue, isRichText: true };
 
   el.addEventListener('input', () => {
-    tb.text = el.value;
+    const md = htmlToMarkdown(el);
+    tb.text = md;
+  });
+
+  el.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') {
+      cancelEditing();
+    } else if (ev.key === 'Enter' && !ev.shiftKey) {
+      ev.preventDefault();
+      handleRichEnter(el, ev);
+    } else if (ev.key === 'Backspace') {
+      handleRichBackspace(el, ev);
+    } else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'e') {
+      ev.preventDefault();
+      wrapSelectionWithTag(el, 'code');
+    }
   });
 
   const commit = () => { commitEditing(); };
   el.addEventListener('blur', commit);
-  el.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape') {
-      cancelEditing();
-    }
-  });
 }

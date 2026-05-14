@@ -183,6 +183,87 @@ export function refreshSidePanel() {
     return;
   }
 
+  if (state.selectedTextBoxes.size === 1) {
+    flushPanelEdit();
+    const ti = Array.from(state.selectedTextBoxes)[0];
+    const tb = state.textBoxes[ti];
+    const tbId = tb.id;
+
+    sidePanelContent.innerHTML = [
+      '<div class="panel-section-title">Text Box</div>',
+      '<div class="panel-row"><label>Color</label><input id="panelTBColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(tb.color ?? '#1a1a1a') + '" /></div>',
+      '<div class="panel-row"><label>Border</label><input id="panelTBBorderColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(tb.borderColor ?? '#444') + '" /></div>',
+      '<div class="panel-row"><label>Text Color</label><input id="panelTBTextColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(tb.textColor ?? '#ddd') + '" /></div>',
+      '<div class="panel-row"><label>Font Size</label><input id="panelTBFontSize" class="panel-input" type="number" min="8" max="72" value="' + (tb.fontSize ?? 14) + '" /></div>',
+      '<div class="panel-row"><label>Width</label><input id="panelTBW" class="panel-input" type="number" min="10" value="' + tb.w + '" /></div>',
+      '<div class="panel-row"><label>Height</label><input id="panelTBH" class="panel-input" type="number" min="10" value="' + tb.h + '" /></div>',
+      '<div class="panel-row"><label>Text</label><textarea id="panelTBText" class="panel-input panel-textarea" placeholder="Enter text...">' + state.escAttr(tb.text ?? '') + '</textarea></div>',
+      '<div id="panelTBTextPreview" class="panel-markdown-preview">' + renderMarkdownToHtml(tb.text ?? '') + '</div>',
+    ].join('');
+
+    const colorInput = document.getElementById('panelTBColor');
+    const borderColorInput = document.getElementById('panelTBBorderColor');
+    const textColorInput = document.getElementById('panelTBTextColor');
+    const fontSizeInput = document.getElementById('panelTBFontSize');
+    const wInput = document.getElementById('panelTBW');
+    const hInput = document.getElementById('panelTBH');
+    const textInput = document.getElementById('panelTBText');
+
+    if (colorInput) {
+      colorInput.addEventListener('input', (ev) => { tb.color = ev.target.value; });
+    }
+    if (borderColorInput) {
+      borderColorInput.addEventListener('input', (ev) => { tb.borderColor = ev.target.value; });
+    }
+    if (textColorInput) {
+      textColorInput.addEventListener('input', (ev) => { tb.textColor = ev.target.value; });
+    }
+    if (fontSizeInput) {
+      fontSizeInput.addEventListener('input', (ev) => {
+        const v = parseFloat(ev.target.value);
+        if (!Number.isNaN(v) && v >= 8) tb.fontSize = v;
+      });
+    }
+    if (wInput) {
+      wInput.addEventListener('input', (ev) => {
+        const v = parseFloat(ev.target.value);
+        if (!Number.isNaN(v) && v >= 10) tb.w = v;
+      });
+    }
+    if (hInput) {
+      hInput.addEventListener('input', (ev) => {
+        const v = parseFloat(ev.target.value);
+        if (!Number.isNaN(v) && v >= 10) tb.h = v;
+      });
+    }
+    if (textInput) {
+      const preview = document.getElementById('panelTBTextPreview');
+      textInput.addEventListener('input', (ev) => {
+        tb.text = ev.target.value;
+        if (preview) preview.innerHTML = renderMarkdownToHtml(ev.target.value);
+      });
+    }
+    return;
+  }
+
+  if (state.selectedTextBoxes.size > 1) {
+    flushPanelEdit();
+    sidePanelContent.innerHTML = '<div class="panel-section-title">' + state.selectedTextBoxes.size + ' text boxes selected</div>';
+    return;
+  }
+
+  if (state.selectedConnectors.size === 1) {
+    flushPanelEdit();
+    sidePanelContent.innerHTML = '<div class="panel-section-title">' + state.selectedConnectors.size + ' connector selected</div>';
+    return;
+  }
+
+  if (state.selectedConnectors.size > 1) {
+    flushPanelEdit();
+    sidePanelContent.innerHTML = '<div class="panel-section-title">' + state.selectedConnectors.size + ' connectors selected</div>';
+    return;
+  }
+
   if (state.selected.size === 0 && state.selectedShapes.size === 0 && state.selectedTextBoxes.size === 0 && state.selectedConnectors.size === 0) {
     flushPanelEdit();
     sidePanelContent.innerHTML = '<div class="panel-empty">Nothing selected</div>';

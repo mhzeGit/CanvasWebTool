@@ -117,13 +117,15 @@ export function addShapeAt(worldX, worldY, shapeType, optW, optH) {
   history.push(createAddShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, shape, idx));
 }
 
-export function addTextBoxAt(worldX, worldY) {
+export function addTextBoxAt(worldX, worldY, optW, optH) {
   flushPanelEdit();
-  const w = 200; const h = 80;
+  const isDrag = optW !== undefined && optH !== undefined;
+  const w = isDrag ? optW : 200;
+  const h = isDrag ? optH : 80;
   const textBox = {
     id: state.nextTextBoxId++,
-    x: worldX - w / 2,
-    y: worldY - h / 2,
+    x: isDrag ? worldX : worldX - w / 2,
+    y: isDrag ? worldY : worldY - h / 2,
     w,
     h,
     text: '',

@@ -5,7 +5,7 @@ import { drawNodes, drawSelectionMarquee } from './nodes.js';
 import { drawConnection, drawConnectionPreview } from './connections.js';
 import { drawArrows, updateArrowPositionsFromConnections } from './arrows.js';
 import { drawShapes, drawShapePreview } from './shapes.js';
-import { drawTextBoxes } from './textboxes.js';
+import { drawTextBoxes, drawTextBoxPreview } from './textboxes.js';
 import { drawConnectors, drawConnectorPreview, drawArrowPreview } from './connectors.js';
 import { initPointer } from './pointer.js';
 import { setupKeyboard } from './keyboard.js';
@@ -80,6 +80,7 @@ function animate() {
   drawConnectorPreview();
   drawArrowPreview();
   drawShapePreview();
+  drawTextBoxPreview();
 
   const key = state.computeSelectionKey();
   if (key !== state.lastPanelKey) {
