@@ -46,7 +46,7 @@ export function parseInlineSpans(text) {
       const end = text.indexOf('*', pos + 1);
       if (end !== -1 && text[end + 1] !== '*') {
         const inner = text.slice(pos + 1, end);
-        if (inner) spans.push({ text: inner, bold: false, italic: true, code: false, strike: false });
+        if (inner) spans.push({ text: inner, bold: true, italic: false, code: false, strike: false });
         pos = end + 1;
         continue;
       }
@@ -353,8 +353,8 @@ function extractInlineMd(node) {
       if (ch.getAttribute('contenteditable') === 'false') continue;
       const tag = ch.tagName.toLowerCase();
       const inner = extractInlineMd(ch);
-      if (tag === 'strong' || tag === 'b') out += '**' + inner + '**';
-      else if (tag === 'em' || tag === 'i') out += '*' + inner + '*';
+      if (tag === 'strong' || tag === 'b') out += '*' + inner + '*';
+      else if (tag === 'em' || tag === 'i') out += '_' + inner + '_';
       else if (tag === 'code') out += '`' + inner + '`';
       else if (tag === 'del' || tag === 's' || tag === 'strike') out += '~~' + inner + '~~';
       else if (tag === 'br') out += '\n';

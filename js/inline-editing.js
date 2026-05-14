@@ -7,6 +7,7 @@ import { createPropertyChangeCmd } from './undo.js';
 import { refreshSidePanel } from './side-panel.js';
 import { history } from './history.js';
 import { blocksToHtml, htmlToBlocks, markdownToBlocks, blocksToSimpleText } from './rich-text.js';
+import { parseInlineSpans } from './markdown.js';
 import { TITLE_PLACEHOLDER, DEFAULT_NODE_COLOR } from './config.js';
 import { getEntityElement } from './dom-entities.js';
 
@@ -105,6 +106,8 @@ export function startEditing(idx, field) {
     state.editingState = { type: 'node', idx, field, el: body, originalValue, isRichText: true };
 
     const onInput = () => {
+      if (_detectingMarkdown) return;
+      _detectAndApplyMarkdown(body);
       n.blocks = htmlToBlocks(body);
       n.text = blocksToSimpleText(n.blocks);
     };
@@ -272,6 +275,8 @@ function startTextBoxEditing(tbIdx) {
   state.editingState = { type: 'textBox', idx: tbIdx, el: content, originalValue, isRichText: true };
 
   const onInput = () => {
+    if (_detectingMarkdown) return;
+    _detectAndApplyMarkdown(content);
     tb.blocks = htmlToBlocks(content);
     tb.text = blocksToSimpleText(tb.blocks);
   };
@@ -408,6 +413,124 @@ function handleBackspace(editor, ev) {
   sel.removeAllRanges();
   sel.addRange(r);
   editor.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+let _detectingMarkdown = false;
+
+function _escHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function _renderInlineMarkdown(text) {
+  if (!text) return '<br>';
+  const spans = parseInlineSpans(text);
+  let html = '';
+  for (const sp of spans) {
+    let t = _escHtml(sp.text);
+    if (sp.code) t = '<code>' + t + '</code>';
+    if (sp.strike) t = '<s>' + t + '</s>';
+    if (sp.bold) t = '<strong>' + t + '</strong>';
+    if (sp.italic) t = '<em>' + t + '</em>';
+    html += t;
+  }
+  return html || '<br>';
+}
+
+function _hasUnformattedMarkdown(block) {
+  const text = block.textContent;
+  if (!text || !text.trim()) return false;
+  const html = block.innerHTML;
+  const spans = parseInlineSpans(text);
+  const hasBold = spans.some(s => s.bold);
+  const hasCode = spans.some(s => s.code);
+  const hasStrike = spans.some(s => s.strike);
+  if (hasBold && !/<strong>/.test(html)) return true;
+  if (hasCode && !/<code>/.test(html)) return true;
+  if (hasStrike && !/<s>/.test(html)) return true;
+  return false;
+}
+
+function _applyBlockMarkdown(block) {
+  const text = block.textContent;
+  if (!text || !text.trim()) return false;
+  if (!block.classList.contains('rt-paragraph')) return false;
+
+  const hMatch = text.match(/^(#{1,3})\s(.+)/);
+  if (hMatch) {
+    const level = hMatch[1].length;
+    const cls = level === 1 ? 'rt-h1' : level === 2 ? 'rt-h2' : 'rt-h3';
+    block.classList.remove('rt-paragraph');
+    block.classList.add(cls);
+    block.innerHTML = _renderInlineMarkdown(hMatch[2]);
+    placeCursorAtEnd(block);
+    return true;
+  }
+
+  const bulMatch = text.match(/^([-*])\s(.+)/);
+  if (bulMatch) {
+    block.classList.remove('rt-paragraph');
+    block.classList.add('rt-bullet');
+    block.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span> ' + _renderInlineMarkdown(bulMatch[2]);
+    placeCursorAtEnd(block);
+    return true;
+  }
+
+  const qtMatch = text.match(/^>\s?(.+)/);
+  if (qtMatch) {
+    block.classList.remove('rt-paragraph');
+    block.classList.add('rt-quote');
+    block.innerHTML = _renderInlineMarkdown(qtMatch[1]) || '<br>';
+    placeCursorAtEnd(block);
+    return true;
+  }
+
+  const numMatch = text.match(/^(\d+)\.\s(.+)/);
+  if (numMatch) {
+    block.classList.remove('rt-paragraph');
+    block.classList.add('rt-numbered');
+    block.innerHTML = '<span class="rt-marker" contenteditable="false">' + numMatch[1] + '.</span> ' + _renderInlineMarkdown(numMatch[2]);
+    placeCursorAtEnd(block);
+    return true;
+  }
+
+  return false;
+}
+
+function _applyInlineMarkdown(block) {
+  if (block.querySelector('.rt-marker')) return false;
+  if (!_hasUnformattedMarkdown(block)) return false;
+
+  const text = block.textContent;
+  const newHtml = _renderInlineMarkdown(text);
+  if (newHtml === block.innerHTML) return false;
+
+  block.innerHTML = newHtml;
+  placeCursorAtEnd(block);
+  return true;
+}
+
+function _detectAndApplyMarkdown(editor) {
+  if (_detectingMarkdown) return;
+  _detectingMarkdown = true;
+  try {
+    let changed = false;
+    const blocks = editor.querySelectorAll('.rt-block');
+    for (const block of blocks) {
+      if (block.contentEditable === 'false') continue;
+      if (_applyBlockMarkdown(block)) {
+        changed = true;
+        continue;
+      }
+      if (_applyInlineMarkdown(block)) {
+        changed = true;
+      }
+    }
+    if (changed) {
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  } finally {
+    _detectingMarkdown = false;
+  }
 }
 
 function placeCursorAtEnd(el) {

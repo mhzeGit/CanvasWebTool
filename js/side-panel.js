@@ -574,7 +574,7 @@ export function refreshSidePanel() {
       const preview = document.getElementById('panelTBTextPreview');
       textInput.addEventListener('input', (ev) => {
         const v = ev.target.value;
-        if (isBatch) { for (const m of members) m.text = v; } else { tb.text = v; }
+        if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; } } else { tb.text = v; tb.blocks = null; }
         if (preview) preview.innerHTML = renderMarkdownToHtml(v);
       });
       if (isBatch) {
@@ -826,7 +826,7 @@ export function refreshSidePanel() {
     const preview = document.getElementById('panelTextPreview');
     textInput.addEventListener('input', (ev) => {
       const v = ev.target.value;
-      if (isBatch) { for (const m of members) m.text = v; } else { n.text = v; }
+      if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; } } else { n.text = v; n.blocks = null; }
       if (preview) preview.innerHTML = renderMarkdownToHtml(v);
     });
     if (isBatch) {
@@ -1083,7 +1083,7 @@ function wireBatchNodeGroup(prefix, members) {
   }
   if (textInput) {
     textInput.addEventListener('input', (ev) => {
-      for (const m of members) m.text = ev.target.value;
+      for (const m of members) { m.text = ev.target.value; m.blocks = null; }
       const p = document.getElementById(prefix + '_textPreview');
       if (p) p.innerHTML = renderMarkdownToHtml(ev.target.value);
     });
@@ -1254,7 +1254,7 @@ function wireMixedTBGroup(prefix, members) {
   }
   if (textInput) {
     textInput.addEventListener('input', (ev) => {
-      for (const m of members) m.text = ev.target.value;
+      for (const m of members) { m.text = ev.target.value; m.blocks = null; }
       const p = document.getElementById(prefix + '_textPreview');
       if (p) p.innerHTML = renderMarkdownToHtml(ev.target.value);
     });

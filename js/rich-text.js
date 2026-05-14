@@ -45,8 +45,8 @@ export function blocksToMarkdown(blocks) {
       let t = sp.t || '';
       if (sp.cd) t = '`' + t + '`';
       if (sp.s) t = '~~' + t + '~~';
-      if (sp.b) t = '**' + t + '**';
-      if (sp.i) t = '*' + t + '*';
+      if (sp.b) t = '*' + t + '*';
+      if (sp.i) t = '_' + t + '_';
       line += t;
     }
     lines.push(line);
