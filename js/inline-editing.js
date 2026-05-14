@@ -431,6 +431,7 @@ function _renderInlineMarkdown(text) {
     if (sp.strike) t = '<s>' + t + '</s>';
     if (sp.bold) t = '<strong>' + t + '</strong>';
     if (sp.italic) t = '<em>' + t + '</em>';
+    if (sp.fc) t = '<span style="color:' + sp.fc + '">' + t + '</span>';
     html += t;
   }
   return html || '<br>';
@@ -444,9 +445,11 @@ function _hasUnformattedMarkdown(block) {
   const hasBold = spans.some(s => s.bold);
   const hasCode = spans.some(s => s.code);
   const hasStrike = spans.some(s => s.strike);
+  const hasColor = spans.some(s => s.fc);
   if (hasBold && !/<strong>/.test(html)) return true;
   if (hasCode && !/<code>/.test(html)) return true;
   if (hasStrike && !/<s>/.test(html)) return true;
+  if (hasColor && !/<span[^>]*style=/.test(html)) return true;
   return false;
 }
 

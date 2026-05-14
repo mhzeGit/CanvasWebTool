@@ -1,4 +1,4 @@
-import { parseMarkdownLines } from './markdown.js';
+import { parseMarkdownLines, NAMED_COLORS } from './markdown.js';
 
 export function markdownToBlocks(text) {
   if (!text) return [{ t: 'p', s: [{ t: '' }] }];
@@ -51,6 +51,10 @@ export function blocksToMarkdown(blocks) {
       if (sp.s) t = '~~' + t + '~~';
       if (sp.b) t = '*' + t + '*';
       if (sp.i) t = '_' + t + '_';
+      if (sp.fc) {
+        const entry = Object.entries(NAMED_COLORS).find(([, v]) => v === sp.fc);
+        if (entry) t = '{' + entry[0] + ':' + t + '}';
+      }
       line += t;
     }
     lines.push(line);

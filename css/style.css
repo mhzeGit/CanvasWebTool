@@ -178,6 +178,23 @@ canvas#gridCanvas {
   cursor: pointer;
 }
 
+.topbar-btn {
+  background: transparent;
+  color: var(--text-topbar);
+  border: 0;
+  padding: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.topbar-btn:hover {
+  background: var(--bg-hover);
+}
+
 .menu-button:hover {
   background: var(--bg-hover);
 }
@@ -609,6 +626,111 @@ canvas#gridCanvas {
 
 .panel-rt-btn:hover { background: var(--bg-hover); color: var(--text-heading); }
 .panel-rt-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Markdown panel editor (sidebar) */
+.panel-md-editor {
+  margin-top: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.panel-md-toolbar {
+  display: flex;
+  gap: 1px;
+  flex-wrap: wrap;
+  padding: 3px 4px;
+  background: var(--bg-input);
+  border-bottom: 1px solid var(--border-color);
+  align-items: center;
+}
+
+.panel-md-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 2px 6px;
+  min-width: 24px;
+  text-align: center;
+  transition: background 0.1s;
+  line-height: 1.4;
+}
+
+.panel-md-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-heading);
+  border-color: var(--border-input);
+}
+
+.panel-md-btn:active {
+  background: var(--bg-hover-light);
+}
+
+.panel-md-sep {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: var(--border-color);
+  margin: 0 3px;
+  flex-shrink: 0;
+}
+
+.panel-md-toggle {
+  font-weight: 700;
+  font-family: serif;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.panel-md-toggle-active {
+  background: var(--bg-hover-light);
+  color: var(--text-heading);
+  border-color: var(--border-input);
+}
+
+.panel-md-editor-body {
+  position: relative;
+  min-height: 160px;
+}
+
+.panel-md-richtext {
+  min-height: 160px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  background: var(--bg-markdown-preview);
+  color: var(--text-color);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+  outline: none;
+  cursor: text;
+  box-sizing: border-box;
+}
+
+.panel-md-richtext:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--text-muted);
+}
+
+.panel-md-raw {
+  display: block;
+  width: 100%;
+  min-height: 160px;
+  max-height: 300px;
+  resize: vertical;
+  line-height: 1.4;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  box-sizing: border-box;
+  overflow-y: auto;
+  padding: 6px 8px;
+}
 
 .shortcut-hint {
   opacity: 0.5;

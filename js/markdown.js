@@ -1,3 +1,32 @@
+export const NAMED_COLORS = {
+  red: '#e57373',
+  orange: '#ffb74d',
+  yellow: '#ffd54f',
+  green: '#81c784',
+  teal: '#4db6ac',
+  blue: '#64b5f6',
+  purple: '#ba68c8',
+  pink: '#f06292',
+  grey: '#bdbdbd',
+  gray: '#bdbdbd',
+};
+
+function getNamedColor(name) {
+  return NAMED_COLORS[name.toLowerCase()] || null;
+}
+
+function addSpan(spans, inner, props) {
+  const innerSpans = parseInlineSpans(inner);
+  for (const s of innerSpans) {
+    if (props.bold) s.bold = true;
+    if (props.code) s.code = true;
+    if (props.strike) s.strike = true;
+    if (props.italic) s.italic = true;
+    if (props.fc) s.fc = props.fc;
+    spans.push(s);
+  }
+}
+
 export function parseInlineSpans(text) {
   const spans = [];
   let pos = 0;
@@ -8,7 +37,25 @@ export function parseInlineSpans(text) {
   }
 
   while (pos < text.length) {
-    if (text.slice(pos, pos + 2) === '**') {
+    if (text[pos] === '{') {
+      const colonPos = text.indexOf(':', pos + 1);
+      if (colonPos !== -1) {
+        const colorName = text.slice(pos + 1, colonPos).toLowerCase();
+        const color = getNamedColor(colorName);
+        if (color) {
+          const closeBrace = text.indexOf('}', colonPos + 1);
+          if (closeBrace !== -1 && closeBrace > colonPos + 1) {
+            flush();
+            const inner = text.slice(colonPos + 1, closeBrace);
+            addSpan(spans, inner, { fc: color });
+            pos = closeBrace + 1;
+            continue;
+          }
+        }
+      }
+      buf += text[pos];
+      pos += 1;
+    } else if (text.slice(pos, pos + 2) === '**') {
       flush();
       const end = text.indexOf('**', pos + 2);
       if (end !== -1) {
@@ -349,6 +396,7 @@ export function renderMarkdownToHtml(text) {
       if (span.strike) t = '<del>' + t + '</del>';
       if (span.bold) t = '<strong>' + t + '</strong>';
       if (span.italic) t = '<em>' + t + '</em>';
+      if (span.fc) t = '<span style="color:' + span.fc + '">' + t + '</span>';
       inner += t;
     }
     switch (line.type) {
@@ -379,6 +427,16 @@ function extractInlineMd(node) {
       else if (tag === 'code') out += '`' + inner + '`';
       else if (tag === 'del' || tag === 's' || tag === 'strike') out += '~~' + inner + '~~';
       else if (tag === 'br') out += '\n';
+      else if (tag === 'span') {
+        const color = ch.style && ch.style.color;
+        if (color) {
+          const entry = Object.entries(NAMED_COLORS).find(([, v]) => v === color);
+          if (entry) out += '{' + entry[0] + ':' + inner + '}';
+          else out += inner;
+        } else {
+          out += inner;
+        }
+      }
       else out += inner;
     }
   }

@@ -1,6 +1,6 @@
 import { state } from './state.js';
-import { EDGE_MARGIN } from './config.js';
-import { getEdgeAt as getEntityEdgeAt } from './utils.js';
+import { EDGE_MARGIN, NODE_MIN_W, NODE_MIN_H, DEFAULT_NODE_COLOR } from './config.js';
+import { getEdgeAt as getEntityEdgeAt, drawRoundedRect, getDarkerColor } from './utils.js';
 
 export function hitTestNode(wx, wy) {
   const drawOrder = state.getDrawOrder();
@@ -39,6 +39,58 @@ export function getEdgeAt(wx, wy) {
 
 export function findNodeAtPoint(wx, wy) {
   return hitTestNode(wx, wy);
+}
+
+export function drawNodePreview() {
+  if (!state.drawingTool || state.drawingTool !== 'node') return;
+  const ctx = state.ctx;
+  const rawW = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
+  const rawH = Math.abs(state.lastWorldMouse.y - state.drawingStartY);
+
+  if (rawW < NODE_MIN_W || rawH < NODE_MIN_H) {
+    const defaultW = 240;
+    const defaultH = 160;
+    const px = state.drawingStartX - defaultW / 2;
+    const py = state.drawingStartY - defaultH / 2;
+    ctx.save();
+    ctx.fillStyle = DEFAULT_NODE_COLOR;
+    drawRoundedRect(ctx, px, py, defaultW, defaultH, 12);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.fillStyle = getDarkerColor(DEFAULT_NODE_COLOR, 0.6);
+    drawRoundedRect(ctx, px, py, defaultW, 30, 12);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  const x = Math.min(state.drawingStartX, state.lastWorldMouse.x);
+  const y = Math.min(state.drawingStartY, state.lastWorldMouse.y);
+  const w = rawW;
+  const h = rawH;
+  const cornerRadius = Math.min(12, Math.min(w, h) * 0.2);
+
+  ctx.save();
+  ctx.fillStyle = DEFAULT_NODE_COLOR;
+  drawRoundedRect(ctx, x, y, w, h, cornerRadius);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  const titleBarH = Math.min(30, h);
+  ctx.fillStyle = getDarkerColor(DEFAULT_NODE_COLOR, 0.6);
+  ctx.beginPath();
+  ctx.moveTo(x + cornerRadius, y);
+  ctx.lineTo(x + w - cornerRadius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + cornerRadius);
+  ctx.lineTo(x + w, y + titleBarH);
+  ctx.lineTo(x, y + titleBarH);
+  ctx.lineTo(x, y + cornerRadius);
+  ctx.quadraticCurveTo(x, y, x + cornerRadius, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
 
 export function drawSelectionMarquee() {

@@ -1372,7 +1372,11 @@ function onPointerUp(e) {
           const y = Math.min(state.drawingStartY, world.y);
           const w = Math.abs(dx);
           const h = Math.abs(dy);
-          addShapeAt(x, y, state.drawingShapeType, w, h);
+          if (w < SHAPE_MIN_W || h < SHAPE_MIN_H) {
+            addShapeAt(state.drawingStartX, state.drawingStartY, state.drawingShapeType);
+          } else {
+            addShapeAt(x, y, state.drawingShapeType, w, h);
+          }
         }
       } else if (state.drawingTool === 'node') {
         const dx = world.x - state.drawingStartX;
@@ -1382,7 +1386,11 @@ function onPointerUp(e) {
           const y = Math.min(state.drawingStartY, world.y);
           const w = Math.abs(dx);
           const h = Math.abs(dy);
-          addNodeAt(x, y, w, h);
+          if (w < NODE_MIN_W || h < NODE_MIN_H) {
+            addNodeAt(state.drawingStartX, state.drawingStartY);
+          } else {
+            addNodeAt(x, y, w, h);
+          }
         } else {
           addNodeAt(world.x, world.y);
         }
@@ -1394,7 +1402,11 @@ function onPointerUp(e) {
           const y = Math.min(state.drawingStartY, world.y);
           const w = Math.abs(dx);
           const h = Math.abs(dy);
-          addTextBoxAt(x, y, w, h);
+          if (w < TEXTBOX_MIN_W || h < TEXTBOX_MIN_H) {
+            addTextBoxAt(state.drawingStartX, state.drawingStartY);
+          } else {
+            addTextBoxAt(x, y, w, h);
+          }
         } else {
           addTextBoxAt(world.x, world.y);
         }

@@ -62,7 +62,7 @@ function wrapSelection(el, wrapper) {
 
 function onKeyDown(e) {
   const active = document.activeElement;
-  const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+  const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
 
   if (isInput && handleMarkdownShortcut(e)) {
     return;

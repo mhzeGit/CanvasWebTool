@@ -3,7 +3,7 @@ import { GRID } from './config.js';
 import { drawGrid } from './grid.js';
 import { initSettings } from './settings.js';
 import { openSettings } from './settings-dialog.js';
-import { drawSelectionMarquee } from './nodes.js';
+import { drawSelectionMarquee, drawNodePreview } from './nodes.js';
 import { drawArrows, updateArrowPositionsFromConnections } from './arrows.js';
 import { drawShapePreview } from './shapes.js';
 import { drawTextBoxPreview } from './textboxes.js';
@@ -77,6 +77,7 @@ function animate() {
 
   drawSelectionMarquee();
 
+  drawNodePreview();
   drawConnectorPreview();
   drawArrowPreview();
   drawShapePreview();

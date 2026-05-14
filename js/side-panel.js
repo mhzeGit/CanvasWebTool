@@ -7,25 +7,287 @@ import {
   createBatchTextBoxPropertyChangeCmd, createBatchResizeTextBoxCmd
 } from './undo.js';
 import { getArrowEndpoint } from './arrows.js';
-import { renderMarkdownToHtml } from './markdown.js';
-import { blocksToHtml, getOrCreateBlocks } from './rich-text.js';
+import { blocksToHtml, getOrCreateBlocks, htmlToBlocks, blocksToMarkdown, markdownToBlocks } from './rich-text.js';
 import { TITLE_PLACEHOLDER, TEXT_PLACEHOLDER } from './config.js';
 
-function buildRichTextToolbar() {
-  return '<div class="panel-rt-btns">' +
-    '<button class="panel-rt-btn" onclick="document.execCommand(\'bold\',false,null)" title="Bold (Ctrl+B)"><strong>B</strong></button>' +
-    '<button class="panel-rt-btn" onclick="document.execCommand(\'italic\',false,null)" title="Italic (Ctrl+I)"><em>I</em></button>' +
-    '<button class="panel-rt-btn" onclick="document.execCommand(\'underline\',false,null)" title="Underline (Ctrl+U)"><u>U</u></button>' +
-    '<button class="panel-rt-btn" onclick="document.execCommand(\'strikeThrough\',false,null)" title="Strikethrough"><s>S</s></button>' +
+function buildMarkdownToolbar() {
+  return '<div class="panel-md-toolbar">' +
+    '<button class="panel-md-btn" data-cmd="bold" title="Bold (Ctrl+B)"><strong>B</strong></button>' +
+    '<button class="panel-md-btn" data-cmd="italic" title="Italic (Ctrl+I)"><em>I</em></button>' +
+    '<button class="panel-md-btn" data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>' +
+    '<button class="panel-md-btn" data-cmd="strikethrough" title="Strikethrough (Ctrl+Shift+S)"><s>S</s></button>' +
+    '<span class="panel-md-sep"></span>' +
+    '<button class="panel-md-btn" data-cmd="h1" title="Heading 1">H1</button>' +
+    '<button class="panel-md-btn" data-cmd="h2" title="Heading 2">H2</button>' +
+    '<button class="panel-md-btn" data-cmd="h3" title="Heading 3">H3</button>' +
+    '<span class="panel-md-sep"></span>' +
+    '<button class="panel-md-btn" data-cmd="ul" title="Bullet List">UL</button>' +
+    '<button class="panel-md-btn" data-cmd="ol" title="Numbered List">OL</button>' +
+    '<span class="panel-md-sep"></span>' +
+    '<button class="panel-md-btn" data-cmd="blockquote" title="Blockquote"><span style="font-family:serif;">\u275D</span></button>' +
+    '<button class="panel-md-btn" data-cmd="code" title="Inline Code">&lt;/&gt;</button>' +
+    '<button class="panel-md-btn" data-cmd="hr" title="Horizontal Rule">\u2014</button>' +
+    '<button class="panel-md-btn" data-cmd="link" title="Insert Link">\uD83D\uDD17</button>' +
+    '<span class="panel-md-sep"></span>' +
+    '<button class="panel-md-btn panel-md-toggle" data-cmd="toggle" title="Toggle raw markdown/rich text">M</button>' +
     '</div>';
 }
 
 function _sp(html) {
-  if (state.editingState && state.editingState.isRichText) {
-    html = buildRichTextToolbar() + html;
-  }
   const panel = state.sidePanelContent;
   panel.innerHTML = html;
+}
+
+function _getSelectedRtBlock(root) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return null;
+  let node = sel.getRangeAt(0).startContainer;
+  while (node && node !== root) {
+    if (node.nodeType === Node.ELEMENT_NODE && node.classList && node.classList.contains('rt-block')) {
+      return node;
+    }
+    node = node.parentNode;
+  }
+  return null;
+}
+
+function _setBlockClass(block, cls) {
+  const typeClasses = ['rt-paragraph', 'rt-h1', 'rt-h2', 'rt-h3', 'rt-bullet', 'rt-numbered', 'rt-checkbox', 'rt-quote'];
+  for (const c of typeClasses) block.classList.remove(c);
+  block.classList.add(cls);
+}
+
+function _removeBlockMarker(block) {
+  const marker = block.querySelector('.rt-marker');
+  if (marker) marker.remove();
+}
+
+function _addBlockMarker(block, type) {
+  _removeBlockMarker(block);
+  const marker = document.createElement('span');
+  marker.className = 'rt-marker';
+  marker.contentEditable = 'false';
+  if (type === 'bul') {
+    marker.textContent = '\u2022';
+  } else if (type === 'num') {
+    marker.textContent = '1.';
+  }
+  block.insertBefore(marker, block.firstChild);
+  if (block.firstChild === marker && marker.nextSibling && marker.nextSibling.nodeType === Node.TEXT_NODE) {
+    // space after marker already present from blocksToHtml
+  } else if (block.firstChild === marker) {
+    marker.after(document.createTextNode(' '));
+  }
+}
+
+function _handleRichTextCommand(cmd, root) {
+  const inlineMap = { bold: 'bold', italic: 'italic', underline: 'underline', strikethrough: 'strikeThrough' };
+  if (inlineMap[cmd]) {
+    document.execCommand(inlineMap[cmd], false, null);
+    return;
+  }
+  if (cmd === 'code') {
+    const sel = window.getSelection().toString() || 'code';
+    document.execCommand('insertHTML', false, '<code>' + state.escAttr(sel) + '</code>');
+    return;
+  }
+  if (cmd === 'link') {
+    const sel = window.getSelection().toString() || 'link';
+    const url = prompt('Enter URL:', 'https://');
+    if (url) {
+      document.execCommand('insertHTML', false, '<a href="' + state.escAttr(url) + '" target="_blank">' + state.escAttr(sel) + '</a>');
+    }
+    return;
+  }
+  if (cmd === 'hr') {
+    document.execCommand('insertHTML', false, '<div class="rt-block rt-divider" contenteditable="false"><hr></div><div class="rt-block rt-paragraph"><br></div>');
+    return;
+  }
+  const typeMap = { h1: 'rt-h1', h2: 'rt-h2', h3: 'rt-h3', ul: 'rt-bullet', ol: 'rt-numbered', blockquote: 'rt-quote' };
+  const targetClass = typeMap[cmd];
+  if (!targetClass) return;
+  const block = _getSelectedRtBlock(root);
+  if (!block) return;
+  if (block.classList.contains(targetClass)) {
+    _setBlockClass(block, 'rt-paragraph');
+    _removeBlockMarker(block);
+  } else {
+    _setBlockClass(block, targetClass);
+    if (cmd === 'ul' || cmd === 'ol') {
+      _addBlockMarker(block, cmd === 'ul' ? 'bul' : 'num');
+    } else {
+      _removeBlockMarker(block);
+    }
+  }
+}
+
+function _handleRawTextCommand(cmd, ta) {
+  const mdPairs = {
+    bold: ['**', '**'],
+    italic: ['*', '*'],
+    underline: ['<u>', '</u>'],
+    strikethrough: ['~~', '~~'],
+    code: ['`', '`'],
+    h1: ['# ', ''],
+    h2: ['## ', ''],
+    h3: ['### ', ''],
+    ul: ['\n- ', ''],
+    ol: ['\n1. ', ''],
+    blockquote: ['\n> ', ''],
+    hr: ['\n___\n', ''],
+    link: ['[', '](https://)'],
+  };
+  const pair = mdPairs[cmd];
+  if (!pair) return;
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const sel = ta.value.substring(start, end) || 'text';
+  const mdPrefix = pair[0];
+  const suffix = pair[1];
+  const insertText = (mdPrefix.startsWith('\n') && start > 0 && ta.value[start - 1] !== '\n' ? '\n' : '') +
+    mdPrefix.replace(/^\n+/, '') + sel + suffix;
+  ta.value = ta.value.substring(0, start) + insertText + ta.value.substring(end);
+  const cursorPos = start + insertText.length;
+  ta.selectionStart = ta.selectionEnd = cursorPos;
+  ta.focus();
+}
+
+function setupMarkdownEditor(editorId, opts) {
+  const editorEl = document.getElementById(editorId + 'Editor');
+  const rtDiv = document.getElementById(editorId + 'RT');
+  const rawTa = document.getElementById(editorId + 'Raw');
+  if (!editorEl || !rtDiv || !rawTa) return;
+
+  let isRichText = true;
+  let syncTimer = 0;
+  let isSyncing = false;
+
+  function richToText() {
+    return blocksToMarkdown(htmlToBlocks(rtDiv));
+  }
+
+  function textToRich(text) {
+    rtDiv.innerHTML = blocksToHtml(markdownToBlocks(text));
+  }
+
+  function syncToEntity() {
+    if (isSyncing) return;
+    isSyncing = true;
+    try {
+      if (isRichText) {
+        opts.setText(richToText());
+      } else {
+        opts.setText(rawTa.value);
+      }
+      if (opts.onChange) opts.onChange();
+    } finally {
+      isSyncing = false;
+    }
+  }
+
+  function scheduleSync(ms) {
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(syncToEntity, ms);
+  }
+
+  function switchMode(toRich) {
+    if (toRich === isRichText) return;
+    isSyncing = true;
+    try {
+      if (toRich) {
+        const blocks = markdownToBlocks(rawTa.value || opts.getText());
+        rtDiv.innerHTML = blocksToHtml(blocks);
+        rtDiv.style.display = '';
+        rawTa.style.display = 'none';
+        isRichText = true;
+        rtDiv.focus();
+      } else {
+        const text = richToText();
+        rawTa.value = text;
+        rtDiv.style.display = 'none';
+        rawTa.style.display = '';
+        isRichText = false;
+        rawTa.focus();
+      }
+      opts.setText(isRichText ? richToText() : rawTa.value);
+    } finally {
+      isSyncing = false;
+    }
+  }
+
+  rtDiv.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+    if (!text) return;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    const textNode = document.createTextNode(text);
+    range.insertNode(textNode);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    scheduleSync(10);
+  });
+
+  editorEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-cmd]');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const cmd = btn.dataset.cmd;
+    if (cmd === 'toggle') {
+      switchMode(!isRichText);
+      return;
+    }
+    if (isRichText) {
+      rtDiv.focus();
+      _handleRichTextCommand(cmd, rtDiv);
+    } else {
+      _handleRawTextCommand(cmd, rawTa);
+    }
+    scheduleSync(50);
+  });
+
+  rtDiv.addEventListener('input', () => {
+    scheduleSync(50);
+  });
+
+  rawTa.addEventListener('input', () => {
+    if (isSyncing) return;
+    opts.setText(rawTa.value);
+    if (opts.onChange) opts.onChange();
+  });
+
+  let hasFocus = false;
+  function onEditorFocus() {
+    if (!hasFocus) {
+      hasFocus = true;
+      if (opts.onFocus) opts.onFocus();
+    }
+  }
+  function onEditorBlur() {
+    setTimeout(() => {
+      if (!editorEl.contains(document.activeElement)) {
+        if (hasFocus) {
+          hasFocus = false;
+          syncToEntity();
+          if (opts.onBlur) opts.onBlur();
+        }
+      }
+    }, 0);
+  }
+  rtDiv.addEventListener('focus', onEditorFocus);
+  rawTa.addEventListener('focus', onEditorFocus);
+  rtDiv.addEventListener('blur', onEditorBlur);
+  rawTa.addEventListener('blur', onEditorBlur);
+
+  return {
+    switchMode,
+    sync: syncToEntity,
+    isRichMode: () => isRichText,
+  };
 }
 
 const _nodeBatchSnapshots = new Map();
@@ -458,8 +720,13 @@ export function refreshSidePanel() {
       '<div class="panel-row"><label>Font Size</label><input id="panelTBFontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (tb.fontSize ?? 14)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
       '<div class="panel-row"><label>Width</label><input id="panelTBW" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : tb.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
       '<div class="panel-row"><label>Height</label><input id="panelTBH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : tb.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
-      '<div class="panel-row"><label>Text</label><textarea id="panelTBText" class="panel-input panel-textarea" placeholder="' + (textMixed ? '(mixed)' : 'Enter text...') + '">' + (textMixed ? '' : state.escAttr(tb.text ?? '')) + '</textarea></div>',
-      '<div id="panelTBTextPreview" class="panel-markdown-preview">' + blocksToHtml(getOrCreateBlocks(tb)) + '</div>',
+      '<div class="panel-md-editor" id="panelTBTextEditor">' +
+        buildMarkdownToolbar() +
+        '<div class="panel-md-editor-body">' +
+          '<div id="panelTBTextRT" class="panel-md-richtext" contenteditable="true">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(tb))) + '</div>' +
+          '<textarea id="panelTBTextRaw" class="panel-input panel-textarea panel-md-raw" style="display:none" placeholder="' + (textMixed ? '(mixed)' : 'Enter text...') + '">' + (textMixed ? '' : state.escAttr(tb.text ?? '')) + '</textarea>' +
+        '</div>' +
+      '</div>',
     ].join(''));
 
     const colorInput = document.getElementById('panelTBColor');
@@ -468,8 +735,6 @@ export function refreshSidePanel() {
     const fontSizeInput = document.getElementById('panelTBFontSize');
     const wInput = document.getElementById('panelTBW');
     const hInput = document.getElementById('panelTBH');
-    const textInput = document.getElementById('panelTBText');
-
     if (colorInput) {
       colorInput.addEventListener('input', (ev) => {
         const v = ev.target.value;
@@ -570,18 +835,15 @@ export function refreshSidePanel() {
           });
       }
     }
-    if (textInput) {
-      const preview = document.getElementById('panelTBTextPreview');
-      textInput.addEventListener('input', (ev) => {
-        const v = ev.target.value;
+    setupMarkdownEditor('panelTBText', {
+      getText: () => tb.text ?? '',
+      setText: (v) => {
         if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; } } else { tb.text = v; tb.blocks = null; }
-        if (preview) preview.innerHTML = renderMarkdownToHtml(v);
-      });
-      if (isBatch) {
-        textInput.addEventListener('focus', () => _captureTbSnapshot('text', members));
-        textInput.addEventListener('blur', () => _commitTbSnapshot('text'));
-      }
-    }
+      },
+      onFocus: isBatch ? (() => _captureTbSnapshot('text', members)) : null,
+      onBlur: isBatch ? (() => _commitTbSnapshot('text')) : null,
+      onChange: () => {},
+    });
     return;
   }
 
@@ -638,8 +900,13 @@ export function refreshSidePanel() {
     '<div class="panel-row"><label>Width</label><input id="panelW" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : n.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Height</label><input id="panelH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : n.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
     parentHtml,
-    '<div class="panel-row"><label>Text</label><textarea id="panelText" class="panel-input panel-textarea" placeholder="' + (textMixed ? '(mixed)' : state.escAttr(TEXT_PLACEHOLDER)) + '">' + (textMixed ? '' : state.escAttr(n.text ?? '')) + '</textarea></div>',
-    '<div id="panelTextPreview" class="panel-markdown-preview">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(n))) + '</div>',
+    '<div class="panel-md-editor" id="panelTextEditor">' +
+      buildMarkdownToolbar() +
+      '<div class="panel-md-editor-body">' +
+        '<div id="panelTextRT" class="panel-md-richtext" contenteditable="true">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(n))) + '</div>' +
+        '<textarea id="panelTextRaw" class="panel-input panel-textarea panel-md-raw" style="display:none" placeholder="' + (textMixed ? '(mixed)' : state.escAttr(TEXT_PLACEHOLDER)) + '">' + (textMixed ? '' : state.escAttr(n.text ?? '')) + '</textarea>' +
+      '</div>' +
+    '</div>',
   ].join(''));
 
   const titleInput = document.getElementById('panelTitle');
@@ -649,7 +916,6 @@ export function refreshSidePanel() {
   const fontSizeInput = document.getElementById('panelFontSize');
   const wInput = document.getElementById('panelW');
   const hInput = document.getElementById('panelH');
-  const textInput = document.getElementById('panelText');
 
   if (titleInput) {
     titleInput.addEventListener('input', (ev) => {
@@ -822,21 +1088,15 @@ export function refreshSidePanel() {
         });
     }
   }
-  if (textInput) {
-    const preview = document.getElementById('panelTextPreview');
-    textInput.addEventListener('input', (ev) => {
-      const v = ev.target.value;
+  setupMarkdownEditor('panelText', {
+    getText: () => n.text ?? '',
+    setText: (v) => {
       if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; } } else { n.text = v; n.blocks = null; }
-      if (preview) preview.innerHTML = renderMarkdownToHtml(v);
-    });
-    if (isBatch) {
-      textInput.addEventListener('focus', () => _captureNodeSnapshot('text', members));
-      textInput.addEventListener('blur', () => _commitNodeSnapshot('text'));
-    } else {
-      textInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'text', n.text); });
-      textInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
-    }
-  }
+    },
+    onFocus: isBatch ? (() => _captureNodeSnapshot('text', members)) : (() => { startPanelEdit(nodeId, 'text', n.text); }),
+    onBlur: isBatch ? (() => _commitNodeSnapshot('text')) : (() => { flushPanelEdit(refreshSidePanel); }),
+    onChange: () => {},
+  });
 }
 
 function renderMixedEditor() {
@@ -959,8 +1219,13 @@ function appendNodeEditorHTML(parts, prefix, members, first) {
     '<div class="panel-row"><label>Font Size</label><input id="' + prefix + '_fontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (first.fontSize ?? 12)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Width</label><input id="' + prefix + '_w" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : first.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Height</label><input id="' + prefix + '_h" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : first.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
-    '<div class="panel-row"><label>Text</label><textarea id="' + prefix + '_text" class="panel-input panel-textarea" placeholder="' + (textMixed ? '(mixed)' : state.escAttr(TEXT_PLACEHOLDER)) + '">' + (textMixed ? '' : state.escAttr(first.text ?? '')) + '</textarea></div>',
-    '<div id="' + prefix + '_textPreview" class="panel-markdown-preview">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(first))) + '</div>'
+    '<div class="panel-md-editor" id="' + prefix + '_textEditor">' +
+      buildMarkdownToolbar() +
+      '<div class="panel-md-editor-body">' +
+        '<div id="' + prefix + '_textRT" class="panel-md-richtext" contenteditable="true">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(first))) + '</div>' +
+        '<textarea id="' + prefix + '_textRaw" class="panel-input panel-textarea panel-md-raw" style="display:none" placeholder="' + (textMixed ? '(mixed)' : state.escAttr(TEXT_PLACEHOLDER)) + '">' + (textMixed ? '' : state.escAttr(first.text ?? '')) + '</textarea>' +
+      '</div>' +
+    '</div>'
   );
 }
 
@@ -994,8 +1259,13 @@ function appendTextBoxEditorHTML(parts, prefix, members, first) {
     '<div class="panel-row"><label>Font Size</label><input id="' + prefix + '_fontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (first.fontSize ?? 14)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Width</label><input id="' + prefix + '_w" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : first.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Height</label><input id="' + prefix + '_h" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : first.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
-    '<div class="panel-row"><label>Text</label><textarea id="' + prefix + '_text" class="panel-input panel-textarea" placeholder="' + (textMixed ? '(mixed)' : 'Enter text...') + '">' + (textMixed ? '' : state.escAttr(first.text ?? '')) + '</textarea></div>',
-    '<div id="' + prefix + '_textPreview" class="panel-markdown-preview">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(first))) + '</div>'
+    '<div class="panel-md-editor" id="' + prefix + '_textEditor">' +
+      buildMarkdownToolbar() +
+      '<div class="panel-md-editor-body">' +
+        '<div id="' + prefix + '_textRT" class="panel-md-richtext" contenteditable="true">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(first))) + '</div>' +
+        '<textarea id="' + prefix + '_textRaw" class="panel-input panel-textarea panel-md-raw" style="display:none" placeholder="' + (textMixed ? '(mixed)' : 'Enter text...') + '">' + (textMixed ? '' : state.escAttr(first.text ?? '')) + '</textarea>' +
+      '</div>' +
+    '</div>'
   );
 }
 
@@ -1007,7 +1277,6 @@ function wireBatchNodeGroup(prefix, members) {
   const fontSizeInput = document.getElementById(prefix + '_fontSize');
   const wInput = document.getElementById(prefix + '_w');
   const hInput = document.getElementById(prefix + '_h');
-  const textInput = document.getElementById(prefix + '_text');
 
   if (titleInput) {
     titleInput.addEventListener('input', (ev) => { for (const m of members) m.title = ev.target.value; });
@@ -1081,15 +1350,13 @@ function wireBatchNodeGroup(prefix, members) {
         if (ch.length > 0) history.push(createBatchResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, ch));
       });
   }
-  if (textInput) {
-    textInput.addEventListener('input', (ev) => {
-      for (const m of members) { m.text = ev.target.value; m.blocks = null; }
-      const p = document.getElementById(prefix + '_textPreview');
-      if (p) p.innerHTML = renderMarkdownToHtml(ev.target.value);
-    });
-    textInput.addEventListener('focus', () => _captureNodeSnapshot('text', members));
-    textInput.addEventListener('blur', () => _commitNodeSnapshot('text'));
-  }
+  setupMarkdownEditor(prefix + '_text', {
+    getText: () => members[0]?.text ?? '',
+    setText: (v) => { for (const m of members) { m.text = v; m.blocks = null; } },
+    onFocus: () => _captureNodeSnapshot('text', members),
+    onBlur: () => _commitNodeSnapshot('text'),
+    onChange: () => {},
+  });
 }
 
 function wireMixedShapeGroup(prefix, members) {
@@ -1185,7 +1452,6 @@ function wireMixedTBGroup(prefix, members) {
   const fontSizeInput = document.getElementById(prefix + '_fontSize');
   const wInput = document.getElementById(prefix + '_w');
   const hInput = document.getElementById(prefix + '_h');
-  const textInput = document.getElementById(prefix + '_text');
 
   if (colorInput) {
     colorInput.addEventListener('input', (ev) => { for (const m of members) m.color = ev.target.value; });
@@ -1252,15 +1518,13 @@ function wireMixedTBGroup(prefix, members) {
         if (ch.length > 0) history.push(createBatchResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, ch));
       });
   }
-  if (textInput) {
-    textInput.addEventListener('input', (ev) => {
-      for (const m of members) { m.text = ev.target.value; m.blocks = null; }
-      const p = document.getElementById(prefix + '_textPreview');
-      if (p) p.innerHTML = renderMarkdownToHtml(ev.target.value);
-    });
-    textInput.addEventListener('focus', () => _captureTbSnapshot('text', members));
-    textInput.addEventListener('blur', () => _commitTbSnapshot('text'));
-  }
+  setupMarkdownEditor(prefix + '_text', {
+    getText: () => members[0]?.text ?? '',
+    setText: (v) => { for (const m of members) { m.text = v; m.blocks = null; } },
+    onFocus: () => _captureTbSnapshot('text', members),
+    onBlur: () => _commitTbSnapshot('text'),
+    onChange: () => {},
+  });
 }
 
 function updateNodeWidth(n, newWidth) {
