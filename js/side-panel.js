@@ -96,12 +96,12 @@ export function refreshSidePanel() {
     const radiusInput = document.getElementById('panelShapeCornerRadius');
 
     if (colorInput) {
-      colorInput.addEventListener('input', (ev) => { s.color = ev.target.value; });
+      colorInput.addEventListener('input', (ev) => { s.color = ev.target.value; state.lastShapeColor = ev.target.value; });
       colorInput.addEventListener('pointerdown', () => { startShapePanelEdit(shapeId, 'color', s.color); });
       colorInput.addEventListener('change', () => { flushPanelEdit(); });
     }
     if (borderColorInput) {
-      borderColorInput.addEventListener('input', (ev) => { s.borderColor = ev.target.value; });
+      borderColorInput.addEventListener('input', (ev) => { s.borderColor = ev.target.value; state.lastShapeBorderColor = ev.target.value; });
       borderColorInput.addEventListener('pointerdown', () => { startShapePanelEdit(shapeId, 'borderColor', s.borderColor); });
       borderColorInput.addEventListener('change', () => { flushPanelEdit(); });
     }

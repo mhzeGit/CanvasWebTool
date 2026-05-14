@@ -3,9 +3,17 @@ import { state } from './state.js';
 
 const SHAPE_TYPES = [
   { key: 'rectangle', label: 'Rectangle' },
-  { key: 'circle', label: 'Circle' },
-  { key: 'triangle', label: 'Triangle' },
+  { key: 'circle',    label: 'Circle' },
+  { key: 'triangle',  label: 'Triangle' },
+  { key: 'diamond',   label: 'Diamond' },
 ];
+
+const shapeSvgs = {
+  rectangle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>',
+  circle:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/></svg>',
+  triangle:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l10 20H2z"/></svg>',
+  diamond:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l10 10-10 10L2 12z"/></svg>',
+};
 
 const svgIcons = {
   cursor: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>',
@@ -13,8 +21,13 @@ const svgIcons = {
   connectionLine: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="4" y1="20" x2="20" y2="4"/><circle cx="4" cy="20" r="1.5" fill="currentColor"/><circle cx="20" cy="4" r="1.5" fill="currentColor"/></svg>',
   node: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="4" width="16" height="16" rx="3"/><line x1="4" y1="9" x2="20" y2="9"/></svg>',
   text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
-  shapes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="5"/><path d="M12 2l8 18H4z" fill="none"/></svg>',
 };
+
+function shapeIconHtml(key) {
+  return shapeSvgs[key] || shapeSvgs.rectangle;
+}
+
+let shapesBtn = null;
 
 function createToolbar() {
   const toolbar = document.createElement('div');
@@ -45,17 +58,16 @@ function createToolbar() {
   const shapesContainer = document.createElement('div');
   shapesContainer.className = 'toolbar-shapes-container';
 
-  const shapesBtn = document.createElement('button');
+  shapesBtn = document.createElement('button');
   shapesBtn.className = 'toolbar-btn';
   shapesBtn.dataset.tool = TOOLS.SHAPES;
   shapesBtn.title = 'Shapes';
-  shapesBtn.innerHTML = svgIcons.shapes;
+  const initialType = getShapeSubType();
+  shapesBtn.innerHTML = shapeIconHtml(initialType);
   shapesBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     const submenu = shapesContainer.querySelector('.toolbar-shapes-submenu');
-    if (submenu) {
-      submenu.classList.toggle('visible');
-    }
+    if (submenu) submenu.classList.toggle('visible');
     setActiveTool(TOOLS.SHAPES);
     updateActiveState();
   });
@@ -67,24 +79,18 @@ function createToolbar() {
     const opt = document.createElement('button');
     opt.className = 'toolbar-submenu-item';
     opt.dataset.shapeType = st.key;
-    opt.textContent = st.label;
+    opt.title = st.label;
+    opt.innerHTML = shapeIconHtml(st.key);
     opt.addEventListener('click', (e) => {
       e.stopPropagation();
       setShapeSubType(st.key);
       setActiveTool(TOOLS.SHAPES, st.key);
       updateActiveState();
       submenu.classList.remove('visible');
-      const indicator = shapesBtn.querySelector('.shape-type-indicator');
-      if (indicator) indicator.textContent = st.label.charAt(0).toUpperCase();
     });
     submenu.appendChild(opt);
   }
   shapesContainer.appendChild(submenu);
-
-  const indicator = document.createElement('span');
-  indicator.className = 'shape-type-indicator';
-  indicator.textContent = 'R';
-  shapesBtn.appendChild(indicator);
 
   toolbar.appendChild(shapesContainer);
 
@@ -113,9 +119,8 @@ function updateActiveState() {
   const canDrawingTool = active !== TOOLS.CURSOR;
   state.canvas.style.cursor = canDrawingTool ? 'crosshair' : '';
 
-  const indicator = document.querySelector('.shape-type-indicator');
-  if (indicator) {
-    indicator.textContent = getShapeSubType().charAt(0).toUpperCase();
+  if (shapesBtn) {
+    shapesBtn.innerHTML = shapeIconHtml(getShapeSubType());
   }
 }
 

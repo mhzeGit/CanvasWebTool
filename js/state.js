@@ -242,6 +242,8 @@ export const state = {
   shapes: [],
   nextShapeId: 1,
   selectedShapes: new Set(),
+  lastShapeColor: '#2b2b2b',
+  lastShapeBorderColor: '#6bb5ff',
   isDraggingShape: false,
   dragShapeStarts: [],
   dragChildShapeStarts: [],

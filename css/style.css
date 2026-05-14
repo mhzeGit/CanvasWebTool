@@ -59,10 +59,9 @@ canvas#gridCanvas {
 }
 
 .panel-row {
-  display: grid;
-  grid-template-columns: 90px 1fr;
-  align-items: center;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .panel-input, .panel-select {
@@ -287,7 +286,7 @@ canvas#gridCanvas {
 }
 
 .panel-textarea {
-  min-height: 60px;
+  min-height: 160px;
   resize: vertical;
   line-height: 1.4;
 }
@@ -497,7 +496,6 @@ canvas#gridCanvas {
   display: none;
   flex-direction: column;
   gap: 2px;
-  min-width: 130px;
   box-shadow: 0 6px 24px rgba(0,0,0,0.35);
   z-index: 100;
 }
@@ -507,14 +505,17 @@ canvas#gridCanvas {
 }
 
 .toolbar-submenu-item {
+  width: 32px;
+  height: 32px;
+  padding: 4px;
   background: transparent;
   border: 0;
-  color: #ccc;
-  padding: 6px 10px;
   border-radius: 4px;
-  text-align: left;
+  color: #ccc;
   cursor: pointer;
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .toolbar-submenu-item:hover {
@@ -522,14 +523,10 @@ canvas#gridCanvas {
   color: #fff;
 }
 
-.shape-type-indicator {
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
-  font-size: 8px;
-  font-weight: 700;
-  color: #6bb5ff;
-  pointer-events: none;
+.toolbar-submenu-item svg {
+  width: 20px;
+  height: 20px;
+  display: block;
 }
 
 canvas#gridCanvas {

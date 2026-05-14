@@ -106,8 +106,8 @@ export function drawShapePreview() {
   const previewShape = {
     shapeType: state.drawingShapeType || 'rectangle',
     x, y, w, h,
-    color: '#2b2b2b',
-    borderColor: '#6bb5ff',
+    color: state.lastShapeColor || '#2b2b2b',
+    borderColor: state.lastShapeBorderColor || '#6bb5ff',
     borderWidth: 2,
   };
 
