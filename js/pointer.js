@@ -6,7 +6,7 @@ import { hitTestArrowEnd, hitTestArrowBody, isArrowInBox } from './arrows.js';
 import { getShapeEdgeAt, isShapeInBox } from './shapes.js';
 import { getTextBoxEdgeAt } from './textboxes.js';
 import { hitTestConnector, isConnectorInBox } from './connectors.js';
-import { getActiveTool, getShapeSubType, TOOLS } from './toolManager.js';
+import { getActiveTool, getShapeSubType, setActiveTool, TOOLS } from './toolManager.js';
 import { openContextMenu, closeContextMenu } from './context-menu.js';
 import { refreshSidePanel } from './side-panel.js';
 import { commitEditing } from './inline-editing.js';
@@ -104,6 +104,23 @@ function findConnectedObjectAtPoint(wx, wy) {
   return null;
 }
 
+function hasHitOnExistingItem(wx, wy) {
+  if (hitTestArrowEnd(wx, wy)) return true;
+  const nodeIdx = hitTestNode(wx, wy);
+  if (nodeIdx !== -1) {
+    if (getEdgeAt(wx, wy)) return true;
+  } else {
+    if (findNodeAtEdge(wx, wy)) return true;
+  }
+  if (getShapeEdgeAt(wx, wy)) return true;
+  if (getTextBoxEdgeAt(wx, wy)) return true;
+  if (state.getTopHitAt(wx, wy)) return true;
+  if (hitTestConnector(wx, wy) !== -1) return true;
+  if (hitTestArrowBody(wx, wy) !== -1) return true;
+  if (hitTestConnection(wx, wy) !== null) return true;
+  return false;
+}
+
 function onPointerDown(e) {
   const canvas = state.canvas;
   const rect = canvas.getBoundingClientRect();
@@ -146,50 +163,54 @@ function onPointerDown(e) {
 
   if (e.button === 0) {
     const tool = getActiveTool();
-    if (tool === TOOLS.NODE) {
-      state.selected.clear();
-      state.selectedConnection = null;
-      state.selectedArrows.clear();
-      state.selectedShapes.clear();
-      state.selectedTextBoxes.clear();
-      state.selectedConnectors.clear();
-      state.arrowDragTarget = null;
-      addNodeAt(world.x, world.y);
-      refreshSidePanel();
-      e.preventDefault();
-      return;
+
+    if (tool === TOOLS.NODE || tool === TOOLS.TEXT || tool === TOOLS.SHAPES) {
+      if (hasHitOnExistingItem(world.x, world.y)) {
+        setActiveTool(TOOLS.CURSOR);
+      } else if (tool === TOOLS.NODE) {
+        state.selected.clear();
+        state.selectedConnection = null;
+        state.selectedArrows.clear();
+        state.selectedShapes.clear();
+        state.selectedTextBoxes.clear();
+        state.selectedConnectors.clear();
+        state.arrowDragTarget = null;
+        addNodeAt(world.x, world.y);
+        refreshSidePanel();
+        e.preventDefault();
+        return;
+      } else if (tool === TOOLS.TEXT) {
+        state.selected.clear();
+        state.selectedConnection = null;
+        state.selectedArrows.clear();
+        state.selectedShapes.clear();
+        state.selectedTextBoxes.clear();
+        state.selectedConnectors.clear();
+        state.arrowDragTarget = null;
+        state.drawingTool = 'text';
+        state.drawingStartX = world.x;
+        state.drawingStartY = world.y;
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      } else if (tool === TOOLS.SHAPES) {
+        state.selected.clear();
+        state.selectedConnection = null;
+        state.selectedArrows.clear();
+        state.selectedShapes.clear();
+        state.selectedTextBoxes.clear();
+        state.selectedConnectors.clear();
+        state.arrowDragTarget = null;
+        state.drawingTool = 'shape';
+        state.drawingShapeType = getShapeSubType();
+        state.drawingStartX = world.x;
+        state.drawingStartY = world.y;
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
     }
-    if (tool === TOOLS.TEXT) {
-      state.selected.clear();
-      state.selectedConnection = null;
-      state.selectedArrows.clear();
-      state.selectedShapes.clear();
-      state.selectedTextBoxes.clear();
-      state.selectedConnectors.clear();
-      state.arrowDragTarget = null;
-      state.drawingTool = 'text';
-      state.drawingStartX = world.x;
-      state.drawingStartY = world.y;
-      canvas.setPointerCapture(e.pointerId);
-      e.preventDefault();
-      return;
-    }
-    if (tool === TOOLS.SHAPES) {
-      state.selected.clear();
-      state.selectedConnection = null;
-      state.selectedArrows.clear();
-      state.selectedShapes.clear();
-      state.selectedTextBoxes.clear();
-      state.selectedConnectors.clear();
-      state.arrowDragTarget = null;
-      state.drawingTool = 'shape';
-      state.drawingShapeType = getShapeSubType();
-      state.drawingStartX = world.x;
-      state.drawingStartY = world.y;
-      canvas.setPointerCapture(e.pointerId);
-      e.preventDefault();
-      return;
-    }
+
     if (tool === TOOLS.ARROW) {
       state.selected.clear();
       state.selectedConnection = null;
