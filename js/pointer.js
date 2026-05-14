@@ -140,8 +140,11 @@ function onPointerDown(e) {
       state.selectedTextBoxes.clear();
       state.selectedConnectors.clear();
       state.arrowDragTarget = null;
-      addShapeAt(world.x, world.y, getShapeSubType());
-      refreshSidePanel();
+      state.drawingTool = 'shape';
+      state.drawingShapeType = getShapeSubType();
+      state.drawingStartX = world.x;
+      state.drawingStartY = world.y;
+      canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
       return;
     }
@@ -1034,8 +1037,19 @@ function onPointerUp(e) {
       if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
         addConnector(state.drawingStartX, state.drawingStartY, world.x, world.y);
       }
+    } else if (state.drawingTool === 'shape') {
+      const dx = world.x - state.drawingStartX;
+      const dy = world.y - state.drawingStartY;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+        const x = Math.min(state.drawingStartX, world.x);
+        const y = Math.min(state.drawingStartY, world.y);
+        const w = Math.abs(dx);
+        const h = Math.abs(dy);
+        addShapeAt(x, y, state.drawingShapeType, w, h);
+      }
     }
     state.drawingTool = null;
+    state.drawingShapeType = null;
     state.drawingStartX = 0;
     state.drawingStartY = 0;
     try { canvas.releasePointerCapture(e.pointerId); } catch {}

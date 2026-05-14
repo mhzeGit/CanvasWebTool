@@ -186,6 +186,7 @@ export const state = {
   dragConnectorBodySnapshots: [],
 
   drawingTool: null,
+  drawingShapeType: null,
   drawingStartX: 0,
   drawingStartY: 0,
 

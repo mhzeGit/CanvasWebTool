@@ -307,6 +307,22 @@ export function createResizeShapeCmd(shapes, selectedShapes, refreshPanelFn, sha
   };
 }
 
+export function createShapePropertyChangeCmd(shapes, selectedShapes, refreshPanelFn, shapeId, property, oldValue, newValue) {
+  return {
+    undo() {
+      const found = shapes.find(s => s.id === shapeId);
+      if (found) found[property] = oldValue;
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const found = shapes.find(s => s.id === shapeId);
+      if (found) found[property] = newValue;
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: `Change Shape ${property}`
+  };
+}
+
 export function createAddTextBoxCmd(textBoxes, selectedTextBoxes, refreshPanelFn, textBox, insertedAt) {
   const tbId = textBox.id;
   return {

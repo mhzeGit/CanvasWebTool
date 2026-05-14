@@ -89,20 +89,23 @@ export function addArrowAt(worldX, worldY, connectNodeIdx) {
   refreshSidePanel();
 }
 
-export function addShapeAt(worldX, worldY, shapeType) {
+export function addShapeAt(worldX, worldY, shapeType, optW, optH) {
   flushPanelEdit();
   const type = shapeType || 'rectangle';
-  const w = 120; const h = 80;
+  const isDrag = optW !== undefined && optH !== undefined;
+  const w = isDrag ? optW : 120;
+  const h = isDrag ? optH : 80;
   const shape = {
     id: state.nextShapeId++,
     shapeType: type,
-    x: worldX - w / 2,
-    y: worldY - h / 2,
+    x: isDrag ? worldX : worldX - w / 2,
+    y: isDrag ? worldY : worldY - h / 2,
     w,
     h,
     color: '#2b2b2b',
     borderColor: '#6bb5ff',
     borderWidth: 2,
+    cornerRadius: type === 'rectangle' ? 4 : 0,
   };
   const idx = state.shapes.length;
   state.shapes.push(shape);

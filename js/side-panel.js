@@ -1,6 +1,6 @@
 import { state } from './state.js';
-import { history, flushPanelEdit, startPanelEdit } from './history.js';
-import { createResizeNodeCmd } from './undo.js';
+import { history, flushPanelEdit, startPanelEdit, startShapePanelEdit } from './history.js';
+import { createResizeNodeCmd, createResizeShapeCmd } from './undo.js';
 import { getArrowEndpoint } from './arrows.js';
 import { renderMarkdownToHtml } from './markdown.js';
 import { TITLE_PLACEHOLDER, TEXT_PLACEHOLDER } from './config.js';
@@ -71,7 +71,119 @@ export function refreshSidePanel() {
     return;
   }
 
-  if (state.selected.size === 0) {
+  if (state.selectedShapes.size === 1) {
+    flushPanelEdit();
+    const si = Array.from(state.selectedShapes)[0];
+    const s = state.shapes[si];
+    const shapeId = s.id;
+    const isRect = s.shapeType === 'rectangle';
+
+    sidePanelContent.innerHTML = [
+      '<div class="panel-section-title">Shape (' + state.escAttr(s.shapeType) + ')</div>',
+      '<div class="panel-row"><label>Color</label><input id="panelShapeColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(s.color ?? '#2b2b2b') + '" /></div>',
+      '<div class="panel-row"><label>Border</label><input id="panelShapeBorderColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(s.borderColor ?? '#6bb5ff') + '" /></div>',
+      '<div class="panel-row"><label>Border W</label><input id="panelShapeBorderWidth" class="panel-input" type="number" min="0" max="20" step="0.5" value="' + (s.borderWidth ?? 2) + '" /></div>',
+      '<div class="panel-row"><label>Width</label><input id="panelShapeW" class="panel-input" type="number" min="10" value="' + s.w + '" /></div>',
+      '<div class="panel-row"><label>Height</label><input id="panelShapeH" class="panel-input" type="number" min="10" value="' + s.h + '" /></div>',
+      (isRect ? '<div class="panel-row"><label>Radius</label><input id="panelShapeCornerRadius" class="panel-input" type="number" min="0" max="200" value="' + (s.cornerRadius ?? 4) + '" /></div>' : ''),
+    ].join('');
+
+    const colorInput = document.getElementById('panelShapeColor');
+    const borderColorInput = document.getElementById('panelShapeBorderColor');
+    const borderWidthInput = document.getElementById('panelShapeBorderWidth');
+    const wInput = document.getElementById('panelShapeW');
+    const hInput = document.getElementById('panelShapeH');
+    const radiusInput = document.getElementById('panelShapeCornerRadius');
+
+    if (colorInput) {
+      colorInput.addEventListener('input', (ev) => { s.color = ev.target.value; });
+      colorInput.addEventListener('pointerdown', () => { startShapePanelEdit(shapeId, 'color', s.color); });
+      colorInput.addEventListener('change', () => { flushPanelEdit(); });
+    }
+    if (borderColorInput) {
+      borderColorInput.addEventListener('input', (ev) => { s.borderColor = ev.target.value; });
+      borderColorInput.addEventListener('pointerdown', () => { startShapePanelEdit(shapeId, 'borderColor', s.borderColor); });
+      borderColorInput.addEventListener('change', () => { flushPanelEdit(); });
+    }
+    if (borderWidthInput) {
+      borderWidthInput.addEventListener('input', (ev) => {
+        const v = parseFloat(ev.target.value);
+        if (!Number.isNaN(v) && v >= 0) s.borderWidth = v;
+      });
+      borderWidthInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'borderWidth', s.borderWidth); });
+      borderWidthInput.addEventListener('blur', () => { flushPanelEdit(); });
+    }
+    if (wInput) {
+      wInput.setAttribute('data-drag-number', 'true');
+      wInput.addEventListener('input', (ev) => {
+        const v = parseFloat(ev.target.value);
+        if (!Number.isNaN(v) && v >= 10) s.w = v;
+      });
+      wInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'w', s.w, { x: s.x, y: s.y, w: s.w, h: s.h }); });
+      wInput.addEventListener('blur', () => { flushPanelEdit(); });
+      let wDragStart = { x: s.x, y: s.y, w: s.w, h: s.h };
+      attachDragNumber(wInput,
+        (delta) => { s.w = Math.max(10, s.w + delta); wInput.value = String(Math.round(s.w)); },
+        () => {
+          flushPanelEdit();
+          wDragStart = { x: s.x, y: s.y, w: s.w, h: s.h };
+        },
+        () => {
+          if (s.w !== wDragStart.w) {
+            history.push(createResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, shapeId,
+              { x: wDragStart.x, y: wDragStart.y, w: wDragStart.w, h: wDragStart.h },
+              { x: s.x, y: s.y, w: s.w, h: s.h }));
+          }
+        });
+    }
+    if (hInput) {
+      hInput.setAttribute('data-drag-number', 'true');
+      hInput.addEventListener('input', (ev) => {
+        const v = parseFloat(ev.target.value);
+        if (!Number.isNaN(v) && v >= 10) s.h = v;
+      });
+      hInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'h', s.h, { x: s.x, y: s.y, w: s.w, h: s.h }); });
+      hInput.addEventListener('blur', () => { flushPanelEdit(); });
+      let hDragStart = { x: s.x, y: s.y, w: s.w, h: s.h };
+      attachDragNumber(hInput,
+        (delta) => { s.h = Math.max(10, s.h + delta); hInput.value = String(Math.round(s.h)); },
+        () => {
+          flushPanelEdit();
+          hDragStart = { x: s.x, y: s.y, w: s.w, h: s.h };
+        },
+        () => {
+          if (s.h !== hDragStart.h) {
+            history.push(createResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, shapeId,
+              { x: hDragStart.x, y: hDragStart.y, w: hDragStart.w, h: hDragStart.h },
+              { x: s.x, y: s.y, w: s.w, h: s.h }));
+          }
+        });
+    }
+    if (radiusInput) {
+      radiusInput.setAttribute('data-drag-number', 'true');
+      radiusInput.addEventListener('input', (ev) => {
+        const v = parseFloat(ev.target.value);
+        if (!Number.isNaN(v) && v >= 0) s.cornerRadius = v;
+      });
+      radiusInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'cornerRadius', s.cornerRadius); });
+      radiusInput.addEventListener('blur', () => { flushPanelEdit(); });
+      attachDragNumber(radiusInput,
+        (delta) => { s.cornerRadius = Math.max(0, (s.cornerRadius ?? 4) + delta); radiusInput.value = String(Math.round(s.cornerRadius)); },
+        () => {
+          flushPanelEdit();
+        },
+        () => {});
+    }
+    return;
+  }
+
+  if (state.selectedShapes.size > 1) {
+    flushPanelEdit();
+    sidePanelContent.innerHTML = '<div class="panel-section-title">' + state.selectedShapes.size + ' shapes selected</div>';
+    return;
+  }
+
+  if (state.selected.size === 0 && state.selectedShapes.size === 0 && state.selectedTextBoxes.size === 0 && state.selectedConnectors.size === 0) {
     flushPanelEdit();
     sidePanelContent.innerHTML = '<div class="panel-empty">Nothing selected</div>';
     return;

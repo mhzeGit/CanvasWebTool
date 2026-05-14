@@ -10,7 +10,7 @@ function drawShapePath(ctx, s) {
   ctx.beginPath();
   switch (s.shapeType) {
     case 'rectangle':
-      drawRoundedRect(ctx, s.x, s.y, s.w, s.h, 4);
+      drawRoundedRect(ctx, s.x, s.y, s.w, s.h, s.cornerRadius ?? 4);
       break;
     case 'circle': {
       const rx = hw;
@@ -122,4 +122,34 @@ export function getShapeEdgeAt(wx, wy) {
 
 export function isShapeInBox(shape, bx1, by1, bx2, by2) {
   return !(shape.x + shape.w < bx1 || shape.x > bx2 || shape.y + shape.h < by1 || shape.y > by2);
+}
+
+export function drawShapePreview() {
+  if (!state.drawingTool || state.drawingTool !== 'shape') return;
+  const ctx = state.ctx;
+  const x = Math.min(state.drawingStartX, state.lastWorldMouse.x);
+  const y = Math.min(state.drawingStartY, state.lastWorldMouse.y);
+  const w = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
+  const h = Math.abs(state.lastWorldMouse.y - state.drawingStartY);
+
+  const previewShape = {
+    shapeType: state.drawingShapeType || 'rectangle',
+    x, y, w, h,
+    color: '#2b2b2b',
+    borderColor: '#6bb5ff',
+    borderWidth: 2,
+  };
+
+  ctx.save();
+  ctx.fillStyle = previewShape.color;
+  drawShapePath(ctx, previewShape);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = previewShape.borderColor;
+  ctx.lineWidth = previewShape.borderWidth;
+  drawShapePath(ctx, previewShape);
+  ctx.stroke();
+  ctx.restore();
 }
