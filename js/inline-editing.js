@@ -8,6 +8,7 @@ import { refreshSidePanel } from './side-panel.js';
 import { history } from './history.js';
 import { blocksToHtml, htmlToBlocks, markdownToBlocks, blocksToSimpleText } from './rich-text.js';
 import { TITLE_PLACEHOLDER, DEFAULT_NODE_COLOR } from './config.js';
+import { getEntityElement } from './dom-entities.js';
 
 export function setupInlineEditing() {
   state.canvas.addEventListener('dblclick', onDblClick);
@@ -62,9 +63,9 @@ function onDblClick(e) {
   }
 
   if (world.y >= n.y && world.y <= n.y + titleH) {
-    startEditing(hit, 'title', n.x, n.y, n.w, titleH);
+    startEditing(hit, 'title');
   } else {
-    startEditing(hit, 'text', n.x + padding, n.y + titleH + padding, n.w - padding * 2, n.h - titleH - padding * 2);
+    startEditing(hit, 'text');
   }
 }
 
@@ -80,122 +81,95 @@ function ensureBlocks(entity) {
   return entity.blocks;
 }
 
-export function startEditing(idx, field, worldX, worldY, worldW, worldH) {
+export function startEditing(idx, field) {
   cancelEditing();
 
   const n = state.nodes[idx];
-  const canvasRect = state.canvas.getBoundingClientRect();
-  const screen = worldToScreen(worldX, worldY, state.offsetX, state.offsetY, state.scale);
-  const screenW = worldW * state.scale;
-  const screenH = worldH * state.scale;
+  const el = getEntityElement('node', idx);
+  if (!el) return;
 
-  const isTitle = field === 'title';
   const isRichText = field === 'text';
 
   if (isRichText) {
     ensureBlocks(n);
-    const baseColor = n.color || DEFAULT_NODE_COLOR;
-    const fontSize = n.fontSize || 12;
+    const body = el.querySelector('.entity-node-body');
+    if (!body) return;
 
-    const el = document.createElement('div');
-    el.contentEditable = 'true';
-    el.className = 'inline-editor-richtext';
-    el.innerHTML = blocksToHtml(n.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
-    el.style.position = 'fixed';
-    el.style.left = (screen.x + canvasRect.left) + 'px';
-    el.style.top = (screen.y + canvasRect.top) + 'px';
-    el.style.width = screenW + 'px';
-    el.style.height = screenH + 'px';
-    el.style.zIndex = '8';
-    el.style.color = n.textColor || '#ddd';
-    el.style.fontSize = (fontSize * state.scale) + 'px';
-    el.style.lineHeight = '1.4';
-    el.style.padding = (4 * state.scale) + 'px ' + (6 * state.scale) + 'px';
-    el.style.background = baseColor;
-    el.style.border = 'none';
-    el.style.outline = 'none';
-    el.style.overflow = 'hidden';
-    el.style.boxSizing = 'border-box';
-    el.style.borderRadius = '0';
+    body.contentEditable = 'true';
+    body.innerHTML = blocksToHtml(n.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
 
-    document.body.appendChild(el);
-    el.focus();
+    body.focus();
 
     const originalValue = JSON.stringify(n.blocks);
-    state.editingState = { type: 'node', idx, field, el, originalValue, isRichText: true };
+    state.editingState = { type: 'node', idx, field, el: body, originalValue, isRichText: true };
 
-    el.addEventListener('input', () => {
-      n.blocks = htmlToBlocks(el);
+    const onInput = () => {
+      n.blocks = htmlToBlocks(body);
       n.text = blocksToSimpleText(n.blocks);
-    });
+    };
 
-    el.addEventListener('keydown', (ev) => {
+    const onKeyDown = (ev) => {
       if (ev.key === 'Escape') {
         cancelEditing();
       } else if (ev.key === 'Enter') {
         if (ev.shiftKey) {
           document.execCommand('insertLineBreak', false, null);
-          el.dispatchEvent(new Event('input', { bubbles: true }));
+          body.dispatchEvent(new Event('input', { bubbles: true }));
         } else {
           ev.preventDefault();
-          el.blur();
+          body.blur();
         }
       } else if (ev.key === 'Backspace') {
-        handleBackspace(el, ev);
+        handleBackspace(body, ev);
       } else if (ev.ctrlKey || ev.metaKey) {
         const k = ev.key.toLowerCase();
-        if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); el.dispatchEvent(new Event('input', { bubbles: true })); }
-        else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); el.dispatchEvent(new Event('input', { bubbles: true })); }
-        else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); el.dispatchEvent(new Event('input', { bubbles: true })); }
-        else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); el.dispatchEvent(new Event('input', { bubbles: true })); }
+        if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); body.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); body.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); body.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); body.dispatchEvent(new Event('input', { bubbles: true })); }
       }
-    });
+    };
+
+    body.addEventListener('input', onInput);
+    body.addEventListener('keydown', onKeyDown);
+
+    const commit = () => { commitEditing(); };
+    body.addEventListener('blur', commit);
+
+    state.editingState._handlers = { onInput, onKeyDown, commit };
   } else {
-    const el = document.createElement('input');
-    el.className = 'inline-editor inline-editor-title';
-    el.value = n[field] || '';
-    el.placeholder = TITLE_PLACEHOLDER;
-    el.style.position = 'fixed';
-    el.style.left = (screen.x + canvasRect.left) + 'px';
-    el.style.top = (screen.y + canvasRect.top) + 'px';
-    el.style.width = screenW + 'px';
-    el.style.height = screenH + 'px';
-    el.style.zIndex = '8';
-    el.style.color = n.titleColor || '#e7e7e7';
-    el.style.fontSize = (15 * state.scale) + 'px';
-    el.style.lineHeight = (18 * state.scale) + 'px';
-    el.style.padding = (8 * state.scale) + 'px';
-    const baseColor = n.color || DEFAULT_NODE_COLOR;
-    const nodeRadiusEditing = Math.min(12, Math.min(n.w, n.h) * 0.2) * state.scale;
-    el.style.background = getDarkerColor(baseColor, 0.6);
-    el.style.borderRadius = `${nodeRadiusEditing}px ${nodeRadiusEditing}px 0 0`;
-    el.style.border = 'none';
-    el.style.outline = 'none';
-    el.style.overflow = 'hidden';
+    const titlebar = el.querySelector('.entity-node-titlebar');
+    if (!titlebar) return;
 
-    document.body.appendChild(el);
-    el.focus();
-    el.select();
+    titlebar.contentEditable = 'true';
+    titlebar.textContent = n.title || '';
 
-    const originalValue = n[field];
-    state.editingState = { type: 'node', idx, field, el, originalValue, isRichText: false };
+    titlebar.focus();
 
-    el.addEventListener('input', () => {
-      n[field] = el.value;
-    });
+    const originalValue = n.title;
+    state.editingState = { type: 'node', idx, field, el: titlebar, originalValue, isRichText: false };
 
-    el.addEventListener('keydown', (ev) => {
+    const onInput = () => {
+      n.title = titlebar.textContent || '';
+    };
+
+    const onKeyDown = (ev) => {
       if (ev.key === 'Enter') {
         ev.preventDefault();
-        el.blur();
+        titlebar.blur();
       } else if (ev.key === 'Escape') {
         cancelEditing();
       }
-    });
-  }
+    };
 
-  const commit = () => { commitEditing(); };
-  el.addEventListener('blur', commit);
+    titlebar.addEventListener('input', onInput);
+    titlebar.addEventListener('keydown', onKeyDown);
+
+    const commit = () => { commitEditing(); };
+    titlebar.addEventListener('blur', commit);
+
+    state.editingState._handlers = { onInput, onKeyDown, commit };
+  }
 }
 
 function startConnectionEditing(connIdx) {
@@ -280,70 +254,56 @@ function startTextBoxEditing(tbIdx) {
   cancelEditing();
 
   const tb = state.textBoxes[tbIdx];
-  const canvasRect = state.canvas.getBoundingClientRect();
-  const screen = worldToScreen(tb.x, tb.y, state.offsetX, state.offsetY, state.scale);
-  const screenW = tb.w * state.scale;
-  const screenH = tb.h * state.scale;
+  const el = getEntityElement('textBox', tbIdx);
+  if (!el) return;
 
   ensureBlocks(tb);
-  const fontSize = tb.fontSize || 14;
 
-  const el = document.createElement('div');
-  el.contentEditable = 'true';
-  el.className = 'inline-editor-richtext';
-  el.innerHTML = blocksToHtml(tb.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
-  el.style.position = 'fixed';
-  el.style.left = (screen.x + canvasRect.left) + 'px';
-  el.style.top = (screen.y + canvasRect.top) + 'px';
-  el.style.width = screenW + 'px';
-  el.style.height = screenH + 'px';
-  el.style.zIndex = '8';
-  el.style.color = tb.textColor || '#ddd';
-  el.style.fontSize = (fontSize * state.scale) + 'px';
-  el.style.lineHeight = '1.4';
-  el.style.padding = (8 * state.scale) + 'px';
-  el.style.background = tb.color || '#1a1a1a';
-  el.style.border = 'none';
-  el.style.outline = 'none';
-  el.style.overflow = 'hidden';
-  el.style.boxSizing = 'border-box';
-  el.style.borderRadius = '0';
+  const content = el.querySelector('.entity-textbox-content');
+  if (!content) return;
 
-  document.body.appendChild(el);
-  el.focus();
+  content.contentEditable = 'true';
+  content.innerHTML = blocksToHtml(tb.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
+
+  content.focus();
 
   const originalValue = JSON.stringify(tb.blocks);
-  state.editingState = { type: 'textBox', idx: tbIdx, el, originalValue, isRichText: true };
+  state.editingState = { type: 'textBox', idx: tbIdx, el: content, originalValue, isRichText: true };
 
-  el.addEventListener('input', () => {
-    tb.blocks = htmlToBlocks(el);
+  const onInput = () => {
+    tb.blocks = htmlToBlocks(content);
     tb.text = blocksToSimpleText(tb.blocks);
-  });
+  };
 
-  el.addEventListener('keydown', (ev) => {
+  const onKeyDown = (ev) => {
     if (ev.key === 'Escape') {
       cancelEditing();
     } else if (ev.key === 'Enter') {
       if (ev.shiftKey) {
         document.execCommand('insertLineBreak', false, null);
-        el.dispatchEvent(new Event('input', { bubbles: true }));
+        content.dispatchEvent(new Event('input', { bubbles: true }));
       } else {
         ev.preventDefault();
-        el.blur();
+        content.blur();
       }
     } else if (ev.key === 'Backspace') {
-      handleBackspace(el, ev);
+      handleBackspace(content, ev);
     } else if (ev.ctrlKey || ev.metaKey) {
       const k = ev.key.toLowerCase();
-      if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); el.dispatchEvent(new Event('input', { bubbles: true })); }
-      else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); el.dispatchEvent(new Event('input', { bubbles: true })); }
-      else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); el.dispatchEvent(new Event('input', { bubbles: true })); }
-      else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); el.dispatchEvent(new Event('input', { bubbles: true })); }
+      if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
     }
-  });
+  };
+
+  content.addEventListener('input', onInput);
+  content.addEventListener('keydown', onKeyDown);
 
   const commit = () => { commitEditing(); };
-  el.addEventListener('blur', commit);
+  content.addEventListener('blur', commit);
+
+  state.editingState._handlers = { onInput, onKeyDown, commit };
 }
 
 function handleEnter(editor, ev) {
@@ -455,6 +415,12 @@ export function commitEditing() {
   if (!state.editingState) return;
   const { type, idx, field, el, originalValue, isRichText } = state.editingState;
 
+  if (state.editingState._handlers) {
+    el.removeEventListener('input', state.editingState._handlers.onInput);
+    el.removeEventListener('keydown', state.editingState._handlers.onKeyDown);
+    el.removeEventListener('blur', state.editingState._handlers.commit);
+  }
+
   if (isRichText) {
     const blocks = htmlToBlocks(el);
     if (type === 'textBox') {
@@ -472,7 +438,7 @@ export function commitEditing() {
     if (type === 'connection') {
       state.connections[idx].text = el.value;
     } else if (type === 'node') {
-      const newValue = el.value;
+      const newValue = el.textContent || '';
       state.nodes[idx][field] = newValue;
       if (originalValue !== newValue && state.nodes[idx].id !== undefined) {
         history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, state.nodes[idx].id, field, originalValue, newValue));
@@ -480,14 +446,26 @@ export function commitEditing() {
     }
   }
 
+  if (type !== 'connection') {
+    el.contentEditable = 'false';
+  }
+
   state.editingState = null;
-  try { document.body.removeChild(el); } catch {}
+  if (type === 'connection') {
+    try { document.body.removeChild(el); } catch {}
+  }
   refreshSidePanel();
 }
 
 export function cancelEditing() {
   if (!state.editingState) return;
   const { type, idx, field, el, originalValue, isRichText } = state.editingState;
+
+  if (state.editingState._handlers) {
+    el.removeEventListener('input', state.editingState._handlers.onInput);
+    el.removeEventListener('keydown', state.editingState._handlers.onKeyDown);
+    el.removeEventListener('blur', state.editingState._handlers.commit);
+  }
 
   if (isRichText) {
     try {
@@ -508,6 +486,13 @@ export function cancelEditing() {
     }
   }
 
+  if (type !== 'connection') {
+    el.contentEditable = 'false';
+  }
+
   state.editingState = null;
-  try { document.body.removeChild(el); } catch {}
+  if (type === 'connection') {
+    try { document.body.removeChild(el); } catch {}
+  }
+  refreshSidePanel();
 }

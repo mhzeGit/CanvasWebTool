@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { drawRoundedRect, getDarkerColor, getEdgeAt } from './utils.js';
+import { getEdgeAt, drawRoundedRect } from './utils.js';
 import { EDGE_MARGIN } from './config.js';
 
 function drawShapePath(ctx, s) {
@@ -35,48 +35,6 @@ function drawShapePath(ctx, s) {
     default:
       drawRoundedRect(ctx, s.x, s.y, s.w, s.h, 4);
   }
-}
-
-export function drawOneShape(si) {
-  const ctx = state.ctx;
-  const s = state.shapes[si];
-  const baseColor = s.color || '#2b2b2b';
-  const borderColor = s.borderColor || '#6bb5ff';
-  const borderWidth = s.borderWidth ?? 2;
-
-  ctx.save();
-  ctx.fillStyle = baseColor;
-  drawShapePath(ctx, s);
-  ctx.fill();
-  ctx.restore();
-
-  ctx.save();
-  ctx.strokeStyle = borderColor;
-  ctx.lineWidth = borderWidth;
-  drawShapePath(ctx, s);
-  ctx.stroke();
-  ctx.restore();
-
-  if (state.selectedShapes.has(si)) {
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const dpr = window.devicePixelRatio || 1;
-    const sx = (s.x * state.scale + state.offsetX) * dpr;
-    const sy = (s.y * state.scale + state.offsetY) * dpr;
-    const sw = s.w * state.scale * dpr;
-    const sh = s.h * state.scale * dpr;
-    ctx.strokeStyle = '#f0c800';
-    ctx.lineWidth = 1.5;
-    const screenShape = { ...s, x: sx, y: sy, w: sw, h: sh };
-    drawShapePath(ctx, screenShape);
-    ctx.stroke();
-    ctx.restore();
-  }
-}
-
-export function drawShapes(indices) {
-  const list = indices || state.shapes.map((_, i) => i);
-  for (const si of list) drawOneShape(si);
 }
 
 export function hitTestShape(wx, wy) {

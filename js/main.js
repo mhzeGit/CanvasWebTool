@@ -1,11 +1,10 @@
 import { state } from './state.js';
 import { GRID } from './config.js';
 import { drawGrid } from './grid.js';
-import { drawNodes, drawOneNode, drawSelectionMarquee } from './nodes.js';
-import { drawConnection, drawConnectionPreview } from './connections.js';
+import { drawSelectionMarquee } from './nodes.js';
 import { drawArrows, updateArrowPositionsFromConnections } from './arrows.js';
-import { drawShapes, drawOneShape, drawShapePreview } from './shapes.js';
-import { drawTextBoxes, drawOneTextBox, drawTextBoxPreview } from './textboxes.js';
+import { drawShapePreview } from './shapes.js';
+import { drawTextBoxPreview } from './textboxes.js';
 import { drawConnectors, drawConnectorPreview, drawArrowPreview, updateConnectorPositionsFromConnections } from './connectors.js';
 import { initPointer } from './pointer.js';
 import { setupKeyboard } from './keyboard.js';
@@ -22,6 +21,7 @@ import {
 } from './document.js';
 import { performUndo, performRedo } from './history.js';
 import { initToolbar } from './toolbar.js';
+import { initEntityLayer, syncAllEntities } from './dom-entities.js';
 
 function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
@@ -70,12 +70,8 @@ function animate() {
   updateConnectorPositionsFromConnections();
   drawArrows();
   drawConnectors();
-  const drawOrder = state.getAllDrawOrder();
-  for (const item of drawOrder) {
-    if (item.type === 'shape') drawOneShape(item.i);
-    else if (item.type === 'textBox') drawOneTextBox(item.i);
-    else drawOneNode(item.i);
-  }
+
+  syncAllEntities();
 
   drawSelectionMarquee();
 
@@ -116,6 +112,7 @@ function init() {
   window.addEventListener('resize', resizeCanvas);
   initHistory(refreshSidePanel);
 
+  initEntityLayer();
   initPointer(history);
   initToolbar();
   setupKeyboard();

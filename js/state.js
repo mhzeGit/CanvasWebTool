@@ -4,6 +4,7 @@ const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
 const sidePanel = document.getElementById('sidePanel');
 const sidePanelContent = document.getElementById('sidePanelContent');
+const entityLayer = document.getElementById('entityLayer');
 
 let drawOrderCache = [];
 let drawOrderCacheDirty = true;
@@ -201,6 +202,7 @@ export const state = {
   ctx,
   sidePanel,
   sidePanelContent,
+  entityLayer,
 
   offsetX: 0,
   offsetY: 0,

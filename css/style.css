@@ -641,3 +641,251 @@ canvas#gridCanvas {
 canvas#gridCanvas {
   left: 44px;
 }
+
+/* ===== Entity Layer (DOM-based nodes, shapes, textboxes) ===== */
+#entityLayer {
+  display: none;
+}
+
+.entity {
+  position: fixed;
+  pointer-events: none;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.entity [contenteditable="true"] {
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* ===== Nodes ===== */
+.entity-node-wrapper {
+  position: absolute;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.entity-node {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 4px 3px rgba(0,0,0,0.22),
+    0 5px 1px rgba(0,0,0,0.12),
+    0 7px 2px rgba(0,0,0,0.06),
+    0 10px 3px rgba(0,0,0,0.03);
+  border: 2px solid rgba(0,0,0,0.3);
+}
+
+.entity-node.selected {
+  outline: 2px solid #f0c800;
+  outline-offset: 1px;
+}
+
+.entity-node-titlebar {
+  padding: 8px;
+  text-align: center;
+  font-weight: bold;
+  font-size: 15px;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  line-height: 18px;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  word-break: break-word;
+  border-radius: 10px 10px 0 0;
+}
+
+.entity-node-titlebar .md-title-empty {
+  color: #777;
+  font-weight: bold;
+}
+
+.entity-node-body {
+  padding: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.entity-node-body .rt-block {
+  margin: 1px 0;
+  min-height: 1.2em;
+}
+
+.entity-node-body .rt-block:first-child { margin-top: 0; }
+.entity-node-body .rt-block:last-child { margin-bottom: 0; }
+
+.entity-node-body .rt-paragraph { margin: 2px 0; }
+.entity-node-body .rt-h1 { font-size: 21px; font-weight: 700; margin: 6px 0 4px; }
+.entity-node-body .rt-h2 { font-size: 18px; font-weight: 700; margin: 5px 0 3px; }
+.entity-node-body .rt-h3 { font-size: 15px; font-weight: 700; margin: 4px 0 2px; }
+.entity-node-body .rt-quote {
+  margin: 4px 0;
+  padding: 2px 0 2px 8px;
+  border-left: 3px solid #555;
+  font-style: italic;
+  color: #aaa;
+}
+.entity-node-body .rt-bullet, .entity-node-body .rt-numbered, .entity-node-body .rt-checkbox { margin: 1px 0; }
+.entity-node-body .rt-marker {
+  color: #888;
+  font-weight: 600;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+}
+.entity-node-body .rt-divider hr {
+  border: none;
+  border-top: 1px solid #444;
+  margin: 8px 0;
+  opacity: 0.6;
+}
+.entity-node-body strong { color: #e7e7e7; font-weight: 700; }
+.entity-node-body em { color: #c8c8c8; }
+.entity-node-body u { text-decoration: underline; }
+.entity-node-body s { text-decoration: line-through; opacity: 0.7; }
+.entity-node-body code {
+  background: #2a2a2a;
+  color: #f0c800;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: Consolas, "Cascadia Code", "Fira Code", monospace;
+  font-size: 0.9em;
+}
+.entity-node-body a { color: #6bb5ff; text-decoration: underline; }
+
+.entity-node-placeholder {
+  color: #777;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* ===== Shapes ===== */
+.entity-shape {
+  overflow: visible;
+}
+
+.entity-shape.selected {
+  outline: 2px solid #f0c800;
+  outline-offset: 1px;
+}
+
+.entity-shape-border {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+}
+
+.entity-shape-fill {
+  position: absolute;
+  inset: 2px;
+  box-sizing: border-box;
+}
+
+.entity-shape-rect {
+  border-radius: 4px;
+}
+
+.entity-shape-circle {
+  border-radius: 50%;
+}
+
+.entity-shape-triangle {
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+}
+
+.entity-shape-diamond {
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+/* ===== Text Boxes ===== */
+.entity-textbox {
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1.5px solid;
+}
+
+.entity-textbox.selected {
+  outline: 2px solid #f0c800;
+  outline-offset: 1px;
+}
+
+.entity-textbox-content {
+  padding: 8px;
+  font-size: 14px;
+  line-height: 1.4;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  word-break: break-word;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.entity-textbox-content .rt-block {
+  margin: 1px 0;
+  min-height: 1.2em;
+}
+
+.entity-textbox-content .rt-block:first-child { margin-top: 0; }
+.entity-textbox-content .rt-block:last-child { margin-bottom: 0; }
+
+.entity-textbox-content .rt-paragraph { margin: 2px 0; }
+.entity-textbox-content .rt-h1 { font-size: 21px; font-weight: 700; margin: 6px 0 4px; }
+.entity-textbox-content .rt-h2 { font-size: 18px; font-weight: 700; margin: 5px 0 3px; }
+.entity-textbox-content .rt-h3 { font-size: 15px; font-weight: 700; margin: 4px 0 2px; }
+.entity-textbox-content .rt-quote {
+  margin: 4px 0;
+  padding: 2px 0 2px 8px;
+  border-left: 3px solid #555;
+  font-style: italic;
+  color: #aaa;
+}
+.entity-textbox-content .rt-marker {
+  color: #888;
+  font-weight: 600;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+}
+.entity-textbox-content .rt-divider hr {
+  border: none;
+  border-top: 1px solid #444;
+  margin: 8px 0;
+  opacity: 0.6;
+}
+.entity-textbox-content .rt-bullet, .entity-textbox-content .rt-numbered, .entity-textbox-content .rt-checkbox { margin: 1px 0; }
+
+.entity-textbox-placeholder {
+  color: #777;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  padding: 8px;
+}
+
+/* ===== Resize Handles ===== */
+.entity-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #6bb5ff;
+  border: 1px solid #fff;
+  border-radius: 2px;
+  z-index: 10;
+  pointer-events: none;
+  display: none;
+}
+
+/* .entity-handle hidden: resize functionality still works via edge hit detection */
+
+.entity-handle.tl { top: -5px; left: -5px; cursor: nw-resize; }
+.entity-handle.tr { top: -5px; right: -5px; cursor: ne-resize; }
+.entity-handle.bl { bottom: -5px; left: -5px; cursor: sw-resize; }
+.entity-handle.br { bottom: -5px; right: -5px; cursor: se-resize; }
+.entity-handle.tc { top: -5px; left: 50%; margin-left: -5px; cursor: ns-resize; }
+.entity-handle.bc { bottom: -5px; left: 50%; margin-left: -5px; cursor: ns-resize; }
+.entity-handle.ml { top: 50%; left: -5px; margin-top: -5px; cursor: ew-resize; }
+.entity-handle.mr { top: 50%; right: -5px; margin-top: -5px; cursor: ew-resize; }

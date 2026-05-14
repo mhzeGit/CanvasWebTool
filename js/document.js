@@ -17,6 +17,7 @@ import { saveToFile, loadFromFile } from './file-io.js';
 import { screenToWorld, getNodeEdgePoint, getObjectEdgePoint } from './utils.js';
 import { refreshSidePanel } from './side-panel.js';
 import { DEFAULT_NODE_COLOR } from './config.js';
+import { destroyAllEntities } from './dom-entities.js';
 
 export function addNodeAtCenter() {
   flushPanelEdit();
@@ -535,6 +536,8 @@ export function restoreDocumentState(docState) {
   state.connectingFrom = null;
   history.clear();
   state.panelPendingEdit = null;
+
+  destroyAllEntities();
 
   for (const n of (docState.nodes || [])) {
     state.nodes.push(n);
