@@ -317,6 +317,10 @@ export function renderMarkdownToHtml(text) {
       html += '<div class="md-block md-blank"><br></div>';
       continue;
     }
+    if (line.type === 'hr') {
+      html += '<div class="md-block md-hr"><hr></div>';
+      continue;
+    }
     let inner = '';
     for (const span of line.spans) {
       let t = escHtml(span.text);
@@ -334,7 +338,6 @@ export function renderMarkdownToHtml(text) {
       case 'bullet': html += '<div class="md-block md-bullet"><span class="md-marker" contenteditable="false">\u2022</span> ' + inner + '</div>'; break;
       case 'numbered': html += '<div class="md-block md-numbered"><span class="md-marker" contenteditable="false">' + escHtml(line.prefix.trimEnd()) + '</span> ' + inner + '</div>'; break;
       case 'checkbox': html += '<div class="md-block md-checkbox"><span class="md-marker" contenteditable="false">' + (line.checked ? '[x]' : '[ ]') + '</span> ' + inner + '</div>'; break;
-      case 'hr': html += '<div class="md-block md-hr"><hr></div>'; break;
       default: html += '<div class="md-block md-paragraph">' + (inner || '<br>') + '</div>'; break;
     }
   }
