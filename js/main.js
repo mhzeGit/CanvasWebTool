@@ -168,4 +168,11 @@ function init() {
   animate();
 }
 
+window.addEventListener('beforeunload', (e) => {
+  if (state.isDirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
 init();

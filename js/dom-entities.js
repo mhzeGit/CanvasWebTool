@@ -137,8 +137,9 @@ function ensureNodeElement(idx) {
   titlebar.style.borderRadius = (nodeRadius * state.scale) + 'px ' + (nodeRadius * state.scale) + 'px 0 0';
   titlebar.style.color = n.titleColor || DEFAULT_TITLE_COLOR;
   titlebar.style.fontSize = (15 * state.scale) + 'px';
-  titlebar.style.padding = (8 * state.scale) + 'px';
-  titlebar.style.minHeight = (18 * state.scale + 16 * state.scale) + 'px';
+  titlebar.style.padding = (4 * state.scale) + 'px ' + (8 * state.scale) + 'px';
+  titlebar.style.lineHeight = 1.2;
+  titlebar.style.minHeight = ((15 * 1.2 * state.scale) + (4 * state.scale) + (4 * state.scale)) + 'px';
   if (!isEditingEntity('node', idx, 'title')) {
     titlebar.innerHTML = titleToHtml(n.title);
   }
@@ -147,7 +148,7 @@ function ensureNodeElement(idx) {
   body.style.color = n.textColor || DEFAULT_TEXT_COLOR;
   body.style.fontSize = ((n.fontSize || 12) * state.scale) + 'px';
   body.style.padding = (8 * state.scale) + 'px';
-  body.style.lineHeight = (1.4 * state.scale);
+  body.style.lineHeight = 1.25;
 
   if (!isEditingEntity('node', idx, 'text')) {
     if (n.text && n.text.length > 0) {
@@ -250,7 +251,7 @@ function ensureTextBoxElement(idx) {
   content.style.color = tb.textColor || '#ddd';
   content.style.fontSize = ((tb.fontSize || 14) * state.scale) + 'px';
   content.style.padding = (8 * state.scale) + 'px';
-  content.style.lineHeight = (1.4 * state.scale);
+  content.style.lineHeight = 1.25;
 
   if (!isEditingEntity('textBox', idx)) {
     const blocks = getOrCreateBlocks(tb);

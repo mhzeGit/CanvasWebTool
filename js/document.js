@@ -18,6 +18,7 @@ import { screenToWorld, getNodeEdgePoint, getObjectEdgePoint } from './utils.js'
 import { refreshSidePanel } from './side-panel.js';
 import { DEFAULT_NODE_COLOR } from './config.js';
 import { destroyAllEntities } from './dom-entities.js';
+import { showConfirmDialog } from './dialog.js';
 
 export function addNodeAtCenter() {
   flushPanelEdit();
@@ -601,10 +602,16 @@ export function restoreDocumentState(docState) {
 
   state.markDrawOrderDirty();
   state.reparentAll();
+  state.isDirty = false;
   refreshSidePanel();
 }
 
-export function newDocument() {
+export async function newDocument() {
+  flushPanelEdit();
+  if (state.isDirty) {
+    const confirmed = await showConfirmDialog('This project has unsaved changes. Are you sure you want to create a new file? Everything unsaved will be discarded!');
+    if (!confirmed) return;
+  }
   restoreDocumentState({ nodes: [], connections: [], arrows: [], shapes: [], textBoxes: [], connectors: [], viewport: { offsetX: 0, offsetY: 0, scale: 1 } });
   state.currentFileName = null;
   state.markDrawOrderDirty();
@@ -617,10 +624,16 @@ export async function saveDocument() {
   const result = await saveToFile(doc, suggestedName);
   if (result) {
     state.currentFileName = result.name;
+    state.isDirty = false;
   }
 }
 
 export async function openDocument() {
+  flushPanelEdit();
+  if (state.isDirty) {
+    const confirmed = await showConfirmDialog('This project has unsaved changes. Are you sure you want to open a different file? Everything unsaved will be discarded!');
+    if (!confirmed) return;
+  }
   const result = await loadFromFile();
   if (!result) return;
   const docState = deserializeDocument(result.data);

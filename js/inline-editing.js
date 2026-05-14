@@ -116,9 +116,7 @@ export function startEditing(idx, field) {
         if (ev.shiftKey) {
           document.execCommand('insertLineBreak', false, null);
           body.dispatchEvent(new Event('input', { bubbles: true }));
-        } else {
           ev.preventDefault();
-          body.blur();
         }
       } else if (ev.key === 'Backspace') {
         handleBackspace(body, ev);
@@ -285,9 +283,7 @@ function startTextBoxEditing(tbIdx) {
       if (ev.shiftKey) {
         document.execCommand('insertLineBreak', false, null);
         content.dispatchEvent(new Event('input', { bubbles: true }));
-      } else {
         ev.preventDefault();
-        content.blur();
       }
     } else if (ev.key === 'Backspace') {
       handleBackspace(content, ev);

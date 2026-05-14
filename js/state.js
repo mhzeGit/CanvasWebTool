@@ -226,6 +226,7 @@ export const state = {
 
   panelPendingEdit: null,
   currentFileName: null,
+  isDirty: false,
 
   isSelectingBox: false,
   boxStartX: 0,

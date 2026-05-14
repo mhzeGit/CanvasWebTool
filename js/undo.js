@@ -1,3 +1,5 @@
+import { state } from './state.js';
+
 let _nextId = 1;
 export function nextNodeId() { return _nextId++; }
 export function initNodeId(v) { _nextId = v; }
@@ -21,6 +23,7 @@ export function createHistoryManager() {
       undoStack.push(cmd);
       if (undoStack.length > MAX_SIZE) undoStack.shift();
       redoStack = [];
+      state.isDirty = true;
     },
 
     undo() {
@@ -30,6 +33,7 @@ export function createHistoryManager() {
       cmd.undo();
       redoStack.push(cmd);
       isUndoRedoing = false;
+      state.isDirty = true;
       return true;
     },
 
@@ -40,6 +44,7 @@ export function createHistoryManager() {
       cmd.redo();
       undoStack.push(cmd);
       isUndoRedoing = false;
+      state.isDirty = true;
       return true;
     },
 
