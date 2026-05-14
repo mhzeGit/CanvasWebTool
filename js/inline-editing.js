@@ -99,6 +99,7 @@ export function startEditing(idx, field) {
     body.innerHTML = blocksToHtml(n.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
 
     body.focus();
+    placeCursorAtEnd(body);
 
     const originalValue = JSON.stringify(n.blocks);
     state.editingState = { type: 'node', idx, field, el: body, originalValue, isRichText: true };
@@ -145,6 +146,7 @@ export function startEditing(idx, field) {
     titlebar.textContent = n.title || '';
 
     titlebar.focus();
+    placeCursorAtEnd(titlebar);
 
     const originalValue = n.title;
     state.editingState = { type: 'node', idx, field, el: titlebar, originalValue, isRichText: false };
@@ -266,6 +268,7 @@ function startTextBoxEditing(tbIdx) {
   content.innerHTML = blocksToHtml(tb.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
 
   content.focus();
+  placeCursorAtEnd(content);
 
   const originalValue = JSON.stringify(tb.blocks);
   state.editingState = { type: 'textBox', idx: tbIdx, el: content, originalValue, isRichText: true };
@@ -409,6 +412,15 @@ function handleBackspace(editor, ev) {
   sel.removeAllRanges();
   sel.addRange(r);
   editor.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function placeCursorAtEnd(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  range.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
 }
 
 export function commitEditing() {

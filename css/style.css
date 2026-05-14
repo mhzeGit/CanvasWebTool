@@ -659,6 +659,8 @@ canvas#gridCanvas {
   pointer-events: auto;
   user-select: text;
   -webkit-user-select: text;
+  outline: none;
+  caret-color: #fff;
 }
 
 /* ===== Nodes ===== */
