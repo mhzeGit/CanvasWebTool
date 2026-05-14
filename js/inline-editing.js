@@ -137,14 +137,29 @@ export function startEditing(idx, field) {
 
     const onPaste = (e) => {
       e.preventDefault();
-      const pastedText = (e.clipboardData || window.clipboardData).getData('text/plain');
-      if (!pastedText) return;
+      const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+      if (!text) return;
       const editor = e.target;
-      const curMarkdown = blocksToMarkdown(htmlToBlocks(editor));
-      const newMarkdown = curMarkdown + '\n' + pastedText;
-      editor.innerHTML = blocksToHtml(markdownToBlocks(newMarkdown));
-      placeCursorAtEnd(editor);
+      editor.focus();
+      const sel = window.getSelection();
+      if (sel.rangeCount) {
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          if (i > 0) {
+            range.insertNode(document.createElement('br'));
+            range.collapse(false);
+          }
+          range.insertNode(document.createTextNode(lines[i]));
+          range.collapse(false);
+        }
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      _detectingMarkdown = true;
       editor.dispatchEvent(new Event('input', { bubbles: true }));
+      _detectingMarkdown = false;
     };
     body.addEventListener('paste', onPaste);
 
@@ -319,14 +334,29 @@ function startTextBoxEditing(tbIdx) {
 
   const onPaste = (e) => {
     e.preventDefault();
-    const pastedText = (e.clipboardData || window.clipboardData).getData('text/plain');
-    if (!pastedText) return;
+    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+    if (!text) return;
     const editor = e.target;
-    const curMarkdown = blocksToMarkdown(htmlToBlocks(editor));
-    const newMarkdown = curMarkdown + '\n' + pastedText;
-    editor.innerHTML = blocksToHtml(markdownToBlocks(newMarkdown));
-    placeCursorAtEnd(editor);
-    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    editor.focus();
+    const sel = window.getSelection();
+    if (sel.rangeCount) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (i > 0) {
+          range.insertNode(document.createElement('br'));
+          range.collapse(false);
+        }
+        range.insertNode(document.createTextNode(lines[i]));
+        range.collapse(false);
+      }
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    _detectingMarkdown = true;
+    content.dispatchEvent(new Event('input', { bubbles: true }));
+    _detectingMarkdown = false;
   };
   content.addEventListener('paste', onPaste);
 

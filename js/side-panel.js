@@ -215,31 +215,27 @@ function setupMarkdownEditor(editorId, opts) {
     }
   }
 
-  function _insertPlainText(text) {
+  rtDiv.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
     if (!text) return;
     const sel = window.getSelection();
-    if (!sel.rangeCount) return;
-    const html = blocksToHtml(markdownToBlocks(text));
-    rtDiv.focus();
-    if (!document.execCommand('insertHTML', false, html)) {
+    if (sel.rangeCount) {
       const range = sel.getRangeAt(0);
-      const temp = document.createElement('div');
-      temp.innerHTML = html;
-      const frag = document.createDocumentFragment();
-      while (temp.firstChild) frag.appendChild(temp.firstChild);
       range.deleteContents();
-      range.insertNode(frag);
-      range.collapse(false);
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (i > 0) {
+          range.insertNode(document.createElement('br'));
+          range.collapse(false);
+        }
+        range.insertNode(document.createTextNode(lines[i]));
+        range.collapse(false);
+      }
       sel.removeAllRanges();
       sel.addRange(range);
     }
     scheduleSync(10);
-  }
-
-  rtDiv.addEventListener('paste', (e) => {
-    e.preventDefault();
-    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-    _insertPlainText(text);
   });
 
   editorEl.addEventListener('keydown', (e) => {
