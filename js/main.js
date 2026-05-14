@@ -1,6 +1,8 @@
 import { state } from './state.js';
 import { GRID } from './config.js';
 import { drawGrid } from './grid.js';
+import { initSettings } from './settings.js';
+import { openSettings } from './settings-dialog.js';
 import { drawSelectionMarquee } from './nodes.js';
 import { drawArrows, updateArrowPositionsFromConnections } from './arrows.js';
 import { drawShapePreview } from './shapes.js';
@@ -97,6 +99,7 @@ function initTopBar() {
   const newBtn = document.getElementById('actionNew');
   const openBtn = document.getElementById('actionOpen');
   const saveBtn = document.getElementById('actionSave');
+  const settingsBtn = document.getElementById('actionSettings');
 
   if (addNodeBtn) addNodeBtn.addEventListener('click', (e) => { e.preventDefault(); addNodeAtCenter(); });
   if (addArrowBtn) addArrowBtn.addEventListener('click', (e) => { e.preventDefault(); addArrowAtCenter(); });
@@ -105,9 +108,11 @@ function initTopBar() {
   if (newBtn) newBtn.addEventListener('click', (e) => { e.preventDefault(); newDocument(); });
   if (openBtn) openBtn.addEventListener('click', (e) => { e.preventDefault(); openDocument(); });
   if (saveBtn) saveBtn.addEventListener('click', (e) => { e.preventDefault(); saveDocument(); });
+  if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); openSettings(); });
 }
 
 function init() {
+  initSettings();
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
   initHistory(refreshSidePanel);

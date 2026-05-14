@@ -256,10 +256,19 @@ export function renderMarkdownBody(ctx, text, x, y, maxWidth, maxHeight, baseFon
     } else if (line.type === 'blockquote') {
       const barW = 3;
       const barPad = 5;
+      const qtContentMaxW = maxWidth - (barW + barPad);
+      const qtLines = buildDisplayLines(ctx, line.spans, qtContentMaxW, fontSize, baseFontFamily);
+      const qtH = qtLines.length * lh;
+      const bgPad = 4;
+      ctx.save();
+      ctx.globalAlpha = 0.06;
+      ctx.fillStyle = color;
+      ctx.fillRect(x, currentY - bgPad, maxWidth, qtH + bgPad * 2);
+      ctx.restore();
       ctx.save();
       ctx.globalAlpha = 0.5;
       ctx.fillStyle = color;
-      ctx.fillRect(x, currentY, barW, lh);
+      ctx.fillRect(x, currentY, barW, qtH);
       ctx.restore();
       prefixW = barW + barPad;
     }

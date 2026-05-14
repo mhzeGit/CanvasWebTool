@@ -1,4 +1,5 @@
 import { GRID } from './config.js';
+import { getEffectiveBackground, getEffectiveGridLine, hexToRgb } from './settings.js';
 
 function gridOpacity(visiblePx, minPx, peakPx, maxPx) {
   if (visiblePx <= minPx || visiblePx >= maxPx) return 0;
@@ -18,11 +19,13 @@ export function drawGrid(ctx, canvas, offsetX, offsetY, scale, dpr = 1) {
   const minWorldY = (0 - offsetY) / scale;
   const maxWorldY = (canvas.height / dpr - offsetY) / scale;
 
-  ctx.fillStyle = GRID.backgroundColor;
+  const bgColor = getEffectiveBackground();
+  ctx.fillStyle = bgColor;
   ctx.fillRect(minWorldX, minWorldY, maxWorldX - minWorldX, maxWorldY - minWorldY);
 
   const baseLineWidth = GRID.lineWidth / (scale * dpr);
-  const [r, g, b] = GRID.lineColor;
+  const gridLineHex = getEffectiveGridLine();
+  const [r, g, b] = hexToRgb(gridLineHex) || GRID.lineColor;
 
   for (const level of GRID.gridLevels) {
     const visiblePx = level.spacing * scale;

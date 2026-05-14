@@ -11,6 +11,10 @@ export function markdownToBlocks(text) {
     const bt = typeMap[line.type] || 'p';
     const block = { t: bt, s: [] };
     if (bt === 'chk') block.c = line.checked || false;
+    if (bt === 'num' && line.prefix) {
+      const num = parseInt(line.prefix, 10);
+      if (!isNaN(num)) block.n = num;
+    }
     if (line.spans) {
       for (const sp of line.spans) {
         const s = { t: sp.text };
@@ -38,7 +42,7 @@ export function blocksToMarkdown(blocks) {
     else if (bl.t === 'h3') prefix = '### ';
     else if (bl.t === 'qt') prefix = '> ';
     else if (bl.t === 'bul') prefix = '- ';
-    else if (bl.t === 'num') prefix = '1. ';
+    else if (bl.t === 'num') prefix = (bl.n || 1) + '. ';
     else if (bl.t === 'chk') prefix = '- [' + (bl.c ? 'x' : ' ') + '] ';
     let line = prefix;
     for (const sp of (bl.s || [])) {
@@ -97,7 +101,7 @@ export function blocksToHtml(blocks) {
     let prefix = '';
     if (bl.t === 'chk') prefix = '<span class="rt-marker" data-checked="' + (bl.c ? '1' : '0') + '" contenteditable="false"></span> ';
     else if (bl.t === 'bul') prefix = '<span class="rt-marker" contenteditable="false">\u2022</span> ';
-    else if (bl.t === 'num') prefix = '<span class="rt-marker" contenteditable="false">1.</span> ';
+    else if (bl.t === 'num') prefix = '<span class="rt-marker" contenteditable="false">' + (bl.n || 1) + '.</span> ';
     let extraStyle = '';
     if (bl.al && bl.al !== 'l' && bl.al !== 'left') extraStyle = 'text-align:' + (bl.al === 'c' || bl.al === 'center' ? 'center' : 'right') + ';';
     const styleAttr = extraStyle ? ' style="' + extraStyle + '"' : '';
@@ -191,6 +195,13 @@ export function htmlToBlocks(container) {
         baseProps.c = marker.dataset.checked === '1';
       } else {
         baseProps.c = marker && /x/i.test(marker.textContent || '');
+      }
+    }
+    if (bt === 'num') {
+      const marker = blockEl.querySelector('.rt-marker');
+      if (marker) {
+        const num = parseInt(marker.textContent, 10);
+        if (!isNaN(num)) baseProps.n = num;
       }
     }
 
@@ -401,15 +412,30 @@ export function renderRichText(ctx, blocks, x, y, maxW, maxH, fontFamily, baseFo
       drawOneSpan(ctx, ps, x, currentY, brightenColor(textColor, 0.4), fontFamily, baseFontSize);
       prefixW = spanWidth(ctx, ps, baseFontSize, fontFamily) + prefixPad;
     } else if (bl.t === 'num') {
-      const ps = { t: '1.', b: false, i: false };
+      const ps = { t: (bl.n || '1') + '.', b: false, i: false };
       drawOneSpan(ctx, ps, x, currentY, brightenColor(textColor, 0.4), fontFamily, baseFontSize);
       prefixW = spanWidth(ctx, ps, baseFontSize, fontFamily) + prefixPad;
     } else if (bl.t === 'qt') {
-      const barW = 3; const barPad = 5;
+      const barW = 3;
+      const barPad = 5;
+      const qtSpans = (bl.s || []).map(s => ({
+        ...s,
+        b: s.b || false,
+        fs: s.fs || fontSize
+      }));
+      const qtContentMaxW = maxW - (barW + barPad);
+      const qtLines = buildDisplayLines(ctx, qtSpans, qtContentMaxW, fontSize, fontFamily);
+      const qtH = qtLines.length * lh;
+      const bgPad = 4;
+      ctx.save();
+      ctx.globalAlpha = 0.06;
+      ctx.fillStyle = textColor;
+      ctx.fillRect(x, currentY - bgPad, maxW, qtH + bgPad * 2);
+      ctx.restore();
       ctx.save();
       ctx.globalAlpha = 0.5;
       ctx.fillStyle = textColor;
-      ctx.fillRect(x, currentY, barW, lh);
+      ctx.fillRect(x, currentY, barW, qtH);
       ctx.restore();
       prefixW = barW + barPad;
     }
