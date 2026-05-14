@@ -8,10 +8,6 @@
     "ses_1d8b350b2ffeX6Jep6M1TOpfVf": {
       "worktreeId": null,
       "createdAt": "2026-05-14T16:23:17.617Z"
-    },
-    "ses_1d8b176e7ffeQnPlL5Yppb5r3I": {
-      "worktreeId": null,
-      "createdAt": "2026-05-14T16:25:18.912Z"
     }
   },
   "tabOrder": {
@@ -37,7 +33,6 @@
       "ses_1d8c7f837ffeI551r7F0wkIMBa",
       "ses_1d8bd444effe9ZMQMweL2DPRzg",
       "ses_1d8b350b2ffeX6Jep6M1TOpfVf",
-      "ses_1d8b176e7ffeQnPlL5Yppb5r3I",
       "pending:11"
     ]
   }

@@ -11,6 +11,23 @@ import { renderMarkdownToHtml } from './markdown.js';
 import { blocksToHtml, getOrCreateBlocks } from './rich-text.js';
 import { TITLE_PLACEHOLDER, TEXT_PLACEHOLDER } from './config.js';
 
+function buildRichTextToolbar() {
+  return '<div class="panel-rt-btns">' +
+    '<button class="panel-rt-btn" onclick="document.execCommand(\'bold\',false,null)" title="Bold (Ctrl+B)"><strong>B</strong></button>' +
+    '<button class="panel-rt-btn" onclick="document.execCommand(\'italic\',false,null)" title="Italic (Ctrl+I)"><em>I</em></button>' +
+    '<button class="panel-rt-btn" onclick="document.execCommand(\'underline\',false,null)" title="Underline (Ctrl+U)"><u>U</u></button>' +
+    '<button class="panel-rt-btn" onclick="document.execCommand(\'strikeThrough\',false,null)" title="Strikethrough"><s>S</s></button>' +
+    '</div>';
+}
+
+function _sp(html) {
+  if (state.editingState && state.editingState.isRichText) {
+    html = buildRichTextToolbar() + html;
+  }
+  const panel = state.sidePanelContent;
+  panel.innerHTML = html;
+}
+
 const _nodeBatchSnapshots = new Map();
 const _shapeBatchSnapshots = new Map();
 const _tbBatchSnapshots = new Map();
@@ -141,12 +158,12 @@ export function refreshSidePanel() {
     const connLabel = connNodeIdx !== null && state.nodes[connNodeIdx]
       ? (state.nodes[connNodeIdx].title || `Node ${connNodeIdx}`) : 'None';
     const pt = getArrowEndpoint(arrow, state.arrowDragTarget.end);
-    sidePanelContent.innerHTML = [
+    _sp( [
       '<div class="panel-section-title">Arrow Point (' + state.escAttr(endLabel) + ')</div>',
       '<div class="panel-row"><label>Connected to</label><span class="panel-static">' + state.escAttr(connLabel) + '</span></div>',
       '<div class="panel-row"><label>X</label><span class="panel-static">' + Math.round(pt.x) + '</span></div>',
       '<div class="panel-row"><label>Y</label><span class="panel-static">' + Math.round(pt.y) + '</span></div>',
-    ].join('');
+    ].join(''));
     return;
   }
 
@@ -173,12 +190,12 @@ export function refreshSidePanel() {
       ? (state.nodes[arrow.connectedFrom].title || `Node ${arrow.connectedFrom}`) : 'Free';
     const toLabel = arrow.connectedTo !== null && state.nodes[arrow.connectedTo]
       ? (state.nodes[arrow.connectedTo].title || `Node ${arrow.connectedTo}`) : 'Free';
-    sidePanelContent.innerHTML = [
+    _sp( [
       '<div class="panel-section-title">Arrow</div>',
       '<div class="panel-row"><label>From</label><span class="panel-static">' + state.escAttr(fromLabel) + '</span></div>',
       '<div class="panel-row"><label>To</label><span class="panel-static">' + state.escAttr(toLabel) + '</span></div>',
       '<div class="panel-row"><label>Color</label><input id="panelArrowColor" class="panel-input" type="color" value="' + state.escAttr(arrow.color || '#6bb5ff') + '" /></div>',
-    ].join('');
+    ].join(''));
     const colorInput = document.getElementById('panelArrowColor');
     if (colorInput) colorInput.addEventListener('input', (ev) => { arrow.color = ev.target.value; });
     return;
@@ -186,7 +203,7 @@ export function refreshSidePanel() {
 
   if (state.selectedArrows.size > 1) {
     flushPanelEdit();
-    sidePanelContent.innerHTML = '<div class="panel-section-title">' + state.selectedArrows.size + ' arrows selected</div>';
+    _sp( '<div class="panel-section-title">' + state.selectedArrows.size + ' arrows selected</div>');
     return;
   }
 
@@ -197,13 +214,13 @@ export function refreshSidePanel() {
     const toNode = state.nodes[conn.to];
     const fromLabel = fromNode ? (fromNode.title || `Node ${conn.from}`) : '?';
     const toLabel = toNode ? (toNode.title || `Node ${conn.to}`) : '?';
-    sidePanelContent.innerHTML = [
+    _sp( [
       '<div class="panel-section-title">Connection</div>',
       '<div class="panel-row"><label>From</label><span class="panel-static">' + state.escAttr(fromLabel) + '</span></div>',
       '<div class="panel-row"><label>To</label><span class="panel-static">' + state.escAttr(toLabel) + '</span></div>',
       '<div class="panel-row"><label>Color</label><input id="panelConnColor" class="panel-input" type="color" value="' + state.escAttr(conn.color || '#6bb5ff') + '" /></div>',
       '<div class="panel-row"><label>Text</label><input id="panelConnText" class="panel-input" type="text" value="' + state.escAttr(conn.text ?? '') + '" /></div>',
-    ].join('');
+    ].join(''));
     const colorInput = document.getElementById('panelConnColor');
     const textInput = document.getElementById('panelConnText');
     if (colorInput) colorInput.addEventListener('input', (ev) => { conn.color = ev.target.value; });
@@ -231,7 +248,7 @@ export function refreshSidePanel() {
 
     const title = isBatch ? indices.length + ' shapes selected' : 'Shape (' + state.escAttr(s.shapeType) + ')';
 
-    sidePanelContent.innerHTML = [
+    _sp( [
       '<div class="panel-section-title">' + title + '</div>',
       '<div class="panel-row"><label>Color</label><input id="panelShapeColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(s.color ?? '#2b2b2b') + '" /></div>',
       '<div class="panel-row"><label>Border</label><input id="panelShapeBorderColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(s.borderColor ?? '#6bb5ff') + '" /></div>',
@@ -239,7 +256,7 @@ export function refreshSidePanel() {
       '<div class="panel-row"><label>Width</label><input id="panelShapeW" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : s.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
       '<div class="panel-row"><label>Height</label><input id="panelShapeH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : s.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
       (isRect ? '<div class="panel-row"><label>Radius</label><input id="panelShapeCornerRadius" class="panel-input" type="number" min="0" max="200" value="' + (radiusMixed ? '' : (s.cornerRadius ?? 4)) + '" placeholder="' + (radiusMixed ? '(mixed)' : '') + '" /></div>' : ''),
-    ].join('');
+    ].join(''));
 
     const colorInput = document.getElementById('panelShapeColor');
     const borderColorInput = document.getElementById('panelShapeBorderColor');
@@ -433,7 +450,7 @@ export function refreshSidePanel() {
 
     const title = isBatch ? indices.length + ' text boxes selected' : 'Text Box';
 
-    sidePanelContent.innerHTML = [
+    _sp( [
       '<div class="panel-section-title">' + title + '</div>',
       '<div class="panel-row"><label>Color</label><input id="panelTBColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(tb.color ?? '#1a1a1a') + '" /></div>',
       '<div class="panel-row"><label>Border</label><input id="panelTBBorderColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(tb.borderColor ?? '#444444') + '" /></div>',
@@ -443,7 +460,7 @@ export function refreshSidePanel() {
       '<div class="panel-row"><label>Height</label><input id="panelTBH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : tb.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
       '<div class="panel-row"><label>Text</label><textarea id="panelTBText" class="panel-input panel-textarea" placeholder="' + (textMixed ? '(mixed)' : 'Enter text...') + '">' + (textMixed ? '' : state.escAttr(tb.text ?? '')) + '</textarea></div>',
       '<div id="panelTBTextPreview" class="panel-markdown-preview">' + blocksToHtml(getOrCreateBlocks(tb)) + '</div>',
-    ].join('');
+    ].join(''));
 
     const colorInput = document.getElementById('panelTBColor');
     const borderColorInput = document.getElementById('panelTBBorderColor');
@@ -570,19 +587,19 @@ export function refreshSidePanel() {
 
   if (state.selectedConnectors.size === 1) {
     flushPanelEdit();
-    sidePanelContent.innerHTML = '<div class="panel-section-title">' + state.selectedConnectors.size + ' connector selected</div>';
+    _sp( '<div class="panel-section-title">' + state.selectedConnectors.size + ' connector selected</div>');
     return;
   }
 
   if (state.selectedConnectors.size > 1) {
     flushPanelEdit();
-    sidePanelContent.innerHTML = '<div class="panel-section-title">' + state.selectedConnectors.size + ' connectors selected</div>';
+    _sp( '<div class="panel-section-title">' + state.selectedConnectors.size + ' connectors selected</div>');
     return;
   }
 
   if (state.selected.size === 0 && state.selectedShapes.size === 0 && state.selectedTextBoxes.size === 0 && state.selectedConnectors.size === 0) {
     flushPanelEdit();
-    sidePanelContent.innerHTML = '<div class="panel-empty">Nothing selected</div>';
+    _sp( '<div class="panel-empty">Nothing selected</div>');
     return;
   }
 
@@ -611,7 +628,7 @@ export function refreshSidePanel() {
 
   const sectionTitle = isBatch ? indices.length + ' nodes selected' : 'Node';
 
-  sidePanelContent.innerHTML = [
+  _sp( [
     '<div class="panel-section-title">' + sectionTitle + '</div>',
     '<div class="panel-row"><label>Title</label><input id="panelTitle" class="panel-input" type="text" value="' + (titleMixed ? '' : state.escAttr(n.title ?? '')) + '" placeholder="' + (titleMixed ? '(mixed)' : state.escAttr(TITLE_PLACEHOLDER)) + '" /></div>',
     '<div class="panel-row"><label>Title Color</label><input id="panelTitleColor" class="panel-input panel-input-color" type="color" value="' + (n.titleColor ?? '#e7e7e7') + '" /></div>',
@@ -623,7 +640,7 @@ export function refreshSidePanel() {
     parentHtml,
     '<div class="panel-row"><label>Text</label><textarea id="panelText" class="panel-input panel-textarea" placeholder="' + (textMixed ? '(mixed)' : state.escAttr(TEXT_PLACEHOLDER)) + '">' + (textMixed ? '' : state.escAttr(n.text ?? '')) + '</textarea></div>',
     '<div id="panelTextPreview" class="panel-markdown-preview">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(n))) + '</div>',
-  ].join('');
+  ].join(''));
 
   const titleInput = document.getElementById('panelTitle');
   const titleColorInput = document.getElementById('panelTitleColor');
@@ -894,7 +911,7 @@ function renderMixedEditor() {
     parts.push('<div class="panel-section-title">' + state.selectedConnectors.size + ' connector' + (state.selectedConnectors.size > 1 ? 's' : '') + '</div>');
   }
 
-  state.sidePanelContent.innerHTML = parts.join('');
+  _sp(parts.join(''));
 
   prefixCounter = 0;
   if (state.selected.size > 0) {
