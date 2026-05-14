@@ -175,8 +175,10 @@ function onPointerDown(e) {
         state.selectedTextBoxes.clear();
         state.selectedConnectors.clear();
         state.arrowDragTarget = null;
-        addNodeAt(world.x, world.y);
-        refreshSidePanel();
+        state.drawingTool = 'node';
+        state.drawingStartX = world.x;
+        state.drawingStartY = world.y;
+        canvas.setPointerCapture(e.pointerId);
         e.preventDefault();
         return;
       } else if (tool === TOOLS.TEXT) {
@@ -1371,6 +1373,18 @@ function onPointerUp(e) {
           const w = Math.abs(dx);
           const h = Math.abs(dy);
           addShapeAt(x, y, state.drawingShapeType, w, h);
+        }
+      } else if (state.drawingTool === 'node') {
+        const dx = world.x - state.drawingStartX;
+        const dy = world.y - state.drawingStartY;
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+          const x = Math.min(state.drawingStartX, world.x);
+          const y = Math.min(state.drawingStartY, world.y);
+          const w = Math.abs(dx);
+          const h = Math.abs(dy);
+          addNodeAt(x, y, w, h);
+        } else {
+          addNodeAt(world.x, world.y);
         }
       } else if (state.drawingTool === 'text') {
         const dx = world.x - state.drawingStartX;

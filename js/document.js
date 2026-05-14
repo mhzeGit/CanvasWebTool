@@ -28,10 +28,12 @@ export function addNodeAtCenter() {
   addNodeAt(world.x, world.y);
 }
 
-export function addNodeAt(worldX, worldY) {
+export function addNodeAt(worldX, worldY, optW, optH) {
   flushPanelEdit();
-  const w = 240; const h = 160;
-  const node = { id: nextNodeId(), x: worldX - w / 2, y: worldY - h / 2, w, h, color: DEFAULT_NODE_COLOR, title: '', titleColor: '#e7e7e7', text: '', textColor: '#ddd', fontSize: 12, blocks: null, parentId: null, parentType: null };
+  const isDrag = optW !== undefined && optH !== undefined;
+  const w = isDrag ? optW : 240;
+  const h = isDrag ? optH : 160;
+  const node = { id: nextNodeId(), x: isDrag ? worldX : worldX - w / 2, y: isDrag ? worldY : worldY - h / 2, w, h, color: DEFAULT_NODE_COLOR, title: '', titleColor: '#e7e7e7', text: '', textColor: '#ddd', fontSize: 12, blocks: null, parentId: null, parentType: null };
   const idx = state.nodes.length;
   state.nodes.push(node);
   state.selected.clear();

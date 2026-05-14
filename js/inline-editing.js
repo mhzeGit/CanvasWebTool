@@ -132,9 +132,14 @@ export function startEditing(idx, field, worldX, worldY, worldW, worldH) {
     el.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') {
         cancelEditing();
-      } else if (ev.key === 'Enter' && !ev.shiftKey) {
-        ev.preventDefault();
-        handleEnter(el, ev);
+      } else if (ev.key === 'Enter') {
+        if (ev.shiftKey) {
+          document.execCommand('insertLineBreak', false, null);
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        } else {
+          ev.preventDefault();
+          el.blur();
+        }
       } else if (ev.key === 'Backspace') {
         handleBackspace(el, ev);
       } else if (ev.ctrlKey || ev.metaKey) {
@@ -318,9 +323,14 @@ function startTextBoxEditing(tbIdx) {
   el.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape') {
       cancelEditing();
-    } else if (ev.key === 'Enter' && !ev.shiftKey) {
-      ev.preventDefault();
-      handleEnter(el, ev);
+    } else if (ev.key === 'Enter') {
+      if (ev.shiftKey) {
+        document.execCommand('insertLineBreak', false, null);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      } else {
+        ev.preventDefault();
+        el.blur();
+      }
     } else if (ev.key === 'Backspace') {
       handleBackspace(el, ev);
     } else if (ev.ctrlKey || ev.metaKey) {

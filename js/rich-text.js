@@ -182,41 +182,53 @@ export function htmlToBlocks(container) {
     const bt = typeMap[cls];
     if (bt === 'hr') { blocks.push({ t: 'hr' }); continue; }
 
-    const block = { t: bt, s: [] };
-    if (blockEl.style.textAlign === 'center') block.al = 'c';
-    else if (blockEl.style.textAlign === 'right') block.al = 'r';
-
+    const baseProps = { t: bt };
+    if (blockEl.style.textAlign === 'center') baseProps.al = 'c';
+    else if (blockEl.style.textAlign === 'right') baseProps.al = 'r';
     if (bt === 'chk') {
       const marker = blockEl.querySelector('.rt-marker');
-      block.c = marker && /x/i.test(marker.textContent || '');
+      baseProps.c = marker && /x/i.test(marker.textContent || '');
     }
 
-    const walker = document.createTreeWalker(blockEl, NodeFilter.SHOW_TEXT, {
-      acceptNode: function(node) {
-        if (isParentMarker(node, blockEl)) return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_ACCEPT;
+    const subBlocks = [];
+    let current = { ...baseProps, s: [] };
+
+    function processNode(node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent || '';
+        if (!text) return;
+        const fmt = collectAncestorFormat(node.parentNode, blockEl);
+        const span = { t: text };
+        if (fmt.b) span.b = true;
+        if (fmt.i) span.i = true;
+        if (fmt.u) span.u = true;
+        if (fmt.s) span.s = true;
+        if (fmt.cd) span.cd = true;
+        if (fmt.fc) span.fc = fmt.fc;
+        if (fmt.fs) span.fs = fmt.fs;
+        if (fmt.lk !== undefined && fmt.lk !== null) span.lk = fmt.lk;
+        current.s.push(span);
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        if (node.tagName === 'BR') {
+          subBlocks.push(current);
+          current = { ...baseProps, s: [] };
+        } else if (!isMarkerNode(node)) {
+          for (const child of node.childNodes) {
+            processNode(child);
+          }
+        }
       }
-    });
-
-    let currentNode;
-    while ((currentNode = walker.nextNode())) {
-      const text = currentNode.textContent || '';
-      if (!text) continue;
-      const fmt = collectAncestorFormat(currentNode.parentNode, blockEl);
-      const span = { t: text };
-      if (fmt.b) span.b = true;
-      if (fmt.i) span.i = true;
-      if (fmt.u) span.u = true;
-      if (fmt.s) span.s = true;
-      if (fmt.cd) span.cd = true;
-      if (fmt.fc) span.fc = fmt.fc;
-      if (fmt.fs) span.fs = fmt.fs;
-      if (fmt.lk !== undefined && fmt.lk !== null) span.lk = fmt.lk;
-      block.s.push(span);
     }
 
-    if (block.s.length === 0) block.s.push({ t: '' });
-    blocks.push(block);
+    for (const child of blockEl.childNodes) {
+      processNode(child);
+    }
+    subBlocks.push(current);
+
+    for (const sb of subBlocks) {
+      if (sb.s.length === 0) sb.s.push({ t: '' });
+      blocks.push(sb);
+    }
   }
 
   if (blocks.length === 0) blocks.push({ t: 'p', s: [{ t: '' }] });
