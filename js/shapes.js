@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { getEdgeAt, drawRoundedRect } from './utils.js';
-import { EDGE_MARGIN, SHAPE_MIN_W, SHAPE_MIN_H } from './config.js';
+import { EDGE_MARGIN } from './config.js';
 
 function drawShapePath(ctx, s) {
   const hw = s.w / 2;
@@ -69,39 +69,10 @@ export function isShapeInBox(shape, bx1, by1, bx2, by2) {
 export function drawShapePreview() {
   if (!state.drawingTool || state.drawingTool !== 'shape') return;
   const ctx = state.ctx;
-  const rawW = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
-  const rawH = Math.abs(state.lastWorldMouse.y - state.drawingStartY);
-
-  if (rawW < SHAPE_MIN_W || rawH < SHAPE_MIN_H) {
-    const defaultW = 120;
-    const defaultH = 80;
-    const px = state.drawingStartX - defaultW / 2;
-    const py = state.drawingStartY - defaultH / 2;
-    const previewShape = {
-      shapeType: state.drawingShapeType || 'rectangle',
-      x: px, y: py, w: defaultW, h: defaultH,
-      color: state.lastShapeColor || '#2b2b2b',
-      borderColor: state.lastShapeBorderColor || '#6bb5ff',
-      borderWidth: 2,
-    };
-    ctx.save();
-    ctx.fillStyle = previewShape.color;
-    drawShapePath(ctx, previewShape);
-    ctx.fill();
-    ctx.restore();
-    ctx.save();
-    ctx.strokeStyle = previewShape.borderColor;
-    ctx.lineWidth = previewShape.borderWidth;
-    drawShapePath(ctx, previewShape);
-    ctx.stroke();
-    ctx.restore();
-    return;
-  }
-
   const x = Math.min(state.drawingStartX, state.lastWorldMouse.x);
   const y = Math.min(state.drawingStartY, state.lastWorldMouse.y);
-  const w = rawW;
-  const h = rawH;
+  const w = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
+  const h = Math.abs(state.lastWorldMouse.y - state.drawingStartY);
 
   const previewShape = {
     shapeType: state.drawingShapeType || 'rectangle',

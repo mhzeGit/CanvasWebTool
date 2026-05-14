@@ -44,31 +44,10 @@ export function findNodeAtPoint(wx, wy) {
 export function drawNodePreview() {
   if (!state.drawingTool || state.drawingTool !== 'node') return;
   const ctx = state.ctx;
-  const rawW = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
-  const rawH = Math.abs(state.lastWorldMouse.y - state.drawingStartY);
-
-  if (rawW < NODE_MIN_W || rawH < NODE_MIN_H) {
-    const defaultW = 240;
-    const defaultH = 160;
-    const px = state.drawingStartX - defaultW / 2;
-    const py = state.drawingStartY - defaultH / 2;
-    ctx.save();
-    ctx.fillStyle = DEFAULT_NODE_COLOR;
-    drawRoundedRect(ctx, px, py, defaultW, defaultH, 12);
-    ctx.fill();
-    ctx.restore();
-    ctx.save();
-    ctx.fillStyle = getDarkerColor(DEFAULT_NODE_COLOR, 0.6);
-    drawRoundedRect(ctx, px, py, defaultW, 30, 12);
-    ctx.fill();
-    ctx.restore();
-    return;
-  }
-
   const x = Math.min(state.drawingStartX, state.lastWorldMouse.x);
   const y = Math.min(state.drawingStartY, state.lastWorldMouse.y);
-  const w = rawW;
-  const h = rawH;
+  const w = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
+  const h = Math.abs(state.lastWorldMouse.y - state.drawingStartY);
   const cornerRadius = Math.min(12, Math.min(w, h) * 0.2);
 
   ctx.save();

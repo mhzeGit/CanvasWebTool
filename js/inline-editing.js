@@ -6,7 +6,7 @@ import { hitTestTextBox } from './textboxes.js';
 import { createPropertyChangeCmd } from './undo.js';
 import { refreshSidePanel } from './side-panel.js';
 import { history } from './history.js';
-import { blocksToHtml, htmlToBlocks, markdownToBlocks, blocksToMarkdown } from './rich-text.js';
+import { blocksToHtml, blocksToEditorHtml, htmlToBlocks, markdownToBlocks, blocksToMarkdown } from './rich-text.js';
 import { parseInlineSpans } from './markdown.js';
 import { TITLE_PLACEHOLDER, DEFAULT_NODE_COLOR } from './config.js';
 import { getEntityElement } from './dom-entities.js';
@@ -97,7 +97,7 @@ export function startEditing(idx, field) {
     if (!body) return;
 
     body.contentEditable = 'true';
-    body.innerHTML = blocksToHtml(n.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
+    body.innerHTML = blocksToEditorHtml(n.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
 
     body.focus();
     placeCursorAtEnd(body);
@@ -135,10 +135,23 @@ export function startEditing(idx, field) {
     body.addEventListener('input', onInput);
     body.addEventListener('keydown', onKeyDown);
 
+    const onPaste = (e) => {
+      e.preventDefault();
+      const pastedText = (e.clipboardData || window.clipboardData).getData('text/plain');
+      if (!pastedText) return;
+      const editor = e.target;
+      const curMarkdown = blocksToMarkdown(htmlToBlocks(editor));
+      const newMarkdown = curMarkdown + '\n' + pastedText;
+      editor.innerHTML = blocksToHtml(markdownToBlocks(newMarkdown));
+      placeCursorAtEnd(editor);
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    body.addEventListener('paste', onPaste);
+
     const commit = () => { commitEditing(); };
     body.addEventListener('blur', commit);
 
-    state.editingState._handlers = { onInput, onKeyDown, commit };
+    state.editingState._handlers = { onInput, onKeyDown, onPaste, commit };
   } else {
     const titlebar = el.querySelector('.entity-node-titlebar');
     if (!titlebar) return;
@@ -266,7 +279,7 @@ function startTextBoxEditing(tbIdx) {
   if (!content) return;
 
   content.contentEditable = 'true';
-  content.innerHTML = blocksToHtml(tb.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
+  content.innerHTML = blocksToEditorHtml(tb.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
 
   content.focus();
   placeCursorAtEnd(content);
@@ -304,10 +317,23 @@ function startTextBoxEditing(tbIdx) {
   content.addEventListener('input', onInput);
   content.addEventListener('keydown', onKeyDown);
 
+  const onPaste = (e) => {
+    e.preventDefault();
+    const pastedText = (e.clipboardData || window.clipboardData).getData('text/plain');
+    if (!pastedText) return;
+    const editor = e.target;
+    const curMarkdown = blocksToMarkdown(htmlToBlocks(editor));
+    const newMarkdown = curMarkdown + '\n' + pastedText;
+    editor.innerHTML = blocksToHtml(markdownToBlocks(newMarkdown));
+    placeCursorAtEnd(editor);
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  content.addEventListener('paste', onPaste);
+
   const commit = () => { commitEditing(); };
   content.addEventListener('blur', commit);
 
-  state.editingState._handlers = { onInput, onKeyDown, commit };
+  state.editingState._handlers = { onInput, onKeyDown, onPaste, commit };
 }
 
 function handleEnter(editor, ev) {
@@ -431,7 +457,6 @@ function _renderInlineMarkdown(text) {
     if (sp.strike) t = '<s>' + t + '</s>';
     if (sp.bold) t = '<strong>' + t + '</strong>';
     if (sp.italic) t = '<em>' + t + '</em>';
-    if (sp.fc) t = '<span style="color:' + sp.fc + '">' + t + '</span>';
     html += t;
   }
   return html || '<br>';
@@ -445,11 +470,9 @@ function _hasUnformattedMarkdown(block) {
   const hasBold = spans.some(s => s.bold);
   const hasCode = spans.some(s => s.code);
   const hasStrike = spans.some(s => s.strike);
-  const hasColor = spans.some(s => s.fc);
   if (hasBold && !/<strong>/.test(html)) return true;
   if (hasCode && !/<code>/.test(html)) return true;
   if (hasStrike && !/<s>/.test(html)) return true;
-  if (hasColor && !/<span[^>]*style=/.test(html)) return true;
   return false;
 }
 
@@ -562,18 +585,23 @@ export function commitEditing() {
   if (state.editingState._handlers) {
     el.removeEventListener('input', state.editingState._handlers.onInput);
     el.removeEventListener('keydown', state.editingState._handlers.onKeyDown);
+    el.removeEventListener('paste', state.editingState._handlers.onPaste);
     el.removeEventListener('blur', state.editingState._handlers.commit);
   }
 
   if (isRichText) {
-    const blocks = htmlToBlocks(el);
+    const domBlocks = htmlToBlocks(el);
     if (type === 'textBox') {
-      state.textBoxes[idx].blocks = blocks;
-      state.textBoxes[idx].text = blocksToMarkdown(blocks);
+      state.textBoxes[idx].text = blocksToMarkdown(domBlocks);
+      state.textBoxes[idx].blocks = markdownToBlocks(state.textBoxes[idx].text);
+      const newValue = JSON.stringify(state.textBoxes[idx].blocks);
+      if (originalValue !== newValue && state.textBoxes[idx].id !== undefined) {
+        history.push(createPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, state.textBoxes[idx].id, field, originalValue, newValue));
+      }
     } else if (type === 'node') {
-      state.nodes[idx].blocks = blocks;
-      state.nodes[idx].text = blocksToMarkdown(blocks);
-      const newValue = JSON.stringify(blocks);
+      state.nodes[idx].text = blocksToMarkdown(domBlocks);
+      state.nodes[idx].blocks = markdownToBlocks(state.nodes[idx].text);
+      const newValue = JSON.stringify(state.nodes[idx].blocks);
       if (originalValue !== newValue && state.nodes[idx].id !== undefined) {
         history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, state.nodes[idx].id, field, originalValue, newValue));
       }
@@ -608,6 +636,7 @@ export function cancelEditing() {
   if (state.editingState._handlers) {
     el.removeEventListener('input', state.editingState._handlers.onInput);
     el.removeEventListener('keydown', state.editingState._handlers.onKeyDown);
+    el.removeEventListener('paste', state.editingState._handlers.onPaste);
     el.removeEventListener('blur', state.editingState._handlers.commit);
   }
 

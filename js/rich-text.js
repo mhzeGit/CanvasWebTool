@@ -22,6 +22,7 @@ export function markdownToBlocks(text) {
         if (sp.italic) s.i = true;
         if (sp.code) s.cd = true;
         if (sp.strike) s.s = true;
+        if (sp.fc) s.fc = sp.fc;
         block.s.push(s);
       }
     }
@@ -45,17 +46,36 @@ export function blocksToMarkdown(blocks) {
     else if (bl.t === 'num') prefix = (bl.n || 1) + '. ';
     else if (bl.t === 'chk') prefix = '- [' + (bl.c ? 'x' : ' ') + '] ';
     let line = prefix;
-    for (const sp of (bl.s || [])) {
+    const spanList = bl.s || [];
+    let i = 0;
+    while (i < spanList.length) {
+      const sp = spanList[i];
+      if (sp.fc) {
+        const entry = Object.entries(NAMED_COLORS).find(([, v]) => v === sp.fc);
+        if (entry) {
+          let j = i + 1;
+          while (j < spanList.length && spanList[j].fc === sp.fc) j++;
+          line += '{' + entry[0] + ':';
+          for (let k = i; k < j; k++) {
+            let t = spanList[k].t || '';
+            if (spanList[k].cd) t = '`' + t + '`';
+            if (spanList[k].s) t = '~~' + t + '~~';
+            if (spanList[k].b) t = '*' + t + '*';
+            if (spanList[k].i) t = '_' + t + '_';
+            line += t;
+          }
+          line += '}';
+          i = j;
+          continue;
+        }
+      }
       let t = sp.t || '';
       if (sp.cd) t = '`' + t + '`';
       if (sp.s) t = '~~' + t + '~~';
       if (sp.b) t = '*' + t + '*';
       if (sp.i) t = '_' + t + '_';
-      if (sp.fc) {
-        const entry = Object.entries(NAMED_COLORS).find(([, v]) => v === sp.fc);
-        if (entry) t = '{' + entry[0] + ':' + t + '}';
-      }
       line += t;
+      i++;
     }
     lines.push(line);
   }
@@ -64,6 +84,10 @@ export function blocksToMarkdown(blocks) {
 
 export function getOrCreateBlocks(entity) {
   if (entity.blocks && Array.isArray(entity.blocks) && entity.blocks.length > 0) {
+    const text = entity.text || '';
+    if (/\{[a-zA-Z]+:/.test(text) && !entity.blocks.some(b => (b.s || []).some(s => s.fc))) {
+      entity.blocks = markdownToBlocks(text);
+    }
     return entity.blocks;
   }
   if (typeof entity.text === 'string' && entity.text.trim()) {
@@ -90,17 +114,82 @@ export function blocksToHtml(blocks) {
     if (spans.length === 0) spans.push({ t: '' });
     for (const sp of spans) {
       let t = escHtml(sp.t || '');
+      let style = '';
+      if (sp.fc) style += 'color:' + sp.fc + ';';
+      if (sp.fs) style += 'font-size:' + sp.fs + 'px;';
+      if (style) t = '<span style="' + style + '">' + t + '</span>';
       if (sp.cd) t = '<code>' + t + '</code>';
       if (sp.s) t = '<s>' + t + '</s>';
       if (sp.u) t = '<u>' + t + '</u>';
       if (sp.b) t = '<strong>' + t + '</strong>';
       if (sp.i) t = '<em>' + t + '</em>';
       if (sp.lk) t = '<a href="' + escHtml(sp.lk) + '" target="_blank">' + t + '</a>';
+      inner += t;
+    }
+    let prefix = '';
+    if (bl.t === 'chk') prefix = '<span class="rt-marker" data-checked="' + (bl.c ? '1' : '0') + '" contenteditable="false"></span> ';
+    else if (bl.t === 'bul') prefix = '<span class="rt-marker" contenteditable="false">\u2022</span> ';
+    else if (bl.t === 'num') prefix = '<span class="rt-marker" contenteditable="false">' + (bl.n || 1) + '.</span> ';
+    let extraStyle = '';
+    if (bl.al && bl.al !== 'l' && bl.al !== 'left') extraStyle = 'text-align:' + (bl.al === 'c' || bl.al === 'center' ? 'center' : 'right') + ';';
+    const styleAttr = extraStyle ? ' style="' + extraStyle + '"' : '';
+    html += '<div class="' + cls + '"' + styleAttr + '>' + prefix + (inner || '<br>') + '</div>';
+  }
+  return html;
+}
+
+export function blocksToEditorHtml(blocks) {
+  if (!blocks || !blocks.length) return '<div class="rt-block rt-paragraph"><br></div>';
+  let html = '';
+  const typeMap = { p: 'rt-paragraph', h1: 'rt-h1', h2: 'rt-h2', h3: 'rt-h3', bul: 'rt-bullet', num: 'rt-numbered', chk: 'rt-checkbox', qt: 'rt-quote', hr: 'rt-divider' };
+  for (const bl of blocks) {
+    if (bl.t === 'hr') { html += '<div class="rt-block rt-divider" contenteditable="false"><hr></div>'; continue; }
+    const cls = 'rt-block ' + (typeMap[bl.t] || 'rt-paragraph');
+    let inner = '';
+    const spans = bl.s || [];
+    if (spans.length === 0) spans.push({ t: '' });
+    let i = 0;
+    while (i < spans.length) {
+      const sp = spans[i];
+      if (sp.fc) {
+        const colorHex = sp.fc;
+        const entry = Object.entries(NAMED_COLORS).find(([, v]) => v === colorHex);
+        if (entry) {
+          let j = i;
+          while (j < spans.length && spans[j].fc === colorHex) j++;
+          inner += '<span class="rt-color-syn" contenteditable="false">{' + entry[0] + ':</span>';
+          for (let k = i; k < j; k++) {
+            let t = escHtml(spans[k].t || '');
+            let style = '';
+            if (spans[k].fc) style += 'color:' + spans[k].fc + ';';
+            if (spans[k].fs) style += 'font-size:' + spans[k].fs + 'px;';
+            if (style) t = '<span style="' + style + '">' + t + '</span>';
+            if (spans[k].cd) t = '<code>' + t + '</code>';
+            if (spans[k].s) t = '<s>' + t + '</s>';
+            if (spans[k].u) t = '<u>' + t + '</u>';
+            if (spans[k].b) t = '<strong>' + t + '</strong>';
+            if (spans[k].i) t = '<em>' + t + '</em>';
+            if (spans[k].lk) t = '<a href="' + escHtml(spans[k].lk) + '" target="_blank">' + t + '</a>';
+            inner += t;
+          }
+          inner += '<span class="rt-color-syn" contenteditable="false">}</span>';
+          i = j;
+          continue;
+        }
+      }
+      let t = escHtml(sp.t || '');
       let style = '';
       if (sp.fc) style += 'color:' + sp.fc + ';';
       if (sp.fs) style += 'font-size:' + sp.fs + 'px;';
       if (style) t = '<span style="' + style + '">' + t + '</span>';
+      if (sp.cd) t = '<code>' + t + '</code>';
+      if (sp.s) t = '<s>' + t + '</s>';
+      if (sp.u) t = '<u>' + t + '</u>';
+      if (sp.b) t = '<strong>' + t + '</strong>';
+      if (sp.i) t = '<em>' + t + '</em>';
+      if (sp.lk) t = '<a href="' + escHtml(sp.lk) + '" target="_blank">' + t + '</a>';
       inner += t;
+      i++;
     }
     let prefix = '';
     if (bl.t === 'chk') prefix = '<span class="rt-marker" data-checked="' + (bl.c ? '1' : '0') + '" contenteditable="false"></span> ';
@@ -182,12 +271,28 @@ function isParentMarker(node, blockEl) {
 export function htmlToBlocks(container) {
   const blocks = [];
   const typeMap = { 'rt-paragraph': 'p', 'rt-h1': 'h1', 'rt-h2': 'h2', 'rt-h3': 'h3', 'rt-bullet': 'bul', 'rt-numbered': 'num', 'rt-checkbox': 'chk', 'rt-quote': 'qt', 'rt-divider': 'hr' };
+  const tagMap = { 'H1': 'h1', 'H2': 'h2', 'H3': 'h3', 'BLOCKQUOTE': 'qt', 'P': 'p', 'DIV': 'p', 'HR': 'hr' };
 
-  for (const blockEl of container.children) {
-    if (!blockEl.classList || !blockEl.classList.contains('rt-block')) continue;
-    const cls = Array.from(blockEl.classList).find(c => typeMap[c]);
-    if (!cls) continue;
-    const bt = typeMap[cls];
+  const raw = Array.from(container.children);
+  for (let ci = 0; ci < raw.length; ci++) {
+    const blockEl = raw[ci];
+    let bt = null;
+    if (blockEl.classList && blockEl.classList.contains('rt-block')) {
+      const cls = Array.from(blockEl.classList).find(c => typeMap[c]);
+      if (cls) bt = typeMap[cls];
+    } else if (blockEl.tagName === 'HR') {
+      bt = 'hr';
+    } else if (blockEl.tagName === 'UL' || blockEl.tagName === 'OL') {
+      const isBul = blockEl.tagName === 'UL';
+      const items = blockEl.querySelectorAll(':scope > li');
+      for (const li of items) {
+        blocks.push(_liToBlock(li, isBul ? 'bul' : 'num'));
+      }
+      continue;
+    } else if (tagMap[blockEl.tagName]) {
+      bt = tagMap[blockEl.tagName];
+    }
+    if (!bt) continue;
     if (bt === 'hr') { blocks.push({ t: 'hr' }); continue; }
 
     const baseProps = { t: bt };
@@ -252,6 +357,28 @@ export function htmlToBlocks(container) {
 
   if (blocks.length === 0) blocks.push({ t: 'p', s: [{ t: '' }] });
   return blocks;
+}
+
+function _liToBlock(li, type) {
+  const bl = { t: type, s: [] };
+  const fmt = { b: false, i: false, u: false, s: false, cd: false };
+  for (const child of li.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      const text = child.textContent || '';
+      if (text) bl.s.push({ t: text });
+    } else if (child.nodeType === Node.ELEMENT_NODE && child.tagName !== 'BR') {
+      const cfmt = collectAncestorFormat(child, li);
+      const span = { t: child.textContent || '' };
+      if (cfmt.b) span.b = true;
+      if (cfmt.i) span.i = true;
+      if (cfmt.u) span.u = true;
+      if (cfmt.s) span.s = true;
+      if (cfmt.cd) span.cd = true;
+      if (span.t) bl.s.push(span);
+    }
+  }
+  if (bl.s.length === 0) bl.s.push({ t: '' });
+  return bl;
 }
 
 function getSpanFont(ctx, span, baseFontSize, baseFontFamily) {

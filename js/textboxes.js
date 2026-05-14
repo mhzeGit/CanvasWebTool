@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { getEdgeAt, drawRoundedRect } from './utils.js';
-import { EDGE_MARGIN, TEXTBOX_MIN_W, TEXTBOX_MIN_H } from './config.js';
+import { EDGE_MARGIN } from './config.js';
 
 export function hitTestTextBox(wx, wy) {
   for (let i = state.textBoxes.length - 1; i >= 0; i--) {
@@ -30,33 +30,10 @@ export function getTextBoxEdgeAt(wx, wy) {
 export function drawTextBoxPreview() {
   if (!state.drawingTool || state.drawingTool !== 'text') return;
   const ctx = state.ctx;
-  const rawW = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
-  const rawH = Math.abs(state.lastWorldMouse.y - state.drawingStartY);
-
-  if (rawW < TEXTBOX_MIN_W || rawH < TEXTBOX_MIN_H) {
-    const defaultW = 200;
-    const defaultH = 80;
-    const px = state.drawingStartX - defaultW / 2;
-    const py = state.drawingStartY - defaultH / 2;
-    ctx.save();
-    ctx.fillStyle = '#1a1a1a';
-    drawRoundedRect(ctx, px, py, defaultW, defaultH, 6);
-    ctx.fill();
-    ctx.restore();
-    ctx.save();
-    ctx.strokeStyle = '#444';
-    ctx.lineWidth = 1.5;
-    const outlineOffset = ctx.lineWidth / 2;
-    drawRoundedRect(ctx, px - outlineOffset, py - outlineOffset, defaultW + outlineOffset * 2, defaultH + outlineOffset * 2, 6 + outlineOffset);
-    ctx.stroke();
-    ctx.restore();
-    return;
-  }
-
   const x = Math.min(state.drawingStartX, state.lastWorldMouse.x);
   const y = Math.min(state.drawingStartY, state.lastWorldMouse.y);
-  const w = rawW;
-  const h = rawH;
+  const w = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
+  const h = Math.abs(state.lastWorldMouse.y - state.drawingStartY);
 
   ctx.save();
   ctx.fillStyle = '#1a1a1a';

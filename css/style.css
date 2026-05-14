@@ -567,6 +567,12 @@ canvas#gridCanvas {
   line-height: 1;
 }
 
+.rt-color-syn {
+  opacity: 0.3;
+  user-select: none;
+  pointer-events: none;
+}
+
 .rt-marker {
   color: #888;
   font-weight: 600;

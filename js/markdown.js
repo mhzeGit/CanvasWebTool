@@ -392,11 +392,11 @@ export function renderMarkdownToHtml(text) {
     let inner = '';
     for (const span of line.spans) {
       let t = escHtml(span.text);
+      if (span.fc) t = '<span style="color:' + span.fc + '">' + t + '</span>';
       if (span.code) t = '<code>' + t + '</code>';
       if (span.strike) t = '<del>' + t + '</del>';
       if (span.bold) t = '<strong>' + t + '</strong>';
       if (span.italic) t = '<em>' + t + '</em>';
-      if (span.fc) t = '<span style="color:' + span.fc + '">' + t + '</span>';
       inner += t;
     }
     switch (line.type) {

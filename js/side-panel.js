@@ -215,20 +215,38 @@ function setupMarkdownEditor(editorId, opts) {
     }
   }
 
-  rtDiv.addEventListener('paste', (e) => {
-    e.preventDefault();
-    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+  function _insertPlainText(text) {
     if (!text) return;
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
-    const range = sel.getRangeAt(0);
-    range.deleteContents();
-    const textNode = document.createTextNode(text);
-    range.insertNode(textNode);
-    range.collapse(false);
-    sel.removeAllRanges();
-    sel.addRange(range);
+    const html = blocksToHtml(markdownToBlocks(text));
+    rtDiv.focus();
+    if (!document.execCommand('insertHTML', false, html)) {
+      const range = sel.getRangeAt(0);
+      const temp = document.createElement('div');
+      temp.innerHTML = html;
+      const frag = document.createDocumentFragment();
+      while (temp.firstChild) frag.appendChild(temp.firstChild);
+      range.deleteContents();
+      range.insertNode(frag);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
     scheduleSync(10);
+  }
+
+  rtDiv.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+    _insertPlainText(text);
+  });
+
+  editorEl.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'v') return;
+    const active = document.activeElement;
+    if (active !== rtDiv) return;
+    e.stopPropagation();
   });
 
   editorEl.addEventListener('click', (e) => {
