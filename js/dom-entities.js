@@ -337,7 +337,7 @@ function cleanupStaleElements() {
 export function syncAllEntities() {
   const order = state.getAllDrawOrder();
   const drawOrderKey = order.map(item => item.type[0] + item.i).join(',');
-  const selKey = state.selected.size + ',' + state.selectedShapes.size + ',' + state.selectedTextBoxes.size;
+  const selKey = [...state.selected].sort((a,b)=>a-b).join(',') + '|' + [...state.selectedShapes].sort((a,b)=>a-b).join(',') + '|' + [...state.selectedTextBoxes].sort((a,b)=>a-b).join(',');
 
   cleanupStaleElements();
 
