@@ -9,6 +9,8 @@ import {
   createResizeShapeCmd, createAddTextBoxCmd, createDeleteTextBoxesCmd,
   createMoveTextBoxesCmd, createAddConnectorCmd, createDeleteConnectorsCmd,
   createMoveConnectorsCmd,
+  createAddArrowCmd, createDeleteArrowsCmd,
+  createAddConnectionCmd, createDeleteConnectionCmd,
 } from './undo.js';
 import { serializeDocument, deserializeDocument, FILE_EXTENSION } from './format.js';
 import { saveToFile, loadFromFile } from './file-io.js';
@@ -29,7 +31,7 @@ export function addNodeAtCenter() {
 export function addNodeAt(worldX, worldY) {
   flushPanelEdit();
   const w = 240; const h = 160;
-  const node = { id: nextNodeId(), x: worldX - w / 2, y: worldY - h / 2, w, h, color: DEFAULT_NODE_COLOR, title: '', titleColor: '#e7e7e7', text: '', textColor: '#ddd', fontSize: 12, parentId: null, parentType: null };
+  const node = { id: nextNodeId(), x: worldX - w / 2, y: worldY - h / 2, w, h, color: DEFAULT_NODE_COLOR, title: '', titleColor: '#e7e7e7', text: '', textColor: '#ddd', fontSize: 12, blocks: null, parentId: null, parentType: null };
   const idx = state.nodes.length;
   state.nodes.push(node);
   state.selected.clear();
@@ -87,6 +89,7 @@ export function addArrowAt(worldX, worldY, connectNodeIdx) {
   state.arrowDragTarget = { arrowIdx: idx, end: 'end' };
   state.selectedArrows.add(idx);
   refreshSidePanel();
+  history.push(createAddArrowCmd(state.arrows, state.selectedArrows, refreshSidePanel, arrow, idx));
 }
 
 export function addShapeAt(worldX, worldY, shapeType, optW, optH) {
@@ -131,6 +134,7 @@ export function addTextBoxAt(worldX, worldY, optW, optH) {
     w,
     h,
     text: '',
+    blocks: null,
     color: '#1a1a1a',
     borderColor: '#444',
     textColor: '#ddd',
@@ -190,6 +194,7 @@ export function addArrowFromPoints(x1, y1, x2, y2, connectedFrom, connectedTo, c
   state.selectedConnectors.clear();
   state.selectedArrows.add(idx);
   refreshSidePanel();
+  history.push(createAddArrowCmd(state.arrows, state.selectedArrows, refreshSidePanel, arrow, idx));
 }
 
 export function deleteSelectedShapes() {
@@ -270,6 +275,39 @@ export function deleteSelectedConnectors() {
   state.reparentAll();
   refreshSidePanel();
   history.push(createDeleteConnectorsCmd(state.connectors, state.selectedConnectors, refreshSidePanel, deletedEntries));
+}
+
+export function deleteSelectedArrows() {
+  if (state.selectedArrows.size === 0) return;
+  flushPanelEdit();
+  const sortedIndices = Array.from(state.selectedArrows).sort((a, b) => a - b);
+  const deletedEntries = sortedIndices.map(i => ({ arrow: { ...state.arrows[i] }, index: i }));
+  for (let i = sortedIndices.length - 1; i >= 0; i--) {
+    state.arrows.splice(sortedIndices[i], 1);
+  }
+  state.selectedArrows.clear();
+  state.arrowDragTarget = null;
+  refreshSidePanel();
+  history.push(createDeleteArrowsCmd(state.arrows, state.selectedArrows, refreshSidePanel, deletedEntries));
+}
+
+export function addConnection(fromIdx, toIdx) {
+  flushPanelEdit();
+  let maxId = 0;
+  for (const c of state.connections) { if (c.id > maxId) maxId = c.id; }
+  const connection = { id: maxId + 1, from: fromIdx, to: toIdx, color: '#6bb5ff', text: '' };
+  state.connections.push(connection);
+  history.push(createAddConnectionCmd(state.connections, state.selectedConnection, refreshSidePanel, connection));
+}
+
+export function deleteConnection(idx) {
+  flushPanelEdit();
+  if (idx < 0 || idx >= state.connections.length) return;
+  const deleted = { ...state.connections[idx] };
+  state.connections.splice(idx, 1);
+  state.selectedConnection = null;
+  refreshSidePanel();
+  history.push(createDeleteConnectionCmd(state.connections, state.selectedConnection, refreshSidePanel, deleted, idx));
 }
 
 export function deleteSelectedNodes() {
@@ -376,6 +414,7 @@ export function duplicateSelectedNodes() {
       title: n.title,
       titleColor: n.titleColor,
       text: n.text,
+      blocks: n.blocks ? JSON.parse(JSON.stringify(n.blocks)) : null,
       parentId: null,
       parentType: null
     });
@@ -422,7 +461,8 @@ export function copySelectedNodes() {
       color: n.color,
       title: n.title,
       titleColor: n.titleColor,
-      text: n.text
+      text: n.text,
+      blocks: n.blocks ? JSON.parse(JSON.stringify(n.blocks)) : null
     });
   }
 }
@@ -442,6 +482,7 @@ export function pasteNodesAt(worldX, worldY) {
       title: c.title,
       titleColor: c.titleColor,
       text: c.text,
+      blocks: c.blocks ? JSON.parse(JSON.stringify(c.blocks)) : null,
       parentId: null,
       parentType: null
     };

@@ -4,9 +4,9 @@ import { history, performUndo, performRedo, flushPanelEdit } from './history.js'
 import { refreshSidePanel } from './side-panel.js';
 import { cancelEditing } from './inline-editing.js';
 import { closeContextMenu } from './context-menu.js';
-import { deleteArrowFn } from './pointer.js';
 import {
   deleteSelectedNodes, deleteSelectedShapes, deleteSelectedTextBoxes, deleteSelectedConnectors,
+  deleteSelectedArrows, deleteConnection,
   duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
   saveDocument,
 } from './document.js';
@@ -103,17 +103,12 @@ function onKeyDown(e) {
       return;
     }
     if (state.selectedArrows.size > 0) {
-      for (const ai of state.selectedArrows) deleteArrowFn(ai);
-      state.selectedArrows.clear();
-      state.arrowDragTarget = null;
-      refreshSidePanel();
+      deleteSelectedArrows();
       e.preventDefault();
       return;
     }
     if (state.selectedConnection !== null) {
-      state.connections.splice(state.selectedConnection, 1);
-      state.selectedConnection = null;
-      refreshSidePanel();
+      deleteConnection(state.selectedConnection);
       e.preventDefault();
       return;
     }

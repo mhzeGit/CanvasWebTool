@@ -447,6 +447,127 @@ export function createDeleteConnectorsCmd(connectors, selectedConnectors, refres
   };
 }
 
+export function createAddArrowCmd(arrows, selectedArrows, refreshPanelFn, arrow, insertedAt) {
+  const arrowId = arrow.id;
+  return {
+    undo() {
+      const idx = arrows.findIndex(a => a.id === arrowId);
+      if (idx !== -1) arrows.splice(idx, 1);
+      selectedArrows.clear();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      arrows.splice(insertedAt, 0, arrow);
+      selectedArrows.clear();
+      selectedArrows.add(insertedAt);
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: 'Add Arrow'
+  };
+}
+
+export function createDeleteArrowsCmd(arrows, selectedArrows, refreshPanelFn, deletedEntries) {
+  return {
+    undo() {
+      for (let i = 0; i < deletedEntries.length; i++) {
+        arrows.splice(deletedEntries[i].index, 0, deletedEntries[i].arrow);
+      }
+      selectedArrows.clear();
+      for (const entry of deletedEntries) selectedArrows.add(entry.index);
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const ids = new Set(deletedEntries.map(e => e.arrow.id));
+      for (let i = arrows.length - 1; i >= 0; i--) {
+        if (ids.has(arrows[i].id)) arrows.splice(i, 1);
+      }
+      selectedArrows.clear();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: deletedEntries.length === 1 ? 'Delete Arrow' : `Delete ${deletedEntries.length} Arrows`
+  };
+}
+
+export function createAddConnectionCmd(connections, selectedConnection, refreshPanelFn, connection) {
+  const connId = connection.id;
+  return {
+    undo() {
+      const idx = connections.findIndex(c => c.id === connId);
+      if (idx !== -1) connections.splice(idx, 1);
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      connections.push(connection);
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: 'Add Connection'
+  };
+}
+
+export function createDeleteConnectionCmd(connections, selectedConnection, refreshPanelFn, deletedConnection, deletedIndex) {
+  const connId = deletedConnection.id;
+  return {
+    undo() {
+      connections.splice(deletedIndex, 0, deletedConnection);
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const idx = connections.findIndex(c => c.id === connId);
+      if (idx !== -1) connections.splice(idx, 1);
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: 'Delete Connection'
+  };
+}
+
+export function createTextBoxPropertyChangeCmd(textBoxes, selectedTextBoxes, refreshPanelFn, tbId, property, oldValue, newValue) {
+  return {
+    undo() {
+      const found = textBoxes.find(t => t.id === tbId);
+      if (found) found[property] = oldValue;
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const found = textBoxes.find(t => t.id === tbId);
+      if (found) found[property] = newValue;
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: `Change TextBox ${property}`
+  };
+}
+
+export function createConnectionPropertyChangeCmd(connections, selectedConnection, refreshPanelFn, connId, property, oldValue, newValue) {
+  return {
+    undo() {
+      const found = connections.find(c => c.id === connId);
+      if (found) found[property] = oldValue;
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const found = connections.find(c => c.id === connId);
+      if (found) found[property] = newValue;
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: `Change Connection ${property}`
+  };
+}
+
+export function createArrowPropertyChangeCmd(arrows, selectedArrows, refreshPanelFn, arrowId, property, oldValue, newValue) {
+  return {
+    undo() {
+      const found = arrows.find(a => a.id === arrowId);
+      if (found) found[property] = oldValue;
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const found = arrows.find(a => a.id === arrowId);
+      if (found) found[property] = newValue;
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: `Change Arrow ${property}`
+  };
+}
+
 export function createMoveConnectorsCmd(connectors, selectedConnectors, moves) {
   return {
     undo() {
@@ -468,5 +589,147 @@ export function createMoveConnectorsCmd(connectors, selectedConnectors, moves) {
       }
     },
     description: moves.length === 1 ? 'Move Connector' : `Move ${moves.length} Connectors`
+  };
+}
+
+export function createBatchNodePropertyChangeCmd(nodes, selected, refreshPanelFn, changes) {
+  return {
+    undo() {
+      for (const c of changes) {
+        const found = findNodeById(nodes, c.nodeId);
+        if (found) found.node[c.property] = c.oldValue;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (const c of changes) {
+        const found = findNodeById(nodes, c.nodeId);
+        if (found) found.node[c.property] = c.newValue;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: changes.length === 1 ? `Change ${changes[0].property}` : `Change ${changes[0].property} (${changes.length} items)`
+  };
+}
+
+export function createBatchResizeNodeCmd(nodes, selected, refreshPanelFn, changes) {
+  return {
+    undo() {
+      for (const c of changes) {
+        const found = findNodeById(nodes, c.nodeId);
+        if (found) {
+          found.node.x = c.fromBounds.x;
+          found.node.y = c.fromBounds.y;
+          found.node.w = c.fromBounds.w;
+          found.node.h = c.fromBounds.h;
+        }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (const c of changes) {
+        const found = findNodeById(nodes, c.nodeId);
+        if (found) {
+          found.node.x = c.toBounds.x;
+          found.node.y = c.toBounds.y;
+          found.node.w = c.toBounds.w;
+          found.node.h = c.toBounds.h;
+        }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: `Resize ${changes.length} nodes`
+  };
+}
+
+export function createBatchShapePropertyChangeCmd(shapes, selectedShapes, refreshPanelFn, changes) {
+  return {
+    undo() {
+      for (const c of changes) {
+        const found = shapes.find(s => s.id === c.shapeId);
+        if (found) found[c.property] = c.oldValue;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (const c of changes) {
+        const found = shapes.find(s => s.id === c.shapeId);
+        if (found) found[c.property] = c.newValue;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: changes.length === 1 ? `Change Shape ${changes[0].property}` : `Change Shape ${changes[0].property} (${changes.length} items)`
+  };
+}
+
+export function createBatchResizeShapeCmd(shapes, selectedShapes, refreshPanelFn, changes) {
+  return {
+    undo() {
+      for (const c of changes) {
+        const found = shapes.find(s => s.id === c.shapeId);
+        if (found) {
+          found.x = c.fromBounds.x; found.y = c.fromBounds.y;
+          found.w = c.fromBounds.w; found.h = c.fromBounds.h;
+        }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (const c of changes) {
+        const found = shapes.find(s => s.id === c.shapeId);
+        if (found) {
+          found.x = c.toBounds.x; found.y = c.toBounds.y;
+          found.w = c.toBounds.w; found.h = c.toBounds.h;
+        }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: `Resize ${changes.length} shapes`
+  };
+}
+
+export function createBatchTextBoxPropertyChangeCmd(textBoxes, selectedTextBoxes, refreshPanelFn, changes) {
+  return {
+    undo() {
+      for (const c of changes) {
+        const found = textBoxes.find(t => t.id === c.tbId);
+        if (found) found[c.property] = c.oldValue;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (const c of changes) {
+        const found = textBoxes.find(t => t.id === c.tbId);
+        if (found) found[c.property] = c.newValue;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: changes.length === 1 ? `Change TextBox ${changes[0].property}` : `Change TextBox ${changes[0].property} (${changes.length} items)`
+  };
+}
+
+export function createBatchResizeTextBoxCmd(textBoxes, selectedTextBoxes, refreshPanelFn, changes) {
+  return {
+    undo() {
+      for (const c of changes) {
+        const found = textBoxes.find(t => t.id === c.tbId);
+        if (found) {
+          found.x = c.fromBounds.x; found.y = c.fromBounds.y;
+          found.w = c.fromBounds.w; found.h = c.fromBounds.h;
+        }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (const c of changes) {
+        const found = textBoxes.find(t => t.id === c.tbId);
+        if (found) {
+          found.x = c.toBounds.x; found.y = c.toBounds.y;
+          found.w = c.toBounds.w; found.h = c.toBounds.h;
+        }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: `Resize ${changes.length} text boxes`
   };
 }

@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { drawRoundedRect, getEdgeAt } from './utils.js';
 import { EDGE_MARGIN } from './config.js';
-import { renderMarkdownBody } from './markdown.js';
+import { renderRichText, getOrCreateBlocks } from './rich-text.js';
 
 export function drawOneTextBox(ti) {
   const ctx = state.ctx;
@@ -27,9 +27,10 @@ export function drawOneTextBox(ti) {
   const fontSize = tb.fontSize || 14;
   const lineHeight = fontSize * 1.4;
   const fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
-  const text = tb.text || '';
-  if (text) {
-    renderMarkdownBody(ctx, text,
+  const blocks = getOrCreateBlocks(tb);
+  const hasContent = blocks && blocks.length > 0 && blocks.some(b => b.t !== 'p' || (b.s && b.s.length > 0 && b.s.some(s => s.t)));
+  if (hasContent) {
+    renderRichText(ctx, blocks,
       tb.x + padding, tb.y + padding,
       Math.max(0, tb.w - padding * 2),
       Math.max(0, tb.h - padding * 2),
@@ -98,5 +99,18 @@ export function drawTextBoxPreview() {
 }
 
 export function getTextBoxEdgeAt(wx, wy) {
-  return getEdgeAt(wx, wy, state.textBoxes, EDGE_MARGIN);
+  const hit = getEdgeAt(wx, wy, state.textBoxes, EDGE_MARGIN);
+  if (hit) {
+    const allOrder = state.getAllDrawOrder();
+    const ourPos = allOrder.findIndex(item => item.type === 'textBox' && item.i === hit.idx);
+    if (ourPos === -1) return null;
+    for (let i = allOrder.length - 1; i > ourPos; i--) {
+      const item = allOrder[i];
+      const e = item.type === 'node' ? state.nodes[item.i]
+        : item.type === 'shape' ? state.shapes[item.i]
+        : state.textBoxes[item.i];
+      if (e && wx >= e.x - EDGE_MARGIN && wx <= e.x + e.w + EDGE_MARGIN && wy >= e.y - EDGE_MARGIN && wy <= e.y + e.h + EDGE_MARGIN) return null;
+    }
+  }
+  return hit;
 }

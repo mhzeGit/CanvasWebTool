@@ -1,4 +1,4 @@
-function parseInlineSpans(text) {
+export function parseInlineSpans(text) {
   const spans = [];
   let pos = 0;
   let buf = '';
@@ -61,7 +61,7 @@ function parseInlineSpans(text) {
   return spans;
 }
 
-function parseMarkdownLines(text) {
+export function parseMarkdownLines(text) {
   if (!text) return [];
   const rawLines = text.split('\n');
   const result = [];

@@ -1,7 +1,8 @@
 import { state } from './state.js';
 import { EDGE_MARGIN, DEFAULT_TITLE_COLOR, DEFAULT_TEXT_COLOR, PLACEHOLDER_COLOR, TITLE_PLACEHOLDER, TEXT_PLACEHOLDER } from './config.js';
 import { drawRoundedRect, drawRoundedRectTopOnly, getDarkerColor, getEdgeAt as getEntityEdgeAt } from './utils.js';
-import { renderMarkdownTitle, renderMarkdownBody } from './markdown.js';
+import { renderMarkdownTitle } from './markdown.js';
+import { renderRichText, getOrCreateBlocks } from './rich-text.js';
 
 export function hitTestNode(wx, wy) {
   const drawOrder = state.getDrawOrder();
@@ -17,7 +18,20 @@ export function findNodeAtEdge(wx, wy) {
   const drawOrder = state.getDrawOrder();
   const entities = drawOrder.map(i => state.nodes[i]);
   const hit = getEntityEdgeAt(wx, wy, entities, EDGE_MARGIN);
-  if (hit) return { idx: drawOrder[hit.idx], handle: hit.handle, cursor: hit.cursor };
+  if (hit) {
+    const nodeIdx = drawOrder[hit.idx];
+    const allOrder = state.getAllDrawOrder();
+    const ourPos = allOrder.findIndex(item => item.type === 'node' && item.i === nodeIdx);
+    if (ourPos === -1) return null;
+    for (let i = allOrder.length - 1; i > ourPos; i--) {
+      const item = allOrder[i];
+      const e = item.type === 'node' ? state.nodes[item.i]
+        : item.type === 'shape' ? state.shapes[item.i]
+        : state.textBoxes[item.i];
+      if (e && wx >= e.x - EDGE_MARGIN && wx <= e.x + e.w + EDGE_MARGIN && wy >= e.y - EDGE_MARGIN && wy <= e.y + e.h + EDGE_MARGIN) return null;
+    }
+    return { idx: nodeIdx, handle: hit.handle, cursor: hit.cursor };
+  }
   return null;
 }
 
@@ -120,9 +134,10 @@ export function drawOneNode(idx) {
       ctx.save();
       const bodyBaseFontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
       const bodyFontSize = n.fontSize || 12;
-      renderMarkdownBody(
+      const blocks = getOrCreateBlocks(n);
+      renderRichText(
         ctx,
-        n.text,
+        blocks,
         n.x + padding,
         n.y + titleH + padding,
         Math.max(0, n.w - padding * 2),

@@ -4,6 +4,7 @@ import { hitTestNode } from './nodes.js';
 import { hitTestConnection } from './connections.js';
 import { hitTestArrowEnd, hitTestArrowBody } from './arrows.js';
 import { commitEditing } from './inline-editing.js';
+import { deleteSelectedArrows, deleteConnection } from './document.js';
 
 export function openContextMenu(e) {
   const canvas = state.canvas;
@@ -109,10 +110,7 @@ export function openContextMenu(e) {
     delArrow.className = 'context-item';
     delArrow.textContent = 'Delete Arrow';
     delArrow.addEventListener('click', () => {
-      for (const ai of state.selectedArrows) _deleteArrow(ai);
-      state.selectedArrows.clear();
-      state.arrowDragTarget = null;
-      _refreshSidePanel();
+      deleteSelectedArrows();
       closeContextMenu();
     });
     items.push(delArrow);
@@ -125,9 +123,7 @@ export function openContextMenu(e) {
     delConn.textContent = 'Delete Connection';
     delConn.addEventListener('click', () => {
       if (state.selectedConnection !== null) {
-        state.connections.splice(state.selectedConnection, 1);
-        state.selectedConnection = null;
-        _refreshSidePanel();
+        deleteConnection(state.selectedConnection);
       }
       closeContextMenu();
     });
@@ -202,7 +198,7 @@ export function closeContextMenu() {
 
 // These functions are set by main.js during initialization to avoid circular deps
 let _addNodeAt, _addArrowAt, _deleteSelectedNodes, _duplicateSelectedNodes;
-let _copySelectedNodes, _pasteNodesAt, _deleteArrow, _refreshSidePanel;
+let _copySelectedNodes, _pasteNodesAt, _refreshSidePanel;
 
 export function initContextMenu(deps) {
   _addNodeAt = deps.addNodeAt;
@@ -211,7 +207,6 @@ export function initContextMenu(deps) {
   _duplicateSelectedNodes = deps.duplicateSelectedNodes;
   _copySelectedNodes = deps.copySelectedNodes;
   _pasteNodesAt = deps.pasteNodesAt;
-  _deleteArrow = deps.deleteArrow;
   _refreshSidePanel = deps.refreshSidePanel;
 }
 

@@ -168,11 +168,26 @@ function findNodeById(nodesArr, id) {
 
 function computeSelectionKey() {
   if (state.arrowDragTarget) return `arrowEnd:${state.arrowDragTarget.arrowIdx}:${state.arrowDragTarget.end}`;
+  const mn = state.selected.size > 0 ? 1 : 0;
+  const ms = state.selectedShapes.size > 0 ? 1 : 0;
+  const mt = state.selectedTextBoxes.size > 0 ? 1 : 0;
+  const ma = state.selectedArrows.size > 0 ? 1 : 0;
+  const mc = state.selectedConnection !== null ? 1 : 0;
+  const mx = state.selectedConnectors.size > 0 ? 1 : 0;
+  if (mn + ms + mt + ma + mc + mx > 1) {
+    return `mixed:${state.selected.size}|${state.selectedShapes.size}|${state.selectedTextBoxes.size}|${state.selectedArrows.size}|${state.selectedConnection !== null ? 1 : 0}|${state.selectedConnectors.size}`;
+  }
   if (state.selectedArrows.size === 1) return `arrow:${Array.from(state.selectedArrows)[0]}`;
   if (state.selectedArrows.size > 1) return `arrows:${state.selectedArrows.size}`;
   if (state.selectedConnection !== null) return `conn:${state.selectedConnection}`;
+  if (state.selectedShapes.size === 1) return `shape:${Array.from(state.selectedShapes)[0]}`;
+  if (state.selectedShapes.size > 1) return `shapes:${state.selectedShapes.size}`;
+  if (state.selectedTextBoxes.size === 1) return `tb:${Array.from(state.selectedTextBoxes)[0]}`;
+  if (state.selectedTextBoxes.size > 1) return `tbs:${state.selectedTextBoxes.size}`;
+  if (state.selectedConnectors.size === 1) return `connector:${Array.from(state.selectedConnectors)[0]}`;
+  if (state.selectedConnectors.size > 1) return `connectors:${state.selectedConnectors.size}`;
   if (state.selected.size === 0) return 'none';
-  if (state.selected.size > 1) return `multi:${state.selected.size}`;
+  if (state.selected.size > 1) return `nodes:${state.selected.size}`;
   const idx = Array.from(state.selected)[0];
   return `single:${idx}`;
 }

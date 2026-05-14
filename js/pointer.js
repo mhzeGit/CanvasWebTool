@@ -15,6 +15,7 @@ import {
   deleteSelectedNodes, duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
   addShapeAt, addTextBoxAt, addConnector, addArrowFromPoints,
   deleteSelectedShapes, deleteSelectedTextBoxes, deleteSelectedConnectors,
+  addConnection,
 } from './document.js';
 import {
   createResizeNodeCmd, createMoveNodesCmd, createMoveArrowEndCmd,
@@ -121,15 +122,7 @@ function onPointerDown(e) {
           (c.from === state.connectingFrom && c.to === hit) || (c.from === hit && c.to === state.connectingFrom)
         );
         if (!exists) {
-          let maxId = 0;
-          for (const c of state.connections) { if (c.id > maxId) maxId = c.id; }
-          state.connections.push({
-            id: maxId + 1,
-            from: state.connectingFrom,
-            to: hit,
-            color: '#6bb5ff',
-            text: ''
-          });
+          addConnection(state.connectingFrom, hit);
         }
       }
       state.connectingFrom = null;

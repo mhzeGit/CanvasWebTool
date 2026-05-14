@@ -88,7 +88,20 @@ export function hitTestShape(wx, wy) {
 }
 
 export function getShapeEdgeAt(wx, wy) {
-  return getEdgeAt(wx, wy, state.shapes, EDGE_MARGIN);
+  const hit = getEdgeAt(wx, wy, state.shapes, EDGE_MARGIN);
+  if (hit) {
+    const allOrder = state.getAllDrawOrder();
+    const ourPos = allOrder.findIndex(item => item.type === 'shape' && item.i === hit.idx);
+    if (ourPos === -1) return null;
+    for (let i = allOrder.length - 1; i > ourPos; i--) {
+      const item = allOrder[i];
+      const e = item.type === 'node' ? state.nodes[item.i]
+        : item.type === 'shape' ? state.shapes[item.i]
+        : state.textBoxes[item.i];
+      if (e && wx >= e.x - EDGE_MARGIN && wx <= e.x + e.w + EDGE_MARGIN && wy >= e.y - EDGE_MARGIN && wy <= e.y + e.h + EDGE_MARGIN) return null;
+    }
+  }
+  return hit;
 }
 
 export function isShapeInBox(shape, bx1, by1, bx2, by2) {

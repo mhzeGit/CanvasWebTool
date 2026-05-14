@@ -1,9 +1,133 @@
 import { state } from './state.js';
 import { history, flushPanelEdit, startPanelEdit, startShapePanelEdit } from './history.js';
-import { createResizeNodeCmd, createResizeShapeCmd } from './undo.js';
+import {
+  createResizeNodeCmd, createResizeShapeCmd,
+  createBatchNodePropertyChangeCmd, createBatchResizeNodeCmd,
+  createBatchShapePropertyChangeCmd, createBatchResizeShapeCmd,
+  createBatchTextBoxPropertyChangeCmd, createBatchResizeTextBoxCmd
+} from './undo.js';
 import { getArrowEndpoint } from './arrows.js';
 import { renderMarkdownToHtml } from './markdown.js';
+import { blocksToHtml, getOrCreateBlocks } from './rich-text.js';
 import { TITLE_PLACEHOLDER, TEXT_PLACEHOLDER } from './config.js';
+
+const _nodeBatchSnapshots = new Map();
+const _shapeBatchSnapshots = new Map();
+const _tbBatchSnapshots = new Map();
+
+function _captureNodeSnapshot(property, members) {
+  _nodeBatchSnapshots.set(property, members.map(m => ({
+    nodeId: m.id,
+    oldValue: m[property],
+    oldBounds: (property === 'w' || property === 'h')
+      ? { x: m.x, y: m.y, w: m.w, h: m.h } : null
+  })));
+}
+
+function _commitNodeSnapshot(property) {
+  const snapshots = _nodeBatchSnapshots.get(property);
+  if (!snapshots) return;
+  _nodeBatchSnapshots.delete(property);
+  const changes = [];
+  for (const snap of snapshots) {
+    const found = state.findNodeById(state.nodes, snap.nodeId);
+    if (!found) continue;
+    const newValue = found.node[property];
+    if (snap.oldValue !== newValue) {
+      if (property === 'w' || property === 'h') {
+        changes.push({
+          nodeId: snap.nodeId,
+          fromBounds: snap.oldBounds,
+          toBounds: { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h }
+        });
+      } else {
+        changes.push({ nodeId: snap.nodeId, property, oldValue: snap.oldValue, newValue });
+      }
+    }
+  }
+  if (changes.length === 0) return;
+  if (property === 'w' || property === 'h') {
+    history.push(createBatchResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, changes));
+  } else {
+    history.push(createBatchNodePropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, changes));
+  }
+}
+
+function _captureShapeSnapshot(property, members) {
+  _shapeBatchSnapshots.set(property, members.map(m => ({
+    shapeId: m.id,
+    oldValue: m[property],
+    oldBounds: (property === 'w' || property === 'h')
+      ? { x: m.x, y: m.y, w: m.w, h: m.h } : null
+  })));
+}
+
+function _commitShapeSnapshot(property) {
+  const snapshots = _shapeBatchSnapshots.get(property);
+  if (!snapshots) return;
+  _shapeBatchSnapshots.delete(property);
+  const changes = [];
+  for (const snap of snapshots) {
+    const found = state.shapes.find(s => s.id === snap.shapeId);
+    if (!found) continue;
+    const newValue = found[property];
+    if (snap.oldValue !== newValue) {
+      if (property === 'w' || property === 'h') {
+        changes.push({
+          shapeId: snap.shapeId,
+          fromBounds: snap.oldBounds,
+          toBounds: { x: found.x, y: found.y, w: found.w, h: found.h }
+        });
+      } else {
+        changes.push({ shapeId: snap.shapeId, property, oldValue: snap.oldValue, newValue });
+      }
+    }
+  }
+  if (changes.length === 0) return;
+  if (property === 'w' || property === 'h') {
+    history.push(createBatchResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, changes));
+  } else {
+    history.push(createBatchShapePropertyChangeCmd(state.shapes, state.selectedShapes, refreshSidePanel, changes));
+  }
+}
+
+function _captureTbSnapshot(property, members) {
+  _tbBatchSnapshots.set(property, members.map(m => ({
+    tbId: m.id,
+    oldValue: m[property],
+    oldBounds: (property === 'w' || property === 'h')
+      ? { x: m.x, y: m.y, w: m.w, h: m.h } : null
+  })));
+}
+
+function _commitTbSnapshot(property) {
+  const snapshots = _tbBatchSnapshots.get(property);
+  if (!snapshots) return;
+  _tbBatchSnapshots.delete(property);
+  const changes = [];
+  for (const snap of snapshots) {
+    const found = state.textBoxes.find(t => t.id === snap.tbId);
+    if (!found) continue;
+    const newValue = found[property];
+    if (snap.oldValue !== newValue) {
+      if (property === 'w' || property === 'h') {
+        changes.push({
+          tbId: snap.tbId,
+          fromBounds: snap.oldBounds,
+          toBounds: { x: found.x, y: found.y, w: found.w, h: found.h }
+        });
+      } else {
+        changes.push({ tbId: snap.tbId, property, oldValue: snap.oldValue, newValue });
+      }
+    }
+  }
+  if (changes.length === 0) return;
+  if (property === 'w' || property === 'h') {
+    history.push(createBatchResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, changes));
+  } else {
+    history.push(createBatchTextBoxPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, changes));
+  }
+}
 
 export function refreshSidePanel() {
   const { sidePanelContent } = state;
@@ -24,6 +148,22 @@ export function refreshSidePanel() {
       '<div class="panel-row"><label>Y</label><span class="panel-static">' + Math.round(pt.y) + '</span></div>',
     ].join('');
     return;
+  }
+
+  // --- Mixed-type selection (check before single-type handlers) ---
+  {
+    let typeCount = 0;
+    if (state.selected.size > 0) typeCount++;
+    if (state.selectedShapes.size > 0) typeCount++;
+    if (state.selectedTextBoxes.size > 0) typeCount++;
+    if (state.selectedArrows.size > 0) typeCount++;
+    if (state.selectedConnection !== null) typeCount++;
+    if (state.selectedConnectors.size > 0) typeCount++;
+    if (typeCount > 1) {
+      flushPanelEdit();
+      renderMixedEditor();
+      return;
+    }
   }
 
   if (state.selectedArrows.size === 1) {
@@ -71,21 +211,34 @@ export function refreshSidePanel() {
     return;
   }
 
-  if (state.selectedShapes.size === 1) {
+  // --- Shapes (single or multi, same UI) ---
+  if (state.selectedShapes.size >= 1) {
     flushPanelEdit();
-    const si = Array.from(state.selectedShapes)[0];
-    const s = state.shapes[si];
+    const indices = Array.from(state.selectedShapes);
+    const isBatch = indices.length > 1;
+    const firstIdx = indices[0];
+    const s = state.shapes[firstIdx];
     const shapeId = s.id;
     const isRect = s.shapeType === 'rectangle';
+    const members = indices.map(i => state.shapes[i]);
+
+    const colorMixed = isBatch && members.some(m => m.color !== s.color);
+    const borderColorMixed = isBatch && members.some(m => m.borderColor !== s.borderColor);
+    const borderWidthMixed = isBatch && members.some(m => m.borderWidth !== s.borderWidth);
+    const wMixed = isBatch && members.some(m => m.w !== s.w);
+    const hMixed = isBatch && members.some(m => m.h !== s.h);
+    const radiusMixed = isRect && isBatch && members.some(m => m.cornerRadius !== s.cornerRadius);
+
+    const title = isBatch ? indices.length + ' shapes selected' : 'Shape (' + state.escAttr(s.shapeType) + ')';
 
     sidePanelContent.innerHTML = [
-      '<div class="panel-section-title">Shape (' + state.escAttr(s.shapeType) + ')</div>',
+      '<div class="panel-section-title">' + title + '</div>',
       '<div class="panel-row"><label>Color</label><input id="panelShapeColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(s.color ?? '#2b2b2b') + '" /></div>',
       '<div class="panel-row"><label>Border</label><input id="panelShapeBorderColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(s.borderColor ?? '#6bb5ff') + '" /></div>',
-      '<div class="panel-row"><label>Border W</label><input id="panelShapeBorderWidth" class="panel-input" type="number" min="0" max="20" step="0.5" value="' + (s.borderWidth ?? 2) + '" /></div>',
-      '<div class="panel-row"><label>Width</label><input id="panelShapeW" class="panel-input" type="number" min="10" value="' + s.w + '" /></div>',
-      '<div class="panel-row"><label>Height</label><input id="panelShapeH" class="panel-input" type="number" min="10" value="' + s.h + '" /></div>',
-      (isRect ? '<div class="panel-row"><label>Radius</label><input id="panelShapeCornerRadius" class="panel-input" type="number" min="0" max="200" value="' + (s.cornerRadius ?? 4) + '" /></div>' : ''),
+      '<div class="panel-row"><label>Border W</label><input id="panelShapeBorderWidth" class="panel-input" type="number" min="0" max="20" step="0.5" value="' + (colorMixed || borderWidthMixed ? '' : (s.borderWidth ?? 2)) + '" placeholder="' + (borderWidthMixed ? '(mixed)' : '') + '" /></div>',
+      '<div class="panel-row"><label>Width</label><input id="panelShapeW" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : s.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
+      '<div class="panel-row"><label>Height</label><input id="panelShapeH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : s.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
+      (isRect ? '<div class="panel-row"><label>Radius</label><input id="panelShapeCornerRadius" class="panel-input" type="number" min="0" max="200" value="' + (radiusMixed ? '' : (s.cornerRadius ?? 4)) + '" placeholder="' + (radiusMixed ? '(mixed)' : '') + '" /></div>' : ''),
     ].join('');
 
     const colorInput = document.getElementById('panelShapeColor');
@@ -96,109 +249,200 @@ export function refreshSidePanel() {
     const radiusInput = document.getElementById('panelShapeCornerRadius');
 
     if (colorInput) {
-      colorInput.addEventListener('input', (ev) => { s.color = ev.target.value; state.lastShapeColor = ev.target.value; });
-      colorInput.addEventListener('pointerdown', () => { startShapePanelEdit(shapeId, 'color', s.color); });
-      colorInput.addEventListener('change', () => { flushPanelEdit(); });
+      colorInput.addEventListener('input', (ev) => {
+        const v = ev.target.value;
+        if (isBatch) { for (const m of members) m.color = v; } else { s.color = v; }
+        state.lastShapeColor = v;
+      });
+      if (isBatch) {
+        colorInput.addEventListener('pointerdown', () => _captureShapeSnapshot('color', members));
+        colorInput.addEventListener('change', () => _commitShapeSnapshot('color'));
+      } else {
+        colorInput.addEventListener('pointerdown', () => { startShapePanelEdit(shapeId, 'color', s.color); });
+        colorInput.addEventListener('change', () => { flushPanelEdit(); });
+      }
     }
     if (borderColorInput) {
-      borderColorInput.addEventListener('input', (ev) => { s.borderColor = ev.target.value; state.lastShapeBorderColor = ev.target.value; });
-      borderColorInput.addEventListener('pointerdown', () => { startShapePanelEdit(shapeId, 'borderColor', s.borderColor); });
-      borderColorInput.addEventListener('change', () => { flushPanelEdit(); });
+      borderColorInput.addEventListener('input', (ev) => {
+        const v = ev.target.value;
+        if (isBatch) { for (const m of members) m.borderColor = v; } else { s.borderColor = v; }
+        state.lastShapeBorderColor = v;
+      });
+      if (isBatch) {
+        borderColorInput.addEventListener('pointerdown', () => _captureShapeSnapshot('borderColor', members));
+        borderColorInput.addEventListener('change', () => _commitShapeSnapshot('borderColor'));
+      } else {
+        borderColorInput.addEventListener('pointerdown', () => { startShapePanelEdit(shapeId, 'borderColor', s.borderColor); });
+        borderColorInput.addEventListener('change', () => { flushPanelEdit(); });
+      }
     }
     if (borderWidthInput) {
       borderWidthInput.addEventListener('input', (ev) => {
         const v = parseFloat(ev.target.value);
-        if (!Number.isNaN(v) && v >= 0) s.borderWidth = v;
+        if (!Number.isNaN(v) && v >= 0) {
+          if (isBatch) { for (const m of members) m.borderWidth = v; } else { s.borderWidth = v; }
+        }
       });
-      borderWidthInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'borderWidth', s.borderWidth); });
-      borderWidthInput.addEventListener('blur', () => { flushPanelEdit(); });
+      if (isBatch) {
+        borderWidthInput.addEventListener('focus', () => _captureShapeSnapshot('borderWidth', members));
+        borderWidthInput.addEventListener('blur', () => _commitShapeSnapshot('borderWidth'));
+      } else {
+        borderWidthInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'borderWidth', s.borderWidth); });
+        borderWidthInput.addEventListener('blur', () => { flushPanelEdit(); });
+      }
     }
     if (wInput) {
       wInput.setAttribute('data-drag-number', 'true');
       wInput.addEventListener('input', (ev) => {
         const v = parseFloat(ev.target.value);
-        if (!Number.isNaN(v) && v >= 10) s.w = v;
+        if (!Number.isNaN(v) && v >= 10) {
+          if (isBatch) { for (const m of members) m.w = v; } else { s.w = v; }
+        }
       });
-      wInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'w', s.w, { x: s.x, y: s.y, w: s.w, h: s.h }); });
-      wInput.addEventListener('blur', () => { flushPanelEdit(); });
-      let wDragStart = { x: s.x, y: s.y, w: s.w, h: s.h };
-      attachDragNumber(wInput,
-        (delta) => { s.w = Math.max(10, s.w + delta); wInput.value = String(Math.round(s.w)); },
-        () => {
-          flushPanelEdit();
-          wDragStart = { x: s.x, y: s.y, w: s.w, h: s.h };
-        },
-        () => {
-          if (s.w !== wDragStart.w) {
-            history.push(createResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, shapeId,
-              { x: wDragStart.x, y: wDragStart.y, w: wDragStart.w, h: wDragStart.h },
-              { x: s.x, y: s.y, w: s.w, h: s.h }));
-          }
-        });
+      if (isBatch) {
+        wInput.addEventListener('focus', () => _captureShapeSnapshot('w', members));
+        wInput.addEventListener('blur', () => _commitShapeSnapshot('w'));
+        let dragStartBoundsPerMember = null;
+        attachDragNumber(wInput,
+          (delta) => {
+            for (const m of members) { m.w = Math.max(10, m.w + delta); }
+            wInput.value = String(Math.round(members[0].w));
+          },
+          () => {
+            _commitShapeSnapshot('w');
+            dragStartBoundsPerMember = members.map(m => ({ shapeId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } }));
+          },
+          () => {
+            if (!dragStartBoundsPerMember) return;
+            const changes = [];
+            for (let i = 0; i < members.length; i++) {
+              const fromB = dragStartBoundsPerMember[i].bounds;
+              const toB = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
+              if (fromB.w !== toB.w) changes.push({ shapeId: members[i].id, fromBounds: fromB, toBounds: toB });
+            }
+            if (changes.length > 0) history.push(createBatchResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, changes));
+          });
+      } else {
+        wInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'w', s.w, { x: s.x, y: s.y, w: s.w, h: s.h }); });
+        wInput.addEventListener('blur', () => { flushPanelEdit(); });
+        let wDragStart = { x: s.x, y: s.y, w: s.w, h: s.h };
+        attachDragNumber(wInput,
+          (delta) => { s.w = Math.max(10, s.w + delta); wInput.value = String(Math.round(s.w)); },
+          () => { flushPanelEdit(); wDragStart = { x: s.x, y: s.y, w: s.w, h: s.h }; },
+          () => {
+            if (s.w !== wDragStart.w) {
+              history.push(createResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, shapeId,
+                { x: wDragStart.x, y: wDragStart.y, w: wDragStart.w, h: wDragStart.h },
+                { x: s.x, y: s.y, w: s.w, h: s.h }));
+            }
+          });
+      }
     }
     if (hInput) {
       hInput.setAttribute('data-drag-number', 'true');
       hInput.addEventListener('input', (ev) => {
         const v = parseFloat(ev.target.value);
-        if (!Number.isNaN(v) && v >= 10) s.h = v;
+        if (!Number.isNaN(v) && v >= 10) {
+          if (isBatch) { for (const m of members) m.h = v; } else { s.h = v; }
+        }
       });
-      hInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'h', s.h, { x: s.x, y: s.y, w: s.w, h: s.h }); });
-      hInput.addEventListener('blur', () => { flushPanelEdit(); });
-      let hDragStart = { x: s.x, y: s.y, w: s.w, h: s.h };
-      attachDragNumber(hInput,
-        (delta) => { s.h = Math.max(10, s.h + delta); hInput.value = String(Math.round(s.h)); },
-        () => {
-          flushPanelEdit();
-          hDragStart = { x: s.x, y: s.y, w: s.w, h: s.h };
-        },
-        () => {
-          if (s.h !== hDragStart.h) {
-            history.push(createResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, shapeId,
-              { x: hDragStart.x, y: hDragStart.y, w: hDragStart.w, h: hDragStart.h },
-              { x: s.x, y: s.y, w: s.w, h: s.h }));
-          }
-        });
+      if (isBatch) {
+        hInput.addEventListener('focus', () => _captureShapeSnapshot('h', members));
+        hInput.addEventListener('blur', () => _commitShapeSnapshot('h'));
+        let dragStartBoundsPerMember = null;
+        attachDragNumber(hInput,
+          (delta) => {
+            for (const m of members) { m.h = Math.max(10, m.h + delta); }
+            hInput.value = String(Math.round(members[0].h));
+          },
+          () => {
+            _commitShapeSnapshot('h');
+            dragStartBoundsPerMember = members.map(m => ({ shapeId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } }));
+          },
+          () => {
+            if (!dragStartBoundsPerMember) return;
+            const changes = [];
+            for (let i = 0; i < members.length; i++) {
+              const fromB = dragStartBoundsPerMember[i].bounds;
+              const toB = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
+              if (fromB.h !== toB.h) changes.push({ shapeId: members[i].id, fromBounds: fromB, toBounds: toB });
+            }
+            if (changes.length > 0) history.push(createBatchResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, changes));
+          });
+      } else {
+        hInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'h', s.h, { x: s.x, y: s.y, w: s.w, h: s.h }); });
+        hInput.addEventListener('blur', () => { flushPanelEdit(); });
+        let hDragStart = { x: s.x, y: s.y, w: s.w, h: s.h };
+        attachDragNumber(hInput,
+          (delta) => { s.h = Math.max(10, s.h + delta); hInput.value = String(Math.round(s.h)); },
+          () => { flushPanelEdit(); hDragStart = { x: s.x, y: s.y, w: s.w, h: s.h }; },
+          () => {
+            if (s.h !== hDragStart.h) {
+              history.push(createResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, shapeId,
+                { x: hDragStart.x, y: hDragStart.y, w: hDragStart.w, h: hDragStart.h },
+                { x: s.x, y: s.y, w: s.w, h: s.h }));
+            }
+          });
+      }
     }
     if (radiusInput) {
       radiusInput.setAttribute('data-drag-number', 'true');
       radiusInput.addEventListener('input', (ev) => {
         const v = parseFloat(ev.target.value);
-        if (!Number.isNaN(v) && v >= 0) s.cornerRadius = v;
+        if (!Number.isNaN(v) && v >= 0) {
+          if (isBatch) { for (const m of members) m.cornerRadius = v; } else { s.cornerRadius = v; }
+        }
       });
-      radiusInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'cornerRadius', s.cornerRadius); });
-      radiusInput.addEventListener('blur', () => { flushPanelEdit(); });
-      attachDragNumber(radiusInput,
-        (delta) => { s.cornerRadius = Math.max(0, (s.cornerRadius ?? 4) + delta); radiusInput.value = String(Math.round(s.cornerRadius)); },
-        () => {
-          flushPanelEdit();
-        },
-        () => {});
+      if (isBatch) {
+        radiusInput.addEventListener('focus', () => _captureShapeSnapshot('cornerRadius', members));
+        radiusInput.addEventListener('blur', () => _commitShapeSnapshot('cornerRadius'));
+        attachDragNumber(radiusInput,
+          (delta) => {
+            const v = Math.max(0, (members[0].cornerRadius ?? 4) + delta);
+            for (const m of members) m.cornerRadius = v;
+            radiusInput.value = String(Math.round(members[0].cornerRadius));
+          }, () => {}, () => {});
+      } else {
+        radiusInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'cornerRadius', s.cornerRadius); });
+        radiusInput.addEventListener('blur', () => { flushPanelEdit(); });
+        attachDragNumber(radiusInput,
+          (delta) => { s.cornerRadius = Math.max(0, (s.cornerRadius ?? 4) + delta); radiusInput.value = String(Math.round(s.cornerRadius)); },
+          () => { flushPanelEdit(); }, () => {});
+      }
     }
     return;
   }
 
-  if (state.selectedShapes.size > 1) {
+  // --- TextBoxes (single or multi, same UI) ---
+  if (state.selectedTextBoxes.size >= 1) {
     flushPanelEdit();
-    sidePanelContent.innerHTML = '<div class="panel-section-title">' + state.selectedShapes.size + ' shapes selected</div>';
-    return;
-  }
-
-  if (state.selectedTextBoxes.size === 1) {
-    flushPanelEdit();
-    const ti = Array.from(state.selectedTextBoxes)[0];
-    const tb = state.textBoxes[ti];
+    const indices = Array.from(state.selectedTextBoxes);
+    const isBatch = indices.length > 1;
+    const firstIdx = indices[0];
+    const tb = state.textBoxes[firstIdx];
     const tbId = tb.id;
+    const members = indices.map(i => state.textBoxes[i]);
+
+    const colorMixed = isBatch && members.some(m => m.color !== tb.color);
+    const borderColorMixed = isBatch && members.some(m => m.borderColor !== tb.borderColor);
+    const textColorMixed = isBatch && members.some(m => m.textColor !== tb.textColor);
+    const fontSizeMixed = isBatch && members.some(m => m.fontSize !== tb.fontSize);
+    const wMixed = isBatch && members.some(m => m.w !== tb.w);
+    const hMixed = isBatch && members.some(m => m.h !== tb.h);
+    const textMixed = isBatch && members.some(m => m.text !== tb.text);
+
+    const title = isBatch ? indices.length + ' text boxes selected' : 'Text Box';
 
     sidePanelContent.innerHTML = [
-      '<div class="panel-section-title">Text Box</div>',
+      '<div class="panel-section-title">' + title + '</div>',
       '<div class="panel-row"><label>Color</label><input id="panelTBColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(tb.color ?? '#1a1a1a') + '" /></div>',
       '<div class="panel-row"><label>Border</label><input id="panelTBBorderColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(tb.borderColor ?? '#444444') + '" /></div>',
       '<div class="panel-row"><label>Text Color</label><input id="panelTBTextColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(tb.textColor ?? '#dddddd') + '" /></div>',
-      '<div class="panel-row"><label>Font Size</label><input id="panelTBFontSize" class="panel-input" type="number" min="8" max="72" value="' + (tb.fontSize ?? 14) + '" /></div>',
-      '<div class="panel-row"><label>Width</label><input id="panelTBW" class="panel-input" type="number" min="10" value="' + tb.w + '" /></div>',
-      '<div class="panel-row"><label>Height</label><input id="panelTBH" class="panel-input" type="number" min="10" value="' + tb.h + '" /></div>',
-      '<div class="panel-row"><label>Text</label><textarea id="panelTBText" class="panel-input panel-textarea" placeholder="Enter text...">' + state.escAttr(tb.text ?? '') + '</textarea></div>',
-      '<div id="panelTBTextPreview" class="panel-markdown-preview">' + renderMarkdownToHtml(tb.text ?? '') + '</div>',
+      '<div class="panel-row"><label>Font Size</label><input id="panelTBFontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (tb.fontSize ?? 14)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
+      '<div class="panel-row"><label>Width</label><input id="panelTBW" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : tb.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
+      '<div class="panel-row"><label>Height</label><input id="panelTBH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : tb.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
+      '<div class="panel-row"><label>Text</label><textarea id="panelTBText" class="panel-input panel-textarea" placeholder="' + (textMixed ? '(mixed)' : 'Enter text...') + '">' + (textMixed ? '' : state.escAttr(tb.text ?? '')) + '</textarea></div>',
+      '<div id="panelTBTextPreview" class="panel-markdown-preview">' + blocksToHtml(getOrCreateBlocks(tb)) + '</div>',
     ].join('');
 
     const colorInput = document.getElementById('panelTBColor');
@@ -210,45 +454,117 @@ export function refreshSidePanel() {
     const textInput = document.getElementById('panelTBText');
 
     if (colorInput) {
-      colorInput.addEventListener('input', (ev) => { tb.color = ev.target.value; });
+      colorInput.addEventListener('input', (ev) => {
+        const v = ev.target.value;
+        if (isBatch) { for (const m of members) m.color = v; } else { tb.color = v; }
+      });
+      if (isBatch) {
+        colorInput.addEventListener('pointerdown', () => _captureTbSnapshot('color', members));
+        colorInput.addEventListener('change', () => _commitTbSnapshot('color'));
+      }
     }
     if (borderColorInput) {
-      borderColorInput.addEventListener('input', (ev) => { tb.borderColor = ev.target.value; });
+      borderColorInput.addEventListener('input', (ev) => {
+        const v = ev.target.value;
+        if (isBatch) { for (const m of members) m.borderColor = v; } else { tb.borderColor = v; }
+      });
+      if (isBatch) {
+        borderColorInput.addEventListener('pointerdown', () => _captureTbSnapshot('borderColor', members));
+        borderColorInput.addEventListener('change', () => _commitTbSnapshot('borderColor'));
+      }
     }
     if (textColorInput) {
-      textColorInput.addEventListener('input', (ev) => { tb.textColor = ev.target.value; });
+      textColorInput.addEventListener('input', (ev) => {
+        const v = ev.target.value;
+        if (isBatch) { for (const m of members) m.textColor = v; } else { tb.textColor = v; }
+      });
+      if (isBatch) {
+        textColorInput.addEventListener('pointerdown', () => _captureTbSnapshot('textColor', members));
+        textColorInput.addEventListener('change', () => _commitTbSnapshot('textColor'));
+      }
     }
     if (fontSizeInput) {
       fontSizeInput.addEventListener('input', (ev) => {
         const v = parseFloat(ev.target.value);
-        if (!Number.isNaN(v) && v >= 8) tb.fontSize = v;
+        if (!Number.isNaN(v) && v >= 8) {
+          if (isBatch) { for (const m of members) m.fontSize = v; } else { tb.fontSize = v; }
+        }
       });
+      if (isBatch) {
+        fontSizeInput.addEventListener('focus', () => _captureTbSnapshot('fontSize', members));
+        fontSizeInput.addEventListener('blur', () => _commitTbSnapshot('fontSize'));
+      }
     }
     if (wInput) {
       wInput.addEventListener('input', (ev) => {
         const v = parseFloat(ev.target.value);
-        if (!Number.isNaN(v) && v >= 10) tb.w = v;
+        if (!Number.isNaN(v) && v >= 10) {
+          if (isBatch) { for (const m of members) m.w = v; } else { tb.w = v; }
+        }
       });
+      if (isBatch) {
+        wInput.addEventListener('focus', () => _captureTbSnapshot('w', members));
+        wInput.addEventListener('blur', () => _commitTbSnapshot('w'));
+        let dragStartBoundsPerMember = null;
+        attachDragNumber(wInput,
+          (delta) => { for (const m of members) { m.w = Math.max(10, m.w + delta); } wInput.value = String(Math.round(members[0].w)); },
+          () => {
+            _commitTbSnapshot('w');
+            dragStartBoundsPerMember = members.map(m => ({ tbId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } }));
+          },
+          () => {
+            if (!dragStartBoundsPerMember) return;
+            const changes = [];
+            for (let i = 0; i < members.length; i++) {
+              const fromB = dragStartBoundsPerMember[i].bounds;
+              const toB = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
+              if (fromB.w !== toB.w) changes.push({ tbId: members[i].id, fromBounds: fromB, toBounds: toB });
+            }
+            if (changes.length > 0) history.push(createBatchResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, changes));
+          });
+      }
     }
     if (hInput) {
       hInput.addEventListener('input', (ev) => {
         const v = parseFloat(ev.target.value);
-        if (!Number.isNaN(v) && v >= 10) tb.h = v;
+        if (!Number.isNaN(v) && v >= 10) {
+          if (isBatch) { for (const m of members) m.h = v; } else { tb.h = v; }
+        }
       });
+      if (isBatch) {
+        hInput.addEventListener('focus', () => _captureTbSnapshot('h', members));
+        hInput.addEventListener('blur', () => _commitTbSnapshot('h'));
+        let dragStartBoundsPerMember = null;
+        attachDragNumber(hInput,
+          (delta) => { for (const m of members) { m.h = Math.max(10, m.h + delta); } hInput.value = String(Math.round(members[0].h)); },
+          () => {
+            _commitTbSnapshot('h');
+            dragStartBoundsPerMember = members.map(m => ({ tbId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } }));
+          },
+          () => {
+            if (!dragStartBoundsPerMember) return;
+            const changes = [];
+            for (let i = 0; i < members.length; i++) {
+              const fromB = dragStartBoundsPerMember[i].bounds;
+              const toB = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
+              if (fromB.h !== toB.h) changes.push({ tbId: members[i].id, fromBounds: fromB, toBounds: toB });
+            }
+            if (changes.length > 0) history.push(createBatchResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, changes));
+          });
+      }
     }
     if (textInput) {
       const preview = document.getElementById('panelTBTextPreview');
       textInput.addEventListener('input', (ev) => {
-        tb.text = ev.target.value;
-        if (preview) preview.innerHTML = renderMarkdownToHtml(ev.target.value);
+        const v = ev.target.value;
+        if (isBatch) { for (const m of members) m.text = v; } else { tb.text = v; }
+        if (preview) preview.innerHTML = renderMarkdownToHtml(v);
       });
+      if (isBatch) {
+        textInput.addEventListener('focus', () => _captureTbSnapshot('text', members));
+        textInput.addEventListener('blur', () => _commitTbSnapshot('text'));
+      }
     }
-    return;
-  }
-
-  if (state.selectedTextBoxes.size > 1) {
-    flushPanelEdit();
-    sidePanelContent.innerHTML = '<div class="panel-section-title">' + state.selectedTextBoxes.size + ' text boxes selected</div>';
     return;
   }
 
@@ -269,33 +585,44 @@ export function refreshSidePanel() {
     sidePanelContent.innerHTML = '<div class="panel-empty">Nothing selected</div>';
     return;
   }
-  if (state.selected.size > 1) {
-    flushPanelEdit();
-    sidePanelContent.innerHTML = '<div class="panel-section-title">' + state.selected.size + ' items selected</div>';
-    return;
-  }
 
+  // --- Nodes (single or multi, same UI) ---
   flushPanelEdit(refreshSidePanel);
-  const idx = Array.from(state.selected)[0];
-  const n = state.nodes[idx];
+  const indices = Array.from(state.selected);
+  const isBatch = indices.length > 1;
+  const firstIdx = indices[0];
+  const n = state.nodes[firstIdx];
   const nodeId = n.id;
+  const members = indices.map(i => state.nodes[i]);
+
   const parentInfo = n.parentId !== null && n.parentId !== undefined
     ? (() => { const p = state.findNodeById(state.nodes, n.parentId); return p ? (p.node.title || `Node ${p.index}`) : '?'; })()
     : null;
   const parentHtml = parentInfo ? '<div class="panel-row"><label>Parent</label><span class="panel-static">' + state.escAttr(parentInfo) + '</span></div>' : '';
 
+  const titleMixed = isBatch && members.some(m => m.title !== n.title);
+  const titleColorMixed = isBatch && members.some(m => m.titleColor !== n.titleColor);
+  const colorMixed = isBatch && members.some(m => m.color !== n.color);
+  const textColorMixed = isBatch && members.some(m => m.textColor !== n.textColor);
+  const fontSizeMixed = isBatch && members.some(m => m.fontSize !== n.fontSize);
+  const wMixed = isBatch && members.some(m => m.w !== n.w);
+  const hMixed = isBatch && members.some(m => m.h !== n.h);
+  const textMixed = isBatch && members.some(m => m.text !== n.text);
+
+  const sectionTitle = isBatch ? indices.length + ' nodes selected' : 'Node';
+
   sidePanelContent.innerHTML = [
-    '<div class="panel-section-title">Node</div>',
-    '<div class="panel-row"><label>Title</label><input id="panelTitle" class="panel-input" type="text" value="' + state.escAttr(n.title ?? '') + '" placeholder="' + state.escAttr(TITLE_PLACEHOLDER) + '" /></div>',
+    '<div class="panel-section-title">' + sectionTitle + '</div>',
+    '<div class="panel-row"><label>Title</label><input id="panelTitle" class="panel-input" type="text" value="' + (titleMixed ? '' : state.escAttr(n.title ?? '')) + '" placeholder="' + (titleMixed ? '(mixed)' : state.escAttr(TITLE_PLACEHOLDER)) + '" /></div>',
     '<div class="panel-row"><label>Title Color</label><input id="panelTitleColor" class="panel-input panel-input-color" type="color" value="' + (n.titleColor ?? '#e7e7e7') + '" /></div>',
     '<div class="panel-row"><label>Color</label><input id="panelColor" class="panel-input panel-input-color" type="color" value="' + (n.color ?? '#1a1a1a') + '" /></div>',
     '<div class="panel-row"><label>Text Color</label><input id="panelTextColor" class="panel-input panel-input-color" type="color" value="' + (n.textColor ?? '#dddddd') + '" /></div>',
-    '<div class="panel-row"><label>Font Size</label><input id="panelFontSize" class="panel-input" type="number" min="8" max="72" value="' + (n.fontSize ?? 12) + '" /></div>',
-    '<div class="panel-row"><label>Width</label><input id="panelW" class="panel-input" type="number" min="10" value="' + n.w + '" /></div>',
-    '<div class="panel-row"><label>Height</label><input id="panelH" class="panel-input" type="number" min="10" value="' + n.h + '" /></div>',
+    '<div class="panel-row"><label>Font Size</label><input id="panelFontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (n.fontSize ?? 12)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
+    '<div class="panel-row"><label>Width</label><input id="panelW" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : n.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
+    '<div class="panel-row"><label>Height</label><input id="panelH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : n.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
     parentHtml,
-    '<div class="panel-row"><label>Text</label><textarea id="panelText" class="panel-input panel-textarea" placeholder="' + state.escAttr(TEXT_PLACEHOLDER) + '">' + state.escAttr(n.text ?? '') + '</textarea></div>',
-    '<div id="panelTextPreview" class="panel-markdown-preview">' + renderMarkdownToHtml(n.text ?? '') + '</div>',
+    '<div class="panel-row"><label>Text</label><textarea id="panelText" class="panel-input panel-textarea" placeholder="' + (textMixed ? '(mixed)' : state.escAttr(TEXT_PLACEHOLDER)) + '">' + (textMixed ? '' : state.escAttr(n.text ?? '')) + '</textarea></div>',
+    '<div id="panelTextPreview" class="panel-markdown-preview">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(n))) + '</div>',
   ].join('');
 
   const titleInput = document.getElementById('panelTitle');
@@ -308,91 +635,614 @@ export function refreshSidePanel() {
   const textInput = document.getElementById('panelText');
 
   if (titleInput) {
-    titleInput.addEventListener('input', (ev) => { n.title = ev.target.value; });
-    titleInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'title', n.title); });
-    titleInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
+    titleInput.addEventListener('input', (ev) => {
+      const v = ev.target.value;
+      if (isBatch) { for (const m of members) m.title = v; } else { n.title = v; }
+    });
+    if (isBatch) {
+      titleInput.addEventListener('focus', () => _captureNodeSnapshot('title', members));
+      titleInput.addEventListener('blur', () => _commitNodeSnapshot('title'));
+    } else {
+      titleInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'title', n.title); });
+      titleInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
+    }
   }
   if (titleColorInput) {
-    titleColorInput.addEventListener('input', (ev) => { n.titleColor = ev.target.value; });
-    titleColorInput.addEventListener('pointerdown', () => { startPanelEdit(nodeId, 'titleColor', n.titleColor); });
-    titleColorInput.addEventListener('change', () => { flushPanelEdit(refreshSidePanel); });
+    titleColorInput.addEventListener('input', (ev) => {
+      const v = ev.target.value;
+      if (isBatch) { for (const m of members) m.titleColor = v; } else { n.titleColor = v; }
+    });
+    if (isBatch) {
+      titleColorInput.addEventListener('pointerdown', () => _captureNodeSnapshot('titleColor', members));
+      titleColorInput.addEventListener('change', () => _commitNodeSnapshot('titleColor'));
+    } else {
+      titleColorInput.addEventListener('pointerdown', () => { startPanelEdit(nodeId, 'titleColor', n.titleColor); });
+      titleColorInput.addEventListener('change', () => { flushPanelEdit(refreshSidePanel); });
+    }
   }
   if (colorInput) {
-    colorInput.addEventListener('input', (ev) => { n.color = ev.target.value; });
-    colorInput.addEventListener('pointerdown', () => { startPanelEdit(nodeId, 'color', n.color); });
-    colorInput.addEventListener('change', () => { flushPanelEdit(refreshSidePanel); });
+    colorInput.addEventListener('input', (ev) => {
+      const v = ev.target.value;
+      if (isBatch) { for (const m of members) m.color = v; } else { n.color = v; }
+    });
+    if (isBatch) {
+      colorInput.addEventListener('pointerdown', () => _captureNodeSnapshot('color', members));
+      colorInput.addEventListener('change', () => _commitNodeSnapshot('color'));
+    } else {
+      colorInput.addEventListener('pointerdown', () => { startPanelEdit(nodeId, 'color', n.color); });
+      colorInput.addEventListener('change', () => { flushPanelEdit(refreshSidePanel); });
+    }
   }
   if (textColorInput) {
-    textColorInput.addEventListener('input', (ev) => { n.textColor = ev.target.value; });
-    textColorInput.addEventListener('pointerdown', () => { startPanelEdit(nodeId, 'textColor', n.textColor); });
-    textColorInput.addEventListener('change', () => { flushPanelEdit(refreshSidePanel); });
+    textColorInput.addEventListener('input', (ev) => {
+      const v = ev.target.value;
+      if (isBatch) { for (const m of members) m.textColor = v; } else { n.textColor = v; }
+    });
+    if (isBatch) {
+      textColorInput.addEventListener('pointerdown', () => _captureNodeSnapshot('textColor', members));
+      textColorInput.addEventListener('change', () => _commitNodeSnapshot('textColor'));
+    } else {
+      textColorInput.addEventListener('pointerdown', () => { startPanelEdit(nodeId, 'textColor', n.textColor); });
+      textColorInput.addEventListener('change', () => { flushPanelEdit(refreshSidePanel); });
+    }
   }
   if (fontSizeInput) {
     fontSizeInput.addEventListener('input', (ev) => {
       const v = parseFloat(ev.target.value);
-      if (!Number.isNaN(v) && v >= 8) n.fontSize = v;
+      if (!Number.isNaN(v) && v >= 8) {
+        if (isBatch) { for (const m of members) m.fontSize = v; } else { n.fontSize = v; }
+      }
     });
-    fontSizeInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'fontSize', n.fontSize); });
-    fontSizeInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
+    if (isBatch) {
+      fontSizeInput.addEventListener('focus', () => _captureNodeSnapshot('fontSize', members));
+      fontSizeInput.addEventListener('blur', () => _commitNodeSnapshot('fontSize'));
+    } else {
+      fontSizeInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'fontSize', n.fontSize); });
+      fontSizeInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
+    }
   }
   if (wInput) {
     wInput.setAttribute('data-drag-number', 'true');
     wInput.addEventListener('input', (ev) => {
       const v = parseFloat(ev.target.value);
-      if (!Number.isNaN(v)) updateNodeWidth(n, v);
+      if (!Number.isNaN(v)) {
+        if (isBatch) { for (const m of members) updateNodeWidth(m, v); } else { updateNodeWidth(n, v); }
+      }
     });
-    wInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'w', n.w, { x: n.x, y: n.y, w: n.w, h: n.h }); });
-    wInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
-    let wDragStartBounds = { x: n.x, y: n.y, w: n.w, h: n.h };
+    if (isBatch) {
+      wInput.addEventListener('focus', () => _captureNodeSnapshot('w', members));
+      wInput.addEventListener('blur', () => _commitNodeSnapshot('w'));
+      let dragStartBoundsPerMember = null;
+      attachDragNumber(wInput,
+        (delta) => {
+          for (const m of members) { updateNodeWidth(m, Math.max(10, m.w + delta)); }
+          wInput.value = String(Math.round(members[0].w));
+        },
+        () => {
+          _commitNodeSnapshot('w');
+          dragStartBoundsPerMember = members.map(m => ({ nodeId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } }));
+        },
+        () => {
+          if (!dragStartBoundsPerMember) return;
+          const changes = [];
+          for (let i = 0; i < members.length; i++) {
+            const fromB = dragStartBoundsPerMember[i].bounds;
+            const toB = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
+            if (fromB.w !== toB.w || fromB.x !== toB.x) changes.push({ nodeId: members[i].id, fromBounds: fromB, toBounds: toB });
+          }
+          if (changes.length > 0) history.push(createBatchResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, changes));
+        });
+    } else {
+      wInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'w', n.w, { x: n.x, y: n.y, w: n.w, h: n.h }); });
+      wInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
+      let wDragStartBounds = { x: n.x, y: n.y, w: n.w, h: n.h };
+      attachDragNumber(wInput,
+        (delta) => { updateNodeWidth(n, n.w + delta); wInput.value = String(Math.round(n.w)); },
+        () => {
+          flushPanelEdit();
+          const found = state.findNodeById(state.nodes, nodeId);
+          if (found) wDragStartBounds = { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h };
+        },
+        () => {
+          const found = state.findNodeById(state.nodes, nodeId);
+          if (found && (found.node.w !== wDragStartBounds.w || found.node.x !== wDragStartBounds.x)) {
+            history.push(createResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, nodeId,
+              { x: wDragStartBounds.x, y: wDragStartBounds.y, w: wDragStartBounds.w, h: wDragStartBounds.h },
+              { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h }));
+          }
+        });
+    }
+  }
+  if (hInput) {
+    hInput.setAttribute('data-drag-number', 'true');
+    hInput.addEventListener('input', (ev) => {
+      const v = parseFloat(ev.target.value);
+      if (!Number.isNaN(v)) {
+        if (isBatch) { for (const m of members) updateNodeHeight(m, v); } else { updateNodeHeight(n, v); }
+      }
+    });
+    if (isBatch) {
+      hInput.addEventListener('focus', () => _captureNodeSnapshot('h', members));
+      hInput.addEventListener('blur', () => _commitNodeSnapshot('h'));
+      let dragStartBoundsPerMember = null;
+      attachDragNumber(hInput,
+        (delta) => {
+          for (const m of members) { updateNodeHeight(m, Math.max(10, m.h + delta)); }
+          hInput.value = String(Math.round(members[0].h));
+        },
+        () => {
+          _commitNodeSnapshot('h');
+          dragStartBoundsPerMember = members.map(m => ({ nodeId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } }));
+        },
+        () => {
+          if (!dragStartBoundsPerMember) return;
+          const changes = [];
+          for (let i = 0; i < members.length; i++) {
+            const fromB = dragStartBoundsPerMember[i].bounds;
+            const toB = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
+            if (fromB.h !== toB.h || fromB.y !== toB.y) changes.push({ nodeId: members[i].id, fromBounds: fromB, toBounds: toB });
+          }
+          if (changes.length > 0) history.push(createBatchResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, changes));
+        });
+    } else {
+      hInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'h', n.h, { x: n.x, y: n.y, w: n.w, h: n.h }); });
+      hInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
+      let hDragStartBounds = { x: n.x, y: n.y, w: n.w, h: n.h };
+      attachDragNumber(hInput,
+        (delta) => { updateNodeHeight(n, n.h + delta); hInput.value = String(Math.round(n.h)); },
+        () => {
+          flushPanelEdit();
+          const found = state.findNodeById(state.nodes, nodeId);
+          if (found) hDragStartBounds = { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h };
+        },
+        () => {
+          const found = state.findNodeById(state.nodes, nodeId);
+          if (found && (found.node.h !== hDragStartBounds.h || found.node.y !== hDragStartBounds.y)) {
+            history.push(createResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, nodeId,
+              { x: hDragStartBounds.x, y: hDragStartBounds.y, w: hDragStartBounds.w, h: hDragStartBounds.h },
+              { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h }));
+          }
+        });
+    }
+  }
+  if (textInput) {
+    const preview = document.getElementById('panelTextPreview');
+    textInput.addEventListener('input', (ev) => {
+      const v = ev.target.value;
+      if (isBatch) { for (const m of members) m.text = v; } else { n.text = v; }
+      if (preview) preview.innerHTML = renderMarkdownToHtml(v);
+    });
+    if (isBatch) {
+      textInput.addEventListener('focus', () => _captureNodeSnapshot('text', members));
+      textInput.addEventListener('blur', () => _commitNodeSnapshot('text'));
+    } else {
+      textInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'text', n.text); });
+      textInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
+    }
+  }
+}
+
+function renderMixedEditor() {
+  const parts = [];
+  let prefixCounter = 0;
+
+  if (state.selected.size > 0) {
+    const indices = Array.from(state.selected);
+    const members = indices.map(i => state.nodes[i]);
+    const first = members[0];
+    const prefix = 'mx' + (prefixCounter++);
+
+    if (parts.length > 0) parts.push('<hr class="panel-group-divider" />');
+    parts.push('<div class="panel-section-title">' + members.length + ' node' + (members.length > 1 ? 's' : '') + '</div>');
+    appendNodeEditorHTML(parts, prefix, members, first);
+  }
+
+  if (state.selectedShapes.size > 0) {
+    const indices = Array.from(state.selectedShapes);
+    const members = indices.map(i => state.shapes[i]);
+    const first = members[0];
+    const prefix = 'mx' + (prefixCounter++);
+
+    if (parts.length > 0) parts.push('<hr class="panel-group-divider" />');
+    parts.push('<div class="panel-section-title">' + members.length + ' shape' + (members.length > 1 ? 's' : '') + ' (' + state.escAttr(first.shapeType) + ')</div>');
+    appendShapeEditorHTML(parts, prefix, members, first);
+  }
+
+  if (state.selectedTextBoxes.size > 0) {
+    const indices = Array.from(state.selectedTextBoxes);
+    const members = indices.map(i => state.textBoxes[i]);
+    const first = members[0];
+    const prefix = 'mx' + (prefixCounter++);
+
+    if (parts.length > 0) parts.push('<hr class="panel-group-divider" />');
+    parts.push('<div class="panel-section-title">' + members.length + ' text box' + (members.length > 1 ? 'es' : '') + '</div>');
+    appendTextBoxEditorHTML(parts, prefix, members, first);
+  }
+
+  if (state.selectedArrows.size > 0) {
+    const members = Array.from(state.selectedArrows).map(i => state.arrows[i]);
+    const prefix = 'mx' + (prefixCounter++);
+
+    if (parts.length > 0) parts.push('<hr class="panel-group-divider" />');
+    parts.push('<div class="panel-section-title">' + members.length + ' arrow' + (members.length > 1 ? 's' : '') + '</div>');
+    const colorMixed = members.some(m => m.color !== members[0].color);
+    parts.push(
+      '<div class="panel-row"><label>Color</label><input id="' + prefix + '_color" class="panel-input" type="color" value="' + state.escAttr(members[0].color || '#6bb5ff') + '" /></div>'
+    );
+  }
+
+  if (state.selectedConnection !== null && state.connections[state.selectedConnection]) {
+    const conn = state.connections[state.selectedConnection];
+    const prefix = 'mx' + (prefixCounter++);
+
+    if (parts.length > 0) parts.push('<hr class="panel-group-divider" />');
+    parts.push('<div class="panel-section-title">Connection</div>');
+    const fromNode = state.nodes[conn.from];
+    const toNode = state.nodes[conn.to];
+    const fromLabel = fromNode ? (fromNode.title || 'Node ' + conn.from) : '?';
+    const toLabel = toNode ? (toNode.title || 'Node ' + conn.to) : '?';
+    parts.push(
+      '<div class="panel-row"><label>From</label><span class="panel-static">' + state.escAttr(fromLabel) + '</span></div>',
+      '<div class="panel-row"><label>To</label><span class="panel-static">' + state.escAttr(toLabel) + '</span></div>',
+      '<div class="panel-row"><label>Color</label><input id="' + prefix + '_color" class="panel-input" type="color" value="' + state.escAttr(conn.color || '#6bb5ff') + '" /></div>',
+      '<div class="panel-row"><label>Text</label><input id="' + prefix + '_text" class="panel-input" type="text" value="' + state.escAttr(conn.text ?? '') + '" /></div>'
+    );
+  }
+
+  if (state.selectedConnectors.size > 0) {
+    if (parts.length > 0) parts.push('<hr class="panel-group-divider" />');
+    parts.push('<div class="panel-section-title">' + state.selectedConnectors.size + ' connector' + (state.selectedConnectors.size > 1 ? 's' : '') + '</div>');
+  }
+
+  state.sidePanelContent.innerHTML = parts.join('');
+
+  prefixCounter = 0;
+  if (state.selected.size > 0) {
+    const members = Array.from(state.selected).map(i => state.nodes[i]);
+    wireBatchNodeGroup('mx' + (prefixCounter++), members);
+  }
+  if (state.selectedShapes.size > 0) {
+    const members = Array.from(state.selectedShapes).map(i => state.shapes[i]);
+    wireMixedShapeGroup('mx' + (prefixCounter++), members);
+  }
+  if (state.selectedTextBoxes.size > 0) {
+    const members = Array.from(state.selectedTextBoxes).map(i => state.textBoxes[i]);
+    wireMixedTBGroup('mx' + (prefixCounter++), members);
+  }
+  if (state.selectedArrows.size > 0) {
+    const members = Array.from(state.selectedArrows).map(i => state.arrows[i]);
+    const prefix = 'mx' + (prefixCounter++);
+    const ci = document.getElementById(prefix + '_color');
+    if (ci) {
+      ci.addEventListener('input', (ev) => { for (const m of members) m.color = ev.target.value; });
+    }
+  }
+  if (state.selectedConnection !== null && state.connections[state.selectedConnection]) {
+    const conn = state.connections[state.selectedConnection];
+    const prefix = 'mx' + (prefixCounter++);
+    const ci = document.getElementById(prefix + '_color');
+    const ti = document.getElementById(prefix + '_text');
+    if (ci) ci.addEventListener('input', (ev) => { conn.color = ev.target.value; });
+    if (ti) ti.addEventListener('input', (ev) => { conn.text = ev.target.value; });
+  }
+}
+
+function appendNodeEditorHTML(parts, prefix, members, first) {
+  const titleMixed = members.some(m => m.title !== first.title);
+  const textMixed = members.some(m => m.text !== first.text);
+  const fontSizeMixed = members.some(m => m.fontSize !== first.fontSize);
+  const wMixed = members.some(m => m.w !== first.w);
+  const hMixed = members.some(m => m.h !== first.h);
+
+  parts.push(
+    '<div class="panel-row"><label>Title</label><input id="' + prefix + '_title" class="panel-input" type="text" value="' + (titleMixed ? '' : state.escAttr(first.title ?? '')) + '" placeholder="' + (titleMixed ? '(mixed)' : state.escAttr(TITLE_PLACEHOLDER)) + '" /></div>',
+    '<div class="panel-row"><label>Title Color</label><input id="' + prefix + '_titleColor" class="panel-input panel-input-color" type="color" value="' + (first.titleColor ?? '#e7e7e7') + '" /></div>',
+    '<div class="panel-row"><label>Color</label><input id="' + prefix + '_color" class="panel-input panel-input-color" type="color" value="' + (first.color ?? '#1a1a1a') + '" /></div>',
+    '<div class="panel-row"><label>Text Color</label><input id="' + prefix + '_textColor" class="panel-input panel-input-color" type="color" value="' + (first.textColor ?? '#dddddd') + '" /></div>',
+    '<div class="panel-row"><label>Font Size</label><input id="' + prefix + '_fontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (first.fontSize ?? 12)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
+    '<div class="panel-row"><label>Width</label><input id="' + prefix + '_w" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : first.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
+    '<div class="panel-row"><label>Height</label><input id="' + prefix + '_h" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : first.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
+    '<div class="panel-row"><label>Text</label><textarea id="' + prefix + '_text" class="panel-input panel-textarea" placeholder="' + (textMixed ? '(mixed)' : state.escAttr(TEXT_PLACEHOLDER)) + '">' + (textMixed ? '' : state.escAttr(first.text ?? '')) + '</textarea></div>',
+    '<div id="' + prefix + '_textPreview" class="panel-markdown-preview">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(first))) + '</div>'
+  );
+}
+
+function appendShapeEditorHTML(parts, prefix, members, first) {
+  const isRect = first.shapeType === 'rectangle';
+  const wMixed = members.some(m => m.w !== first.w);
+  const hMixed = members.some(m => m.h !== first.h);
+  const bwMixed = members.some(m => m.borderWidth !== first.borderWidth);
+  const rMixed = isRect && members.some(m => m.cornerRadius !== first.cornerRadius);
+
+  parts.push(
+    '<div class="panel-row"><label>Color</label><input id="' + prefix + '_color" class="panel-input panel-input-color" type="color" value="' + (first.color ?? '#2b2b2b') + '" /></div>',
+    '<div class="panel-row"><label>Border</label><input id="' + prefix + '_borderColor" class="panel-input panel-input-color" type="color" value="' + (first.borderColor ?? '#6bb5ff') + '" /></div>',
+    '<div class="panel-row"><label>Border W</label><input id="' + prefix + '_borderWidth" class="panel-input" type="number" min="0" max="20" step="0.5" value="' + (bwMixed ? '' : (first.borderWidth ?? 2)) + '" placeholder="' + (bwMixed ? '(mixed)' : '') + '" /></div>',
+    '<div class="panel-row"><label>Width</label><input id="' + prefix + '_w" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : first.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
+    '<div class="panel-row"><label>Height</label><input id="' + prefix + '_h" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : first.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
+    (isRect ? '<div class="panel-row"><label>Radius</label><input id="' + prefix + '_cornerRadius" class="panel-input" type="number" min="0" max="200" value="' + (rMixed ? '' : (first.cornerRadius ?? 4)) + '" placeholder="' + (rMixed ? '(mixed)' : '') + '" /></div>' : '')
+  );
+}
+
+function appendTextBoxEditorHTML(parts, prefix, members, first) {
+  const textMixed = members.some(m => m.text !== first.text);
+  const fontSizeMixed = members.some(m => m.fontSize !== first.fontSize);
+  const wMixed = members.some(m => m.w !== first.w);
+  const hMixed = members.some(m => m.h !== first.h);
+
+  parts.push(
+    '<div class="panel-row"><label>Color</label><input id="' + prefix + '_color" class="panel-input panel-input-color" type="color" value="' + (first.color ?? '#1a1a1a') + '" /></div>',
+    '<div class="panel-row"><label>Border</label><input id="' + prefix + '_borderColor" class="panel-input panel-input-color" type="color" value="' + (first.borderColor ?? '#444444') + '" /></div>',
+    '<div class="panel-row"><label>Text Color</label><input id="' + prefix + '_textColor" class="panel-input panel-input-color" type="color" value="' + (first.textColor ?? '#dddddd') + '" /></div>',
+    '<div class="panel-row"><label>Font Size</label><input id="' + prefix + '_fontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (first.fontSize ?? 14)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
+    '<div class="panel-row"><label>Width</label><input id="' + prefix + '_w" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : first.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
+    '<div class="panel-row"><label>Height</label><input id="' + prefix + '_h" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : first.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
+    '<div class="panel-row"><label>Text</label><textarea id="' + prefix + '_text" class="panel-input panel-textarea" placeholder="' + (textMixed ? '(mixed)' : 'Enter text...') + '">' + (textMixed ? '' : state.escAttr(first.text ?? '')) + '</textarea></div>',
+    '<div id="' + prefix + '_textPreview" class="panel-markdown-preview">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(first))) + '</div>'
+  );
+}
+
+function wireBatchNodeGroup(prefix, members) {
+  const titleInput = document.getElementById(prefix + '_title');
+  const titleColorInput = document.getElementById(prefix + '_titleColor');
+  const colorInput = document.getElementById(prefix + '_color');
+  const textColorInput = document.getElementById(prefix + '_textColor');
+  const fontSizeInput = document.getElementById(prefix + '_fontSize');
+  const wInput = document.getElementById(prefix + '_w');
+  const hInput = document.getElementById(prefix + '_h');
+  const textInput = document.getElementById(prefix + '_text');
+
+  if (titleInput) {
+    titleInput.addEventListener('input', (ev) => { for (const m of members) m.title = ev.target.value; });
+    titleInput.addEventListener('focus', () => _captureNodeSnapshot('title', members));
+    titleInput.addEventListener('blur', () => _commitNodeSnapshot('title'));
+  }
+  if (titleColorInput) {
+    titleColorInput.addEventListener('input', (ev) => { for (const m of members) m.titleColor = ev.target.value; });
+    titleColorInput.addEventListener('pointerdown', () => _captureNodeSnapshot('titleColor', members));
+    titleColorInput.addEventListener('change', () => _commitNodeSnapshot('titleColor'));
+  }
+  if (colorInput) {
+    colorInput.addEventListener('input', (ev) => { for (const m of members) m.color = ev.target.value; });
+    colorInput.addEventListener('pointerdown', () => _captureNodeSnapshot('color', members));
+    colorInput.addEventListener('change', () => _commitNodeSnapshot('color'));
+  }
+  if (textColorInput) {
+    textColorInput.addEventListener('input', (ev) => { for (const m of members) m.textColor = ev.target.value; });
+    textColorInput.addEventListener('pointerdown', () => _captureNodeSnapshot('textColor', members));
+    textColorInput.addEventListener('change', () => _commitNodeSnapshot('textColor'));
+  }
+  if (fontSizeInput) {
+    fontSizeInput.addEventListener('input', (ev) => {
+      const v = parseFloat(ev.target.value);
+      if (!Number.isNaN(v) && v >= 8) for (const m of members) m.fontSize = v;
+    });
+    fontSizeInput.addEventListener('focus', () => _captureNodeSnapshot('fontSize', members));
+    fontSizeInput.addEventListener('blur', () => _commitNodeSnapshot('fontSize'));
+  }
+  if (wInput) {
+    wInput.setAttribute('data-drag-number', 'true');
+    wInput.addEventListener('input', (ev) => {
+      const v = parseFloat(ev.target.value);
+      if (!Number.isNaN(v)) for (const m of members) updateNodeWidth(m, v);
+    });
+    wInput.addEventListener('focus', () => _captureNodeSnapshot('w', members));
+    wInput.addEventListener('blur', () => _commitNodeSnapshot('w'));
+    let ds = null;
     attachDragNumber(wInput,
-      (delta) => { updateNodeWidth(n, n.w + delta); wInput.value = String(Math.round(n.w)); },
+      (delta) => { for (const m of members) { updateNodeWidth(m, Math.max(10, m.w + delta)); } wInput.value = String(Math.round(members[0].w)); },
+      () => { _commitNodeSnapshot('w'); ds = members.map(m => ({ nodeId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } })); },
       () => {
-        flushPanelEdit();
-        const found = state.findNodeById(state.nodes, nodeId);
-        if (found) wDragStartBounds = { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h };
-      },
-      () => {
-        const found = state.findNodeById(state.nodes, nodeId);
-        if (found && (found.node.w !== wDragStartBounds.w || found.node.x !== wDragStartBounds.x)) {
-          history.push(createResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, nodeId,
-            { x: wDragStartBounds.x, y: wDragStartBounds.y, w: wDragStartBounds.w, h: wDragStartBounds.h },
-            { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h }));
+        if (!ds) return;
+        const ch = [];
+        for (let i = 0; i < members.length; i++) {
+          const fb = ds[i].bounds, tb = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
+          if (fb.w !== tb.w || fb.x !== tb.x) ch.push({ nodeId: members[i].id, fromBounds: fb, toBounds: tb });
         }
+        if (ch.length > 0) history.push(createBatchResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, ch));
       });
   }
   if (hInput) {
     hInput.setAttribute('data-drag-number', 'true');
     hInput.addEventListener('input', (ev) => {
       const v = parseFloat(ev.target.value);
-      if (!Number.isNaN(v)) updateNodeHeight(n, v);
+      if (!Number.isNaN(v)) for (const m of members) updateNodeHeight(m, v);
     });
-    hInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'h', n.h, { x: n.x, y: n.y, w: n.w, h: n.h }); });
-    hInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
-    let hDragStartBounds = { x: n.x, y: n.y, w: n.w, h: n.h };
+    hInput.addEventListener('focus', () => _captureNodeSnapshot('h', members));
+    hInput.addEventListener('blur', () => _commitNodeSnapshot('h'));
+    let ds = null;
     attachDragNumber(hInput,
-      (delta) => { updateNodeHeight(n, n.h + delta); hInput.value = String(Math.round(n.h)); },
+      (delta) => { for (const m of members) { updateNodeHeight(m, Math.max(10, m.h + delta)); } hInput.value = String(Math.round(members[0].h)); },
+      () => { _commitNodeSnapshot('h'); ds = members.map(m => ({ nodeId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } })); },
       () => {
-        flushPanelEdit();
-        const found = state.findNodeById(state.nodes, nodeId);
-        if (found) hDragStartBounds = { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h };
-      },
-      () => {
-        const found = state.findNodeById(state.nodes, nodeId);
-        if (found && (found.node.h !== hDragStartBounds.h || found.node.y !== hDragStartBounds.y)) {
-          history.push(createResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, nodeId,
-            { x: hDragStartBounds.x, y: hDragStartBounds.y, w: hDragStartBounds.w, h: hDragStartBounds.h },
-            { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h }));
+        if (!ds) return;
+        const ch = [];
+        for (let i = 0; i < members.length; i++) {
+          const fb = ds[i].bounds, tb = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
+          if (fb.h !== tb.h || fb.y !== tb.y) ch.push({ nodeId: members[i].id, fromBounds: fb, toBounds: tb });
         }
+        if (ch.length > 0) history.push(createBatchResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, ch));
       });
   }
   if (textInput) {
-    const preview = document.getElementById('panelTextPreview');
     textInput.addEventListener('input', (ev) => {
-      n.text = ev.target.value;
-      if (preview) preview.innerHTML = renderMarkdownToHtml(ev.target.value);
+      for (const m of members) m.text = ev.target.value;
+      const p = document.getElementById(prefix + '_textPreview');
+      if (p) p.innerHTML = renderMarkdownToHtml(ev.target.value);
     });
-    textInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'text', n.text); });
-    textInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
+    textInput.addEventListener('focus', () => _captureNodeSnapshot('text', members));
+    textInput.addEventListener('blur', () => _commitNodeSnapshot('text'));
+  }
+}
+
+function wireMixedShapeGroup(prefix, members) {
+  const colorInput = document.getElementById(prefix + '_color');
+  const borderColorInput = document.getElementById(prefix + '_borderColor');
+  const borderWidthInput = document.getElementById(prefix + '_borderWidth');
+  const wInput = document.getElementById(prefix + '_w');
+  const hInput = document.getElementById(prefix + '_h');
+  const radiusInput = document.getElementById(prefix + '_cornerRadius');
+
+  if (colorInput) {
+    colorInput.addEventListener('input', (ev) => { for (const m of members) m.color = ev.target.value; state.lastShapeColor = ev.target.value; });
+    colorInput.addEventListener('pointerdown', () => _captureShapeSnapshot('color', members));
+    colorInput.addEventListener('change', () => _commitShapeSnapshot('color'));
+  }
+  if (borderColorInput) {
+    borderColorInput.addEventListener('input', (ev) => { for (const m of members) m.borderColor = ev.target.value; state.lastShapeBorderColor = ev.target.value; });
+    borderColorInput.addEventListener('pointerdown', () => _captureShapeSnapshot('borderColor', members));
+    borderColorInput.addEventListener('change', () => _commitShapeSnapshot('borderColor'));
+  }
+  if (borderWidthInput) {
+    borderWidthInput.addEventListener('input', (ev) => {
+      const v = parseFloat(ev.target.value);
+      if (!Number.isNaN(v) && v >= 0) for (const m of members) m.borderWidth = v;
+    });
+    borderWidthInput.addEventListener('focus', () => _captureShapeSnapshot('borderWidth', members));
+    borderWidthInput.addEventListener('blur', () => _commitShapeSnapshot('borderWidth'));
+  }
+  if (wInput) {
+    wInput.setAttribute('data-drag-number', 'true');
+    wInput.addEventListener('input', (ev) => {
+      const v = parseFloat(ev.target.value);
+      if (!Number.isNaN(v) && v >= 10) for (const m of members) m.w = v;
+    });
+    wInput.addEventListener('focus', () => _captureShapeSnapshot('w', members));
+    wInput.addEventListener('blur', () => _commitShapeSnapshot('w'));
+    let ds = null;
+    attachDragNumber(wInput,
+      (delta) => { for (const m of members) { m.w = Math.max(10, m.w + delta); } wInput.value = String(Math.round(members[0].w)); },
+      () => { _commitShapeSnapshot('w'); ds = members.map(m => ({ shapeId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } })); },
+      () => {
+        if (!ds) return;
+        const ch = [];
+        for (let i = 0; i < members.length; i++) {
+          const fb = ds[i].bounds, tb = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
+          if (fb.w !== tb.w) ch.push({ shapeId: members[i].id, fromBounds: fb, toBounds: tb });
+        }
+        if (ch.length > 0) history.push(createBatchResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, ch));
+      });
+  }
+  if (hInput) {
+    hInput.setAttribute('data-drag-number', 'true');
+    hInput.addEventListener('input', (ev) => {
+      const v = parseFloat(ev.target.value);
+      if (!Number.isNaN(v) && v >= 10) for (const m of members) m.h = v;
+    });
+    hInput.addEventListener('focus', () => _captureShapeSnapshot('h', members));
+    hInput.addEventListener('blur', () => _commitShapeSnapshot('h'));
+    let ds = null;
+    attachDragNumber(hInput,
+      (delta) => { for (const m of members) { m.h = Math.max(10, m.h + delta); } hInput.value = String(Math.round(members[0].h)); },
+      () => { _commitShapeSnapshot('h'); ds = members.map(m => ({ shapeId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } })); },
+      () => {
+        if (!ds) return;
+        const ch = [];
+        for (let i = 0; i < members.length; i++) {
+          const fb = ds[i].bounds, tb = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
+          if (fb.h !== tb.h) ch.push({ shapeId: members[i].id, fromBounds: fb, toBounds: tb });
+        }
+        if (ch.length > 0) history.push(createBatchResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, ch));
+      });
+  }
+  if (radiusInput) {
+    radiusInput.addEventListener('input', (ev) => {
+      const v = parseFloat(ev.target.value);
+      if (!Number.isNaN(v) && v >= 0) for (const m of members) m.cornerRadius = v;
+    });
+    radiusInput.addEventListener('focus', () => _captureShapeSnapshot('cornerRadius', members));
+    radiusInput.addEventListener('blur', () => _commitShapeSnapshot('cornerRadius'));
+    attachDragNumber(radiusInput,
+      (delta) => {
+        const v = Math.max(0, (members[0].cornerRadius ?? 4) + delta);
+        for (const m of members) m.cornerRadius = v;
+        radiusInput.value = String(Math.round(members[0].cornerRadius));
+      }, () => {}, () => {});
+  }
+}
+
+function wireMixedTBGroup(prefix, members) {
+  const colorInput = document.getElementById(prefix + '_color');
+  const borderColorInput = document.getElementById(prefix + '_borderColor');
+  const textColorInput = document.getElementById(prefix + '_textColor');
+  const fontSizeInput = document.getElementById(prefix + '_fontSize');
+  const wInput = document.getElementById(prefix + '_w');
+  const hInput = document.getElementById(prefix + '_h');
+  const textInput = document.getElementById(prefix + '_text');
+
+  if (colorInput) {
+    colorInput.addEventListener('input', (ev) => { for (const m of members) m.color = ev.target.value; });
+    colorInput.addEventListener('pointerdown', () => _captureTbSnapshot('color', members));
+    colorInput.addEventListener('change', () => _commitTbSnapshot('color'));
+  }
+  if (borderColorInput) {
+    borderColorInput.addEventListener('input', (ev) => { for (const m of members) m.borderColor = ev.target.value; });
+    borderColorInput.addEventListener('pointerdown', () => _captureTbSnapshot('borderColor', members));
+    borderColorInput.addEventListener('change', () => _commitTbSnapshot('borderColor'));
+  }
+  if (textColorInput) {
+    textColorInput.addEventListener('input', (ev) => { for (const m of members) m.textColor = ev.target.value; });
+    textColorInput.addEventListener('pointerdown', () => _captureTbSnapshot('textColor', members));
+    textColorInput.addEventListener('change', () => _commitTbSnapshot('textColor'));
+  }
+  if (fontSizeInput) {
+    fontSizeInput.addEventListener('input', (ev) => {
+      const v = parseFloat(ev.target.value);
+      if (!Number.isNaN(v) && v >= 8) for (const m of members) m.fontSize = v;
+    });
+    fontSizeInput.addEventListener('focus', () => _captureTbSnapshot('fontSize', members));
+    fontSizeInput.addEventListener('blur', () => _commitTbSnapshot('fontSize'));
+  }
+  if (wInput) {
+    wInput.addEventListener('input', (ev) => {
+      const v = parseFloat(ev.target.value);
+      if (!Number.isNaN(v) && v >= 10) for (const m of members) m.w = v;
+    });
+    wInput.addEventListener('focus', () => _captureTbSnapshot('w', members));
+    wInput.addEventListener('blur', () => _commitTbSnapshot('w'));
+    let ds = null;
+    attachDragNumber(wInput,
+      (delta) => { for (const m of members) { m.w = Math.max(10, m.w + delta); } wInput.value = String(Math.round(members[0].w)); },
+      () => { _commitTbSnapshot('w'); ds = members.map(m => ({ tbId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } })); },
+      () => {
+        if (!ds) return;
+        const ch = [];
+        for (let i = 0; i < members.length; i++) {
+          const fb = ds[i].bounds, tb = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
+          if (fb.w !== tb.w) ch.push({ tbId: members[i].id, fromBounds: fb, toBounds: tb });
+        }
+        if (ch.length > 0) history.push(createBatchResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, ch));
+      });
+  }
+  if (hInput) {
+    hInput.addEventListener('input', (ev) => {
+      const v = parseFloat(ev.target.value);
+      if (!Number.isNaN(v) && v >= 10) for (const m of members) m.h = v;
+    });
+    hInput.addEventListener('focus', () => _captureTbSnapshot('h', members));
+    hInput.addEventListener('blur', () => _commitTbSnapshot('h'));
+    let ds = null;
+    attachDragNumber(hInput,
+      (delta) => { for (const m of members) { m.h = Math.max(10, m.h + delta); } hInput.value = String(Math.round(members[0].h)); },
+      () => { _commitTbSnapshot('h'); ds = members.map(m => ({ tbId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } })); },
+      () => {
+        if (!ds) return;
+        const ch = [];
+        for (let i = 0; i < members.length; i++) {
+          const fb = ds[i].bounds, tb = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
+          if (fb.h !== tb.h) ch.push({ tbId: members[i].id, fromBounds: fb, toBounds: tb });
+        }
+        if (ch.length > 0) history.push(createBatchResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, ch));
+      });
+  }
+  if (textInput) {
+    textInput.addEventListener('input', (ev) => {
+      for (const m of members) m.text = ev.target.value;
+      const p = document.getElementById(prefix + '_textPreview');
+      if (p) p.innerHTML = renderMarkdownToHtml(ev.target.value);
+    });
+    textInput.addEventListener('focus', () => _captureTbSnapshot('text', members));
+    textInput.addEventListener('blur', () => _commitTbSnapshot('text'));
   }
 }
 

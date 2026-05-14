@@ -20,7 +20,6 @@ import {
   duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
   newDocument, saveDocument, openDocument,
 } from './document.js';
-import { deleteArrowFn } from './pointer.js';
 import { performUndo, performRedo } from './history.js';
 import { initToolbar } from './toolbar.js';
 
@@ -132,7 +131,6 @@ function init() {
     duplicateSelectedNodes,
     copySelectedNodes,
     pasteNodesAt,
-    deleteArrow: deleteArrowFn,
     refreshSidePanel,
   });
 

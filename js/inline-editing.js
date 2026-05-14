@@ -6,8 +6,8 @@ import { hitTestTextBox } from './textboxes.js';
 import { createPropertyChangeCmd } from './undo.js';
 import { refreshSidePanel } from './side-panel.js';
 import { history } from './history.js';
-import { renderMarkdownToHtml, htmlToMarkdown } from './markdown.js';
-import { TITLE_PLACEHOLDER, TEXT_PLACEHOLDER, DEFAULT_NODE_COLOR } from './config.js';
+import { createRichTextEditor, markdownToBlocks } from './rich-text.js';
+import { TITLE_PLACEHOLDER, DEFAULT_NODE_COLOR } from './config.js';
 
 export function setupInlineEditing() {
   state.canvas.addEventListener('dblclick', onDblClick);
@@ -78,74 +78,90 @@ export function startEditing(idx, field, worldX, worldY, worldW, worldH) {
   const screenH = worldH * state.scale;
 
   const isTitle = field === 'title';
-  const baseColor = n.color || DEFAULT_NODE_COLOR;
   const isRichText = field === 'text';
 
-  const el = isRichText
-    ? document.createElement('div')
-    : document.createElement('input');
-
   if (isRichText) {
-    el.contentEditable = 'true';
-    el.className = 'inline-editor-richtext';
-    el.innerHTML = renderMarkdownToHtml(n.text || '') || '<div class="md-block md-paragraph"><br></div>';
-    el.style.fontSize = (12 * state.scale) + 'px';
-    el.style.lineHeight = (1.4 * state.scale) + '';
+    ensureBlocks(n);
+    const baseColor = n.color || DEFAULT_NODE_COLOR;
+    const fontSize = n.fontSize || 12;
+    const rt = createRichTextEditor({
+      blocks: n.blocks || [{ t: 'p', s: [{ t: '' }] }],
+    });
+
+    const el = rt.container;
+    el.style.position = 'fixed';
+    el.style.left = (screen.x + canvasRect.left) + 'px';
+    el.style.top = (screen.y + canvasRect.top) + 'px';
+    el.style.width = screenW + 'px';
+    el.style.height = screenH + 'px';
+    el.style.zIndex = '8';
+    el.style.color = n.textColor || '#ddd';
+    el.style.fontSize = (fontSize * state.scale) + 'px';
     el.style.background = baseColor;
-    el.style.padding = '4px 6px';
-  } else {
-    el.className = 'inline-editor inline-editor-title';
-    el.value = n[field] || '';
-    el.placeholder = TITLE_PLACEHOLDER;
-    el.style.color = n.titleColor || '#e7e7e7';
-    el.style.fontSize = (15 * state.scale) + 'px';
-    el.style.lineHeight = (18 * state.scale) + 'px';
-    el.style.padding = (8 * state.scale) + 'px';
-    const nodeRadiusEditing = Math.min(12, Math.min(n.w, n.h) * 0.2) * state.scale;
-    el.style.background = getDarkerColor(baseColor, 0.6);
-    el.style.borderRadius = `${nodeRadiusEditing}px ${nodeRadiusEditing}px 0 0`;
-    el.style.border = 'none';
+    el.style.border = '1px solid #f0c800';
+    el.style.borderRadius = '4px';
     el.style.overflow = 'hidden';
-  }
+    el.style.outline = 'none';
+    el.style.display = 'flex';
+    el.style.flexDirection = 'column';
 
-  el.style.position = 'fixed';
-  el.style.left = (screen.x + canvasRect.left) + 'px';
-  el.style.top = (screen.y + canvasRect.top) + 'px';
-  el.style.width = screenW + 'px';
-  el.style.height = screenH + 'px';
-  el.style.zIndex = '8';
-  el.style.border = 'none';
-  el.style.outline = 'none';
-  el.style.overflow = 'hidden';
+    const area = rt.editorArea;
+    area.style.fontSize = (fontSize * state.scale) + 'px';
+    area.style.lineHeight = '1.4';
+    area.style.color = n.textColor || '#ddd';
+    area.style.background = baseColor;
 
-  document.body.appendChild(el);
-  el.focus();
+    document.body.appendChild(el);
+    rt.focus();
 
-  if (!isRichText) el.select();
+    const originalValue = JSON.stringify(n.blocks || [{ t: 'p', s: [{ t: '' }] }]);
+    state.editingState = { type: 'node', idx, field, el, originalValue, isRichText: true, rt };
 
-  const originalValue = n[field];
-  state.editingState = { type: 'node', idx, field, el, originalValue, isRichText };
-
-  if (isRichText) {
     el.addEventListener('input', () => {
-      const md = htmlToMarkdown(el);
-      n.text = md;
+      n.blocks = rt.getBlocks();
+      if (n.blocks && n.blocks.length > 0) {
+        n.text = blocksToSimpleText(n.blocks);
+      }
     });
 
     el.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') {
         cancelEditing();
-      } else if (ev.key === 'Enter' && !ev.shiftKey) {
-        ev.preventDefault();
-        handleRichEnter(el, ev);
-      } else if (ev.key === 'Backspace') {
-        handleRichBackspace(el, ev);
-      } else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'e') {
-        ev.preventDefault();
-        wrapSelectionWithTag(el, 'code');
       }
     });
+
+    const commit = () => { commitEditing(); };
+    el.addEventListener('blur', commit);
   } else {
+    const el = document.createElement('input');
+    el.className = 'inline-editor inline-editor-title';
+    el.value = n[field] || '';
+    el.placeholder = TITLE_PLACEHOLDER;
+    el.style.position = 'fixed';
+    el.style.left = (screen.x + canvasRect.left) + 'px';
+    el.style.top = (screen.y + canvasRect.top) + 'px';
+    el.style.width = screenW + 'px';
+    el.style.height = screenH + 'px';
+    el.style.zIndex = '8';
+    el.style.color = n.titleColor || '#e7e7e7';
+    el.style.fontSize = (15 * state.scale) + 'px';
+    el.style.lineHeight = (18 * state.scale) + 'px';
+    el.style.padding = (8 * state.scale) + 'px';
+    const baseColor = n.color || DEFAULT_NODE_COLOR;
+    const nodeRadiusEditing = Math.min(12, Math.min(n.w, n.h) * 0.2) * state.scale;
+    el.style.background = getDarkerColor(baseColor, 0.6);
+    el.style.borderRadius = `${nodeRadiusEditing}px ${nodeRadiusEditing}px 0 0`;
+    el.style.border = 'none';
+    el.style.outline = 'none';
+    el.style.overflow = 'hidden';
+
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+
+    const originalValue = n[field];
+    state.editingState = { type: 'node', idx, field, el, originalValue, isRichText: false };
+
     el.addEventListener('input', () => {
       n[field] = el.value;
     });
@@ -158,10 +174,10 @@ export function startEditing(idx, field, worldX, worldY, worldW, worldH) {
         cancelEditing();
       }
     });
-  }
 
-  const commit = () => { commitEditing(); };
-  el.addEventListener('blur', commit);
+    const commit = () => { commitEditing(); };
+    el.addEventListener('blur', commit);
+  }
 }
 
 function startConnectionEditing(connIdx) {
@@ -244,18 +260,34 @@ function startConnectionEditing(connIdx) {
 
 export function commitEditing() {
   if (!state.editingState) return;
-  const { type, idx, field, el, originalValue, isRichText } = state.editingState;
-  const newValue = isRichText ? htmlToMarkdown(el) : el.value;
-  if (type === 'textBox') {
-    state.textBoxes[idx].text = newValue;
-  } else if (type === 'connection') {
-    state.connections[idx].text = newValue;
+  const { type, idx, field, el, originalValue, isRichText, rt } = state.editingState;
+
+  if (isRichText && rt) {
+    const blocks = rt.getBlocks();
+    if (type === 'textBox') {
+      state.textBoxes[idx].blocks = blocks;
+      if (blocks && blocks.length > 0) {
+        state.textBoxes[idx].text = blocksToSimpleText(blocks);
+      }
+    } else if (type === 'node') {
+      state.nodes[idx].blocks = blocks;
+      if (blocks && blocks.length > 0) {
+        state.nodes[idx].text = blocksToSimpleText(blocks);
+      }
+      const newValue = JSON.stringify(blocks);
+      if (originalValue !== newValue && state.nodes[idx].id !== undefined) {
+        history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, state.nodes[idx].id, field, originalValue, newValue));
+      }
+    }
+    rt.destroy();
   } else {
-    state.nodes[idx][field] = newValue;
-    if (originalValue !== newValue && state.nodes[idx].id !== undefined) {
+    const newValue = type === 'textBox' ? state.textBoxes[idx].text :
+      type === 'connection' ? state.connections[idx].text : state.nodes[idx][field];
+    if (type === 'node' && originalValue !== newValue && state.nodes[idx].id !== undefined) {
       history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, state.nodes[idx].id, field, originalValue, newValue));
     }
   }
+
   state.editingState = null;
   try { document.body.removeChild(el); } catch {}
   refreshSidePanel();
@@ -263,156 +295,54 @@ export function commitEditing() {
 
 export function cancelEditing() {
   if (!state.editingState) return;
-  const { type, idx, field, el, originalValue } = state.editingState;
-  if (type === 'textBox') {
-    state.textBoxes[idx].text = originalValue;
-  } else if (type === 'connection') {
-    state.connections[idx].text = originalValue;
+  const { type, idx, field, el, originalValue, isRichText, rt } = state.editingState;
+
+  if (isRichText && rt) {
+    rt.destroy();
+    try {
+      const blocks = JSON.parse(originalValue);
+      if (type === 'textBox') {
+        state.textBoxes[idx].blocks = blocks;
+        if (blocks && blocks.length > 0) state.textBoxes[idx].text = blocksToSimpleText(blocks);
+      } else if (type === 'node') {
+        state.nodes[idx].blocks = blocks;
+        if (blocks && blocks.length > 0) state.nodes[idx].text = blocksToSimpleText(blocks);
+      }
+    } catch (e) { /* ignore */ }
   } else {
-    state.nodes[idx][field] = originalValue;
+    if (type !== 'connection') {
+      state.nodes[idx][field] = originalValue;
+    } else {
+      state.connections[idx].text = originalValue;
+    }
   }
+
   state.editingState = null;
   try { document.body.removeChild(el); } catch {}
 }
 
-function handleRichEnter(editor, ev) {
-  const sel = window.getSelection();
-  if (!sel.rangeCount) return;
-  let block = sel.anchorNode;
-  while (block && block !== editor && !(block.classList && block.classList.contains('md-block'))) {
-    block = block.parentNode;
-  }
-  if (!block || block === editor) {
-    block = editor.querySelector('.md-block.md-paragraph');
-  }
-  if (!block) return;
-
-  const isEmpty = !block.textContent.trim() ||
-    (block.classList.contains('md-bullet') && block.textContent.trim() === '\u2022') ||
-    (block.classList.contains('md-numbered') && /^\d+\.\s*$/.test(block.textContent.trim())) ||
-    (block.classList.contains('md-checkbox') && /^\[[ x]\]\s*$/i.test(block.textContent.trim()));
-
-  const isList = block.classList.contains('md-bullet') ||
-                 block.classList.contains('md-numbered') ||
-                 block.classList.contains('md-checkbox');
-
-  if (isEmpty && isList) {
-    block.className = 'md-block md-paragraph';
-    block.innerHTML = '<br>';
-    block.focus();
-    const r = document.createRange();
-    const br = block.querySelector('br');
-    if (br) { r.setStartBefore(br); r.collapse(true); }
-    sel.removeAllRanges();
-    sel.addRange(r);
-    return;
-  }
-
-  const tag = isList ? (block.classList.contains('md-bullet') ? 'md-bullet' :
-              block.classList.contains('md-numbered') ? 'md-numbered' :
-              'md-checkbox') :
-              block.classList.contains('md-blockquote') ? 'md-blockquote' :
-              'md-paragraph';
-
-  const newBlock = document.createElement('div');
-  newBlock.className = 'md-block ' + tag;
-
-  if (tag === 'md-bullet') {
-    newBlock.innerHTML = '<span class="md-marker" contenteditable="false">\u2022</span> <br>';
-  } else if (tag === 'md-numbered') {
-    const m = block.querySelector('.md-marker');
-    const num = m ? parseInt(m.textContent, 10) || 1 : 1;
-    newBlock.innerHTML = '<span class="md-marker" contenteditable="false">' + (num + 1) + '.</span> <br>';
-  } else if (tag === 'md-checkbox') {
-    newBlock.innerHTML = '<span class="md-marker" contenteditable="false">[ ]</span> <br>';
-  } else if (tag === 'md-blockquote') {
-    newBlock.innerHTML = '<br>';
-  } else {
-    newBlock.innerHTML = '<br>';
-  }
-
-  block.insertAdjacentElement('afterend', newBlock);
-  newBlock.focus();
-
-  const r = document.createRange();
-  const br = newBlock.querySelector('br');
-  if (br) {
-    r.setStartBefore(br);
-    r.collapse(true);
-  } else {
-    r.selectNodeContents(newBlock);
-    r.collapse(true);
-  }
-  sel.removeAllRanges();
-  sel.addRange(r);
-}
-
-function wrapSelectionWithTag(editor, tag) {
-  const sel = window.getSelection();
-  if (!sel.rangeCount || sel.isCollapsed) return;
-  const range = sel.getRangeAt(0);
-  const wrapper = document.createElement(tag);
-  try {
-    range.surroundContents(wrapper);
-  } catch (e) {
-    return;
-  }
-  sel.removeAllRanges();
-  const r = document.createRange();
-  r.selectNodeContents(wrapper);
-  sel.addRange(r);
-  editor.dispatchEvent(new Event('input', { bubbles: true }));
-}
-
-function handleRichBackspace(editor, ev) {
-  const sel = window.getSelection();
-  if (!sel.rangeCount) return;
-  const range = sel.getRangeAt(0);
-  if (!range.collapsed) return;
-
-  const node = range.startContainer;
-  const offset = range.startOffset;
-  if (offset > 0 || (node.nodeType === Node.ELEMENT_NODE && node.textContent.length > 0)) return;
-
-  let block = node;
-  while (block && block !== editor && !(block.classList && block.classList.contains('md-block'))) {
-    block = block.parentNode;
-  }
-  if (!block || block === editor) return;
-
-  const prev = block.previousElementSibling;
-  if (!prev || !prev.classList || !prev.classList.contains('md-block')) return;
-
-  ev.preventDefault();
-
-  if (block.textContent.trim() === '' && (block.classList.contains('md-bullet') || block.classList.contains('md-numbered') || block.classList.contains('md-checkbox') || block.classList.contains('md-blockquote') || block.classList.contains('md-h1') || block.classList.contains('md-h2') || block.classList.contains('md-h3'))) {
-    block.className = 'md-block md-paragraph';
-    block.innerHTML = '<br>';
-    block.focus();
-    const r = document.createRange();
-    const br = block.querySelector('br');
-    if (br) { r.setStartBefore(br); r.collapse(true); }
-    else { r.selectNodeContents(block); r.collapse(false); }
-    sel.removeAllRanges();
-    sel.addRange(r);
-    return;
-  }
-
-  if (block.textContent.trim() === '') {
-    block.remove();
-    prev.focus();
-    const r = document.createRange();
-    r.selectNodeContents(prev);
-    r.collapse(false);
-    sel.removeAllRanges();
-    sel.addRange(r);
-  } else {
-    const content = block.childNodes;
-    while (content.length) {
-      prev.appendChild(content[0]);
+function ensureBlocks(entity) {
+  if (!entity.blocks || !Array.isArray(entity.blocks) || entity.blocks.length === 0) {
+    if (typeof entity.text === 'string' && entity.text.trim()) {
+      entity.blocks = markdownToBlocks(entity.text);
+    } else {
+      entity.blocks = [{ t: 'p', s: [{ t: '' }] }];
     }
-    block.remove();
   }
+}
+
+function blocksToSimpleText(blocks) {
+  if (!blocks || !blocks.length) return '';
+  const lines = [];
+  for (const bl of blocks) {
+    if (bl.t === 'hr') { lines.push('---'); continue; }
+    let line = '';
+    for (const sp of (bl.s || [])) {
+      line += (sp.t || '');
+    }
+    lines.push(line);
+  }
+  return lines.join('\n');
 }
 
 function startTextBoxEditing(tbIdx) {
@@ -424,10 +354,12 @@ function startTextBoxEditing(tbIdx) {
   const screenW = tb.w * state.scale;
   const screenH = tb.h * state.scale;
 
-  const el = document.createElement('div');
-  el.contentEditable = 'true';
-  el.className = 'inline-editor-richtext';
-  el.innerHTML = renderMarkdownToHtml(tb.text || '') || '<div class="md-block md-paragraph"><br></div>';
+  ensureBlocks(tb);
+  const rt = createRichTextEditor({
+    blocks: tb.blocks || [{ t: 'p', s: [{ t: '' }] }],
+  });
+
+  const el = rt.container;
   el.style.position = 'fixed';
   el.style.left = (screen.x + canvasRect.left) + 'px';
   el.style.top = (screen.y + canvasRect.top) + 'px';
@@ -435,36 +367,37 @@ function startTextBoxEditing(tbIdx) {
   el.style.height = screenH + 'px';
   el.style.zIndex = '8';
   el.style.color = tb.textColor || '#ddd';
-  el.style.fontSize = (tb.fontSize || 14) * state.scale + 'px';
-  el.style.lineHeight = '1.4';
-  el.style.padding = (8 * state.scale) + 'px';
+  el.style.fontSize = ((tb.fontSize || 14) * state.scale) + 'px';
   el.style.background = tb.color || '#1a1a1a';
   el.style.border = '1px solid #f0c800';
+  el.style.borderRadius = '6px';
   el.style.overflow = 'hidden';
   el.style.outline = 'none';
+  el.style.display = 'flex';
+  el.style.flexDirection = 'column';
+
+  const area = rt.editorArea;
+  area.style.fontSize = ((tb.fontSize || 14) * state.scale) + 'px';
+  area.style.lineHeight = '1.4';
+  area.style.color = tb.textColor || '#ddd';
+  area.style.background = tb.color || '#1a1a1a';
 
   document.body.appendChild(el);
-  el.focus();
+  rt.focus();
 
-  const originalValue = tb.text;
-  state.editingState = { type: 'textBox', idx: tbIdx, el, originalValue, isRichText: true };
+  const originalValue = JSON.stringify(tb.blocks || [{ t: 'p', s: [{ t: '' }] }]);
+  state.editingState = { type: 'textBox', idx: tbIdx, el, originalValue, isRichText: true, rt };
 
   el.addEventListener('input', () => {
-    const md = htmlToMarkdown(el);
-    tb.text = md;
+    tb.blocks = rt.getBlocks();
+    if (tb.blocks && tb.blocks.length > 0) {
+      tb.text = blocksToSimpleText(tb.blocks);
+    }
   });
 
   el.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape') {
       cancelEditing();
-    } else if (ev.key === 'Enter' && !ev.shiftKey) {
-      ev.preventDefault();
-      handleRichEnter(el, ev);
-    } else if (ev.key === 'Backspace') {
-      handleRichBackspace(el, ev);
-    } else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'e') {
-      ev.preventDefault();
-      wrapSelectionWithTag(el, 'code');
     }
   });
 
