@@ -88,7 +88,8 @@ export function startEditing(idx, field, worldX, worldY, worldW, worldH) {
     el.style.border = 'none';
     el.style.overflow = 'hidden';
   } else {
-    el.style.background = baseColor;
+    el.style.background = 'rgba(0,0,0,0.15)';
+    el.style.backdropFilter = 'blur(1px)';
   }
 
   document.body.appendChild(el);
@@ -97,6 +98,10 @@ export function startEditing(idx, field, worldX, worldY, worldW, worldH) {
 
   const originalValue = n[field];
   state.editingState = { type: 'node', idx, field, el, originalValue };
+
+  el.addEventListener('input', () => {
+    n[field] = el.value;
+  });
 
   const commit = () => { commitEditing(); };
   el.addEventListener('blur', commit);

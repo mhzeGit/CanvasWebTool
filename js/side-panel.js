@@ -2,6 +2,7 @@ import { state } from './state.js';
 import { history, flushPanelEdit, startPanelEdit } from './history.js';
 import { createResizeNodeCmd } from './undo.js';
 import { getArrowEndpoint } from './arrows.js';
+import { renderMarkdownToHtml } from './markdown.js';
 import { TITLE_PLACEHOLDER, TEXT_PLACEHOLDER } from './config.js';
 
 export function refreshSidePanel() {
@@ -98,7 +99,8 @@ export function refreshSidePanel() {
     '<div class="panel-row"><label>Width</label><input id="panelW" class="panel-input" type="number" min="10" value="' + n.w + '" /></div>',
     '<div class="panel-row"><label>Height</label><input id="panelH" class="panel-input" type="number" min="10" value="' + n.h + '" /></div>',
     parentHtml,
-    '<div class="panel-row"><label>Text</label><input id="panelText" class="panel-input" type="text" value="' + state.escAttr(n.text ?? '') + '" placeholder="' + state.escAttr(TEXT_PLACEHOLDER) + '" /></div>',
+    '<div class="panel-row"><label>Text</label><textarea id="panelText" class="panel-input panel-textarea" placeholder="' + state.escAttr(TEXT_PLACEHOLDER) + '">' + state.escAttr(n.text ?? '') + '</textarea></div>',
+    '<div id="panelTextPreview" class="panel-markdown-preview">' + renderMarkdownToHtml(n.text ?? '') + '</div>',
   ].join('');
 
   const titleInput = document.getElementById('panelTitle');
@@ -174,7 +176,11 @@ export function refreshSidePanel() {
       });
   }
   if (textInput) {
-    textInput.addEventListener('input', (ev) => { n.text = ev.target.value; });
+    const preview = document.getElementById('panelTextPreview');
+    textInput.addEventListener('input', (ev) => {
+      n.text = ev.target.value;
+      if (preview) preview.innerHTML = renderMarkdownToHtml(ev.target.value);
+    });
     textInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'text', n.text); });
     textInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
   }

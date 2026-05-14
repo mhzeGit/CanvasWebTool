@@ -73,31 +73,43 @@ function parseMarkdownLines(text) {
     let checked = false;
     let prefix = '';
     let content = trimmed;
-
-    const checkboxMatch = trimmed.match(/^-\s*\[(\s|x|X)\]\s+(.+)/);
-    if (checkboxMatch) {
-      type = 'checkbox';
-      checked = checkboxMatch[1].toLowerCase() === 'x';
-      prefix = `- [${checkboxMatch[1]}] `;
-      content = checkboxMatch[2];
+    const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      type = level === 1 ? 'h1' : level === 2 ? 'h2' : 'h3';
+      content = headingMatch[2];
     } else {
-      const numberedMatch = trimmed.match(/^(\d+\.\s+)(.+)/);
-      if (numberedMatch) {
-        type = 'numbered';
-        prefix = numberedMatch[1];
-        content = numberedMatch[2];
+      const blockquoteMatch = trimmed.match(/^>\s?(.+)/);
+      if (blockquoteMatch) {
+        type = 'blockquote';
+        content = blockquoteMatch[1];
       } else {
-        const bulletMatch = trimmed.match(/^(-\s+)(.+)/);
-        if (bulletMatch) {
-          type = 'bullet';
-          prefix = '- ';
-          content = bulletMatch[2];
+        const checkboxMatch = trimmed.match(/^-\s*\[(\s|x|X)\]\s+(.+)/);
+        if (checkboxMatch) {
+          type = 'checkbox';
+          checked = checkboxMatch[1].toLowerCase() === 'x';
+          prefix = `- [${checkboxMatch[1]}] `;
+          content = checkboxMatch[2];
         } else {
-          const starBulletMatch = trimmed.match(/^(\*\s+)(.+)/);
-          if (starBulletMatch) {
-            type = 'bullet';
-            prefix = '* ';
-            content = starBulletMatch[2];
+          const numberedMatch = trimmed.match(/^(\d+\.\s+)(.+)/);
+          if (numberedMatch) {
+            type = 'numbered';
+            prefix = numberedMatch[1];
+            content = numberedMatch[2];
+          } else {
+            const bulletMatch = trimmed.match(/^(-\s+)(.+)/);
+            if (bulletMatch) {
+              type = 'bullet';
+              prefix = '- ';
+              content = bulletMatch[2];
+            } else {
+              const starBulletMatch = trimmed.match(/^(\*\s+)(.+)/);
+              if (starBulletMatch) {
+                type = 'bullet';
+                prefix = '* ';
+                content = starBulletMatch[2];
+              }
+            }
           }
         }
       }
@@ -190,7 +202,23 @@ export function renderMarkdownBody(ctx, text, x, y, maxWidth, maxHeight, baseFon
 
   for (let li = 0; li < ml.length; li++) {
     const line = ml[li];
-    if (currentY + lineHeight > y + maxHeight) return;
+
+    let fontSize = baseFontSize;
+    let lh = lineHeight;
+    const isBold = line.type === 'h1' || line.type === 'h2' || line.type === 'h3';
+
+    if (line.type === 'h1') {
+      fontSize = Math.round(baseFontSize * 1.5);
+      lh = Math.round(lineHeight * 1.5);
+    } else if (line.type === 'h2') {
+      fontSize = Math.round(baseFontSize * 1.3);
+      lh = Math.round(lineHeight * 1.3);
+    } else if (line.type === 'h3') {
+      fontSize = Math.round(baseFontSize * 1.15);
+      lh = Math.round(lineHeight * 1.15);
+    }
+
+    if (currentY + lh > y + maxHeight) return;
 
     let prefixW = 0;
     if (line.type === 'checkbox') {
@@ -205,28 +233,77 @@ export function renderMarkdownBody(ctx, text, x, y, maxWidth, maxHeight, baseFon
       const ps = { text: line.prefix, bold: false, italic: false, code: false, strike: false };
       drawSpan(ctx, ps, x, currentY, color, baseFontFamily, baseFontSize);
       prefixW = getSpanWidth(ctx, ps, baseFontSize, baseFontFamily) + prefixPad;
+    } else if (line.type === 'blockquote') {
+      const barW = 3;
+      const barPad = 5;
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = color;
+      ctx.fillRect(x, currentY, barW, lh);
+      ctx.restore();
+      prefixW = barW + barPad;
     }
 
     const contentMaxW = maxWidth - prefixW;
     if (contentMaxW <= 0) break;
 
-    const displayLines = buildDisplayLines(ctx, line.spans, contentMaxW, baseFontSize, baseFontFamily);
+    const spansForDisplay = isBold
+      ? line.spans.map(s => ({ ...s, bold: true }))
+      : line.spans;
+
+    const displayLines = buildDisplayLines(ctx, spansForDisplay, contentMaxW, fontSize, baseFontFamily);
 
     for (let dl = 0; dl < displayLines.length; dl++) {
-      if (currentY + lineHeight > y + maxHeight) return;
+      if (currentY + lh > y + maxHeight) return;
 
       let cx = x + prefixW;
       const words = displayLines[dl];
       for (let wi = 0; wi < words.length; wi++) {
-        drawSpan(ctx, words[wi], cx, currentY, color, baseFontFamily, baseFontSize);
-        cx += getSpanWidth(ctx, words[wi], baseFontSize, baseFontFamily);
+        const w = words[wi];
+        const wordFontSize = line.type === 'blockquote' ? baseFontSize : fontSize;
+        drawSpan(ctx, w, cx, currentY, color, baseFontFamily, wordFontSize);
+        cx += getSpanWidth(ctx, w, wordFontSize, baseFontFamily);
         if (wi < words.length - 1) {
-          cx += getSpanWidth(ctx, { text: ' ', bold: false, italic: false, code: false, strike: false }, baseFontSize, baseFontFamily);
+          cx += getSpanWidth(ctx, { text: ' ', bold: false, italic: false, code: false, strike: false }, wordFontSize, baseFontFamily);
         }
       }
-      currentY += lineHeight;
+      currentY += lh;
     }
   }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export function renderMarkdownToHtml(text) {
+  if (!text) return '';
+  const lines = parseMarkdownLines(text);
+  if (lines.length === 0) return '';
+
+  let html = '';
+  for (const line of lines) {
+    let inner = '';
+    for (const span of line.spans) {
+      let t = escHtml(span.text);
+      if (span.code) t = '<code>' + t + '</code>';
+      if (span.strike) t = '<del>' + t + '</del>';
+      if (span.bold) t = '<strong>' + t + '</strong>';
+      if (span.italic) t = '<em>' + t + '</em>';
+      inner += t;
+    }
+    switch (line.type) {
+      case 'h1': html += '<h3 class="md-h1">' + inner + '</h3>'; break;
+      case 'h2': html += '<h4 class="md-h2">' + inner + '</h4>'; break;
+      case 'h3': html += '<h5 class="md-h3">' + inner + '</h5>'; break;
+      case 'blockquote': html += '<blockquote class="md-blockquote">' + inner + '</blockquote>'; break;
+      case 'bullet': html += '<div class="md-bullet"><span class="md-bullet-marker">\u2022</span> ' + inner + '</div>'; break;
+      case 'numbered': html += '<div class="md-numbered"><span class="md-numbered-marker">' + escHtml(line.prefix.trimEnd()) + '</span> ' + inner + '</div>'; break;
+      case 'checkbox': html += '<div class="md-checkbox"><span class="md-checkbox-box">' + (line.checked ? '[x]' : '[ ]') + '</span> ' + inner + '</div>'; break;
+      default: html += '<div class="md-paragraph">' + inner + '</div>'; break;
+    }
+  }
+  return html;
 }
 
 export function renderMarkdownTitle(ctx, text, cx, y, maxWidth, baseFontFamily, baseFontSize, color) {

@@ -14,7 +14,58 @@ export function setupKeyboard() {
   window.addEventListener('keydown', onKeyDown);
 }
 
+function handleMarkdownShortcut(e) {
+  const el = document.activeElement;
+  if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return false;
+
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (!ctrl) return false;
+
+  let wrapper = null;
+  if (e.key.toLowerCase() === 'b') {
+    wrapper = '**';
+  } else if (e.key.toLowerCase() === 'i') {
+    wrapper = '*';
+  } else if (e.shiftKey && e.key.toLowerCase() === 'x') {
+    wrapper = '~~';
+  } else if (e.key.toLowerCase() === 'e') {
+    wrapper = '`';
+  } else {
+    return false;
+  }
+
+  e.preventDefault();
+  wrapSelection(el, wrapper);
+  return true;
+}
+
+function wrapSelection(el, wrapper) {
+  const start = el.selectionStart;
+  const end = el.selectionEnd;
+  const text = el.value;
+  const before = text.slice(0, start);
+  const selected = text.slice(start, end);
+  const after = text.slice(end);
+
+  const replacement = selected.length > 0 ? wrapper + selected + wrapper : wrapper + wrapper;
+  el.value = before + replacement + after;
+
+  const cursorPos = selected.length > 0
+    ? start + replacement.length
+    : start + wrapper.length;
+  el.setSelectionRange(cursorPos, cursorPos);
+
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 function onKeyDown(e) {
+  const active = document.activeElement;
+  const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+
+  if (isInput && handleMarkdownShortcut(e)) {
+    return;
+  }
+
   if (state.editingState) {
     if (e.key === 'Escape') {
       cancelEditing();
@@ -22,9 +73,6 @@ function onKeyDown(e) {
     }
     return;
   }
-
-  const active = document.activeElement;
-  const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
 
   if (!isInput && (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key.toLowerCase() === 'z')) {
     performUndo();

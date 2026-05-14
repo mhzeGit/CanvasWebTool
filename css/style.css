@@ -286,6 +286,99 @@ canvas#gridCanvas {
   opacity: 1;
 }
 
+.panel-textarea {
+  min-height: 60px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.panel-markdown-preview {
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #ccc;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+  word-break: break-word;
+}
+
+.panel-markdown-preview:empty {
+  display: none;
+}
+
+.panel-markdown-preview .md-h1 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 6px 0 4px;
+  color: #e7e7e7;
+}
+
+.panel-markdown-preview .md-h2 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 5px 0 3px;
+  color: #e0e0e0;
+}
+
+.panel-markdown-preview .md-h3 {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 4px 0 2px;
+  color: #d8d8d8;
+}
+
+.panel-markdown-preview .md-paragraph {
+  margin: 2px 0;
+}
+
+.panel-markdown-preview .md-blockquote {
+  margin: 4px 0;
+  padding: 2px 0 2px 8px;
+  border-left: 3px solid #555;
+  color: #aaa;
+  font-style: italic;
+}
+
+.panel-markdown-preview .md-bullet,
+.panel-markdown-preview .md-numbered,
+.panel-markdown-preview .md-checkbox {
+  margin: 1px 0;
+  padding-left: 4px;
+}
+
+.panel-markdown-preview .md-bullet-marker,
+.panel-markdown-preview .md-numbered-marker,
+.panel-markdown-preview .md-checkbox-box {
+  color: #999;
+  font-weight: 600;
+}
+
+.panel-markdown-preview strong {
+  color: #e7e7e7;
+  font-weight: 700;
+}
+
+.panel-markdown-preview em {
+  color: #c8c8c8;
+}
+
+.panel-markdown-preview code {
+  background: #2a2a2a;
+  color: #f0c800;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: Consolas, "Cascadia Code", "Fira Code", monospace;
+  font-size: 11px;
+}
+
+.panel-markdown-preview del {
+  opacity: 0.6;
+}
+
 .shortcut-hint {
   opacity: 0.5;
   font-size: 11px;
