@@ -39,8 +39,20 @@ function serializeArrow(arrow) {
   return { ...arrow };
 }
 
+function serializeShape(shape) {
+  return { ...shape };
+}
+
+function serializeTextBox(textBox) {
+  return { ...textBox };
+}
+
+function serializeConnector(connector) {
+  return { ...connector };
+}
+
 export function serializeDocument(state) {
-  const { nodes, connections, arrows, viewport, settings } = state;
+  const { nodes, connections, arrows, shapes, textBoxes, connectors, viewport, settings } = state;
   const now = new Date().toISOString();
 
   const elements = nodes.map(serializeElement);
@@ -64,7 +76,10 @@ export function serializeDocument(state) {
       },
       elements,
       connections: conns,
-      arrows: (arrows || []).map(serializeArrow)
+      arrows: (arrows || []).map(serializeArrow),
+      shapes: (shapes || []).map(serializeShape),
+      textBoxes: (textBoxes || []).map(serializeTextBox),
+      connectors: (connectors || []).map(serializeConnector),
     }
   };
 }
@@ -101,6 +116,9 @@ export function deserializeDocument(doc) {
     nodes,
     connections,
     arrows: docBody.arrows || [],
+    shapes: docBody.shapes || [],
+    textBoxes: docBody.textBoxes || [],
+    connectors: docBody.connectors || [],
     viewport: {
       offsetX: vp.offsetX ?? 0,
       offsetY: vp.offsetY ?? 0,

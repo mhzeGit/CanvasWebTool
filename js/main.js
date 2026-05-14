@@ -4,6 +4,9 @@ import { drawGrid } from './grid.js';
 import { drawNodes, drawSelectionMarquee } from './nodes.js';
 import { drawConnection, drawConnectionPreview } from './connections.js';
 import { drawArrows, updateArrowPositionsFromConnections } from './arrows.js';
+import { drawShapes } from './shapes.js';
+import { drawTextBoxes } from './textboxes.js';
+import { drawConnectors, drawConnectorPreview, drawArrowPreview } from './connectors.js';
 import { initPointer } from './pointer.js';
 import { setupKeyboard } from './keyboard.js';
 import { setupContextMenu, initContextMenu } from './context-menu.js';
@@ -13,19 +16,22 @@ import { refreshSidePanel } from './side-panel.js';
 import { history, initHistory } from './history.js';
 import {
   addNodeAtCenter, addNodeAt, addArrowAtCenter, addArrowAt,
-  deleteSelectedNodes,
+  deleteSelectedNodes, deleteSelectedShapes, deleteSelectedTextBoxes, deleteSelectedConnectors,
   duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
   newDocument, saveDocument, openDocument,
 } from './document.js';
 import { deleteArrowFn } from './pointer.js';
 import { performUndo, performRedo } from './history.js';
+import { initToolbar } from './toolbar.js';
 
 function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
   const sideEl = document.getElementById('sidePanel');
+  const toolbarEl = document.getElementById('leftToolbar');
   const sideWidthPx = sideEl ? sideEl.getBoundingClientRect().width : Math.floor(window.innerWidth * 0.30);
+  const toolbarWidthPx = toolbarEl ? toolbarEl.getBoundingClientRect().width : 0;
   const topBarPx = 40;
-  const cssWidth = window.innerWidth - sideWidthPx;
+  const cssWidth = window.innerWidth - sideWidthPx - toolbarWidthPx;
   const cssHeight = window.innerHeight - topBarPx;
   state.canvas.style.width = cssWidth + 'px';
   state.canvas.style.height = cssHeight + 'px';
@@ -58,24 +64,21 @@ function animate() {
       state.connections.splice(ci, 1);
       if (state.selectedConnection === ci) state.selectedConnection = null;
       else if (state.selectedConnection > ci) state.selectedConnection--;
-      continue;
-    }
-    drawConnection(fromNode, toNode, conn);
-  }
-
-  if (state.connectingFrom !== null) {
-    const srcNode = state.nodes[state.connectingFrom];
-    if (srcNode) {
-      drawConnectionPreview(srcNode, state.connectingMouseWorld.x, state.connectingMouseWorld.y);
     }
   }
 
   updateArrowPositionsFromConnections();
   drawArrows();
+  drawConnectors();
+  drawShapes();
+  drawTextBoxes();
 
   drawNodes();
 
   drawSelectionMarquee();
+
+  drawConnectorPreview();
+  drawArrowPreview();
 
   const key = state.computeSelectionKey();
   if (key !== state.lastPanelKey) {
@@ -110,6 +113,7 @@ function init() {
   initHistory(refreshSidePanel);
 
   initPointer(history);
+  initToolbar();
   setupKeyboard();
   setupContextMenu();
   setupZoomPan();
@@ -130,7 +134,7 @@ function init() {
   document.addEventListener('pointerdown', (e) => {
     const target = e.target;
     if (target === state.canvas) return;
-    if (target && (target.closest && (target.closest('#sidePanel') || target.closest('#contextMenu') || target.closest('.top-bar')))) return;
+    if (target && (target.closest && (target.closest('#sidePanel') || target.closest('#contextMenu') || target.closest('.top-bar') || target.closest('#leftToolbar')))) return;
     let didClear = false;
     if (state.selected.size > 0) {
       state.selected.clear();
@@ -144,6 +148,18 @@ function init() {
     if (state.selectedArrows.size > 0 || state.arrowDragTarget !== null) {
       state.selectedArrows.clear();
       state.arrowDragTarget = null;
+      didClear = true;
+    }
+    if (state.selectedShapes.size > 0) {
+      state.selectedShapes.clear();
+      didClear = true;
+    }
+    if (state.selectedTextBoxes.size > 0) {
+      state.selectedTextBoxes.clear();
+      didClear = true;
+    }
+    if (state.selectedConnectors.size > 0) {
+      state.selectedConnectors.clear();
       didClear = true;
     }
     if (didClear) refreshSidePanel();

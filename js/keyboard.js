@@ -6,7 +6,8 @@ import { cancelEditing } from './inline-editing.js';
 import { closeContextMenu } from './context-menu.js';
 import { deleteArrowFn } from './pointer.js';
 import {
-  deleteSelectedNodes, duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
+  deleteSelectedNodes, deleteSelectedShapes, deleteSelectedTextBoxes, deleteSelectedConnectors,
+  duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
   saveDocument,
 } from './document.js';
 
@@ -17,6 +18,7 @@ export function setupKeyboard() {
 function handleMarkdownShortcut(e) {
   const el = document.activeElement;
   if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return false;
+  if (el.isContentEditable) return false;
 
   const ctrl = e.ctrlKey || e.metaKey;
   if (!ctrl) return false;
@@ -85,6 +87,21 @@ function onKeyDown(e) {
     return;
   }
   if (!isInput && (e.key === 'Delete' || e.key === 'Backspace')) {
+    if (state.selectedShapes.size > 0) {
+      deleteSelectedShapes();
+      e.preventDefault();
+      return;
+    }
+    if (state.selectedTextBoxes.size > 0) {
+      deleteSelectedTextBoxes();
+      e.preventDefault();
+      return;
+    }
+    if (state.selectedConnectors.size > 0) {
+      deleteSelectedConnectors();
+      e.preventDefault();
+      return;
+    }
     if (state.selectedArrows.size > 0) {
       for (const ai of state.selectedArrows) deleteArrowFn(ai);
       state.selectedArrows.clear();
@@ -120,6 +137,12 @@ function onKeyDown(e) {
     e.preventDefault();
   }
   if (!isInput && e.key === 'Escape') {
+    if (state.drawingTool) {
+      state.drawingTool = null;
+      state.drawingStartX = 0;
+      state.drawingStartY = 0;
+      return;
+    }
     if (state.connectingFrom !== null) {
       state.connectingFrom = null;
       return;

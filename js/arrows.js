@@ -35,9 +35,10 @@ export function updateArrowPositionsFromConnections() {
   }
 }
 
-export function drawArrows() {
+export function drawArrows(indices) {
   const ctx = state.ctx;
-  for (let ai = 0; ai < state.arrows.length; ai++) {
+  const iter = indices != null ? indices : state.arrows.keys();
+  for (const ai of iter) {
     const arrow = state.arrows[ai];
     const startPt = getArrowEndpoint(arrow, 'start');
     const endPt = getArrowEndpoint(arrow, 'end');

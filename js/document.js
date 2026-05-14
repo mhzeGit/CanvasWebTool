@@ -5,6 +5,10 @@ import {
   createResizeNodeCmd, createPropertyChangeCmd, createPasteNodesCmd,
   createDuplicateNodesCmd,
   nextNodeId, initNodeId,
+  createAddShapeCmd, createDeleteShapesCmd, createMoveShapesCmd,
+  createResizeShapeCmd, createAddTextBoxCmd, createDeleteTextBoxesCmd,
+  createMoveTextBoxesCmd, createAddConnectorCmd, createDeleteConnectorsCmd,
+  createMoveConnectorsCmd,
 } from './undo.js';
 import { serializeDocument, deserializeDocument, FILE_EXTENSION } from './format.js';
 import { saveToFile, loadFromFile } from './file-io.js';
@@ -83,6 +87,133 @@ export function addArrowAt(worldX, worldY, connectNodeIdx) {
   state.arrowDragTarget = { arrowIdx: idx, end: 'end' };
   state.selectedArrows.add(idx);
   refreshSidePanel();
+}
+
+export function addShapeAt(worldX, worldY, shapeType) {
+  flushPanelEdit();
+  const type = shapeType || 'rectangle';
+  const w = 120; const h = 80;
+  const shape = {
+    id: state.nextShapeId++,
+    shapeType: type,
+    x: worldX - w / 2,
+    y: worldY - h / 2,
+    w,
+    h,
+    color: '#2b2b2b',
+    borderColor: '#6bb5ff',
+    borderWidth: 2,
+  };
+  const idx = state.shapes.length;
+  state.shapes.push(shape);
+  state.selectedShapes.clear();
+  state.selectedTextBoxes.clear();
+  state.selectedConnectors.clear();
+  state.selectedShapes.add(idx);
+  refreshSidePanel();
+  history.push(createAddShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, shape, idx));
+}
+
+export function addTextBoxAt(worldX, worldY) {
+  flushPanelEdit();
+  const w = 200; const h = 80;
+  const textBox = {
+    id: state.nextTextBoxId++,
+    x: worldX - w / 2,
+    y: worldY - h / 2,
+    w,
+    h,
+    text: '',
+    color: '#1a1a1a',
+    borderColor: '#444',
+    textColor: '#ddd',
+    fontSize: 14,
+  };
+  const idx = state.textBoxes.length;
+  state.textBoxes.push(textBox);
+  state.selectedShapes.clear();
+  state.selectedTextBoxes.clear();
+  state.selectedConnectors.clear();
+  state.selectedTextBoxes.add(idx);
+  refreshSidePanel();
+  history.push(createAddTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, textBox, idx));
+}
+
+export function addConnector(x1, y1, x2, y2) {
+  flushPanelEdit();
+  const connector = {
+    id: state.nextConnectorId++,
+    x1, y1, x2, y2,
+    color: '#6bb5ff',
+  };
+  const idx = state.connectors.length;
+  state.connectors.push(connector);
+  state.selectedShapes.clear();
+  state.selectedTextBoxes.clear();
+  state.selectedConnectors.clear();
+  state.selectedConnectors.add(idx);
+  refreshSidePanel();
+  history.push(createAddConnectorCmd(state.connectors, state.selectedConnectors, refreshSidePanel, connector, idx));
+}
+
+export function addArrowFromPoints(x1, y1, x2, y2) {
+  flushPanelEdit();
+  const arrow = {
+    id: state.nextArrowId++,
+    x1, y1, x2, y2,
+    connectedFrom: null,
+    connectedTo: null,
+    color: '#6bb5ff',
+  };
+  const idx = state.arrows.length;
+  state.arrows.push(arrow);
+  state.selected.clear();
+  state.selectedConnection = null;
+  state.selectedArrows.clear();
+  state.selectedShapes.clear();
+  state.selectedTextBoxes.clear();
+  state.selectedConnectors.clear();
+  state.selectedArrows.add(idx);
+  refreshSidePanel();
+}
+
+export function deleteSelectedShapes() {
+  if (state.selectedShapes.size === 0) return;
+  flushPanelEdit();
+  const sortedIndices = Array.from(state.selectedShapes).sort((a, b) => a - b);
+  const deletedEntries = sortedIndices.map(i => ({ shape: state.shapes[i], index: i }));
+  for (let i = sortedIndices.length - 1; i >= 0; i--) {
+    state.shapes.splice(sortedIndices[i], 1);
+  }
+  state.selectedShapes.clear();
+  refreshSidePanel();
+  history.push(createDeleteShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, deletedEntries));
+}
+
+export function deleteSelectedTextBoxes() {
+  if (state.selectedTextBoxes.size === 0) return;
+  flushPanelEdit();
+  const sortedIndices = Array.from(state.selectedTextBoxes).sort((a, b) => a - b);
+  const deletedEntries = sortedIndices.map(i => ({ textBox: state.textBoxes[i], index: i }));
+  for (let i = sortedIndices.length - 1; i >= 0; i--) {
+    state.textBoxes.splice(sortedIndices[i], 1);
+  }
+  state.selectedTextBoxes.clear();
+  refreshSidePanel();
+  history.push(createDeleteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, deletedEntries));
+}
+
+export function deleteSelectedConnectors() {
+  if (state.selectedConnectors.size === 0) return;
+  flushPanelEdit();
+  const sortedIndices = Array.from(state.selectedConnectors).sort((a, b) => a - b);
+  const deletedEntries = sortedIndices.map(i => ({ connector: state.connectors[i], index: i }));
+  for (let i = sortedIndices.length - 1; i >= 0; i--) {
+    state.connectors.splice(sortedIndices[i], 1);
+  }
+  state.selectedConnectors.clear();
+  refreshSidePanel();
+  history.push(createDeleteConnectorsCmd(state.connectors, state.selectedConnectors, refreshSidePanel, deletedEntries));
 }
 
 export function deleteSelectedNodes() {
@@ -252,6 +383,9 @@ export function getDocumentState() {
     nodes: state.nodes,
     connections: state.connections,
     arrows: state.arrows,
+    shapes: state.shapes,
+    textBoxes: state.textBoxes,
+    connectors: state.connectors,
     viewport: {
       offsetX: state.targetOffsetX,
       offsetY: state.targetOffsetY,
@@ -265,9 +399,15 @@ export function restoreDocumentState(docState) {
   state.nodes.length = 0;
   state.connections.length = 0;
   state.arrows.length = 0;
+  state.shapes.length = 0;
+  state.textBoxes.length = 0;
+  state.connectors.length = 0;
   state.selected.clear();
   state.selectedConnection = null;
   state.selectedArrows.clear();
+  state.selectedShapes.clear();
+  state.selectedTextBoxes.clear();
+  state.selectedConnectors.clear();
   state.arrowDragTarget = null;
   state.clipboard = [];
   state.connectingFrom = null;
@@ -282,6 +422,15 @@ export function restoreDocumentState(docState) {
   }
   for (const a of (docState.arrows || [])) {
     state.arrows.push(a);
+  }
+  for (const s of (docState.shapes || [])) {
+    state.shapes.push(s);
+  }
+  for (const tb of (docState.textBoxes || [])) {
+    state.textBoxes.push(tb);
+  }
+  for (const cn of (docState.connectors || [])) {
+    state.connectors.push(cn);
   }
 
   let maxNodeId = 0;
@@ -302,6 +451,24 @@ export function restoreDocumentState(docState) {
   }
   state.nextArrowId = Math.max(state.nextArrowId, maxArrowId + 1);
 
+  let maxShapeId = 0;
+  for (const s of state.shapes) {
+    if (s.id > maxShapeId) maxShapeId = s.id;
+  }
+  state.nextShapeId = maxShapeId + 1;
+
+  let maxTextBoxId = 0;
+  for (const tb of state.textBoxes) {
+    if (tb.id > maxTextBoxId) maxTextBoxId = tb.id;
+  }
+  state.nextTextBoxId = maxTextBoxId + 1;
+
+  let maxConnectorId = 0;
+  for (const cn of state.connectors) {
+    if (cn.id > maxConnectorId) maxConnectorId = cn.id;
+  }
+  state.nextConnectorId = maxConnectorId + 1;
+
   const vp = docState.viewport || {};
   state.offsetX = state.targetOffsetX = vp.offsetX ?? 0;
   state.offsetY = state.targetOffsetY = vp.offsetY ?? 0;
@@ -315,7 +482,7 @@ export function restoreDocumentState(docState) {
 }
 
 export function newDocument() {
-  restoreDocumentState({ nodes: [], connections: [], viewport: { offsetX: 0, offsetY: 0, scale: 1 } });
+  restoreDocumentState({ nodes: [], connections: [], arrows: [], shapes: [], textBoxes: [], connectors: [], viewport: { offsetX: 0, offsetY: 0, scale: 1 } });
   state.currentFileName = null;
   state.markDrawOrderDirty();
 }

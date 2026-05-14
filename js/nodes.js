@@ -45,8 +45,8 @@ export function findNodeAtPoint(wx, wy) {
   return hitTestNode(wx, wy);
 }
 
-export function drawNodes() {
-  const drawOrder = state.getDrawOrder();
+export function drawNodes(indices) {
+  const drawOrder = indices != null ? indices : state.getDrawOrder();
   const ctx = state.ctx;
   for (const idx of drawOrder) {
     const n = state.nodes[idx];

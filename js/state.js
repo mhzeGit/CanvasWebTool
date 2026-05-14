@@ -160,6 +160,35 @@ export const state = {
 
   lastWorldMouse: { x: 0, y: 0 },
 
+  shapes: [],
+  nextShapeId: 1,
+  selectedShapes: new Set(),
+  isDraggingShape: false,
+  dragShapeStarts: [],
+  isResizingShape: false,
+  resizeShapeIdx: -1,
+  resizeShapeId: -1,
+  resizeShapeHandle: '',
+  resizeShapeStartWorldX: 0,
+  resizeShapeStartWorldY: 0,
+  resizeShapeStartBounds: null,
+
+  textBoxes: [],
+  nextTextBoxId: 1,
+  selectedTextBoxes: new Set(),
+  isDraggingTextBox: false,
+  dragTextBoxStarts: [],
+
+  connectors: [],
+  nextConnectorId: 1,
+  selectedConnectors: new Set(),
+  isDraggingConnectorBody: false,
+  dragConnectorBodySnapshots: [],
+
+  drawingTool: null,
+  drawingStartX: 0,
+  drawingStartY: 0,
+
   pendingClickIndex: -1,
   pointerDownScreenX: 0,
   pointerDownScreenY: 0,

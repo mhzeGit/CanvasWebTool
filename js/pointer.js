@@ -3,15 +3,23 @@ import { screenToWorld } from './utils.js';
 import { hitTestNode } from './nodes.js';
 import { hitTestConnection } from './connections.js';
 import { hitTestArrowEnd, hitTestArrowBody, isArrowInBox, getArrowEndpoint } from './arrows.js';
+import { hitTestShape, getShapeEdgeAt, isShapeInBox } from './shapes.js';
+import { hitTestTextBox, getTextBoxEdgeAt } from './textboxes.js';
+import { hitTestConnector, isConnectorInBox } from './connectors.js';
+import { getActiveTool, getShapeSubType, TOOLS } from './toolManager.js';
 import { openContextMenu, closeContextMenu } from './context-menu.js';
 import { refreshSidePanel } from './side-panel.js';
 import { commitEditing } from './inline-editing.js';
 import {
   addNodeAt, addArrowAt,
   deleteSelectedNodes, duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
+  addShapeAt, addTextBoxAt, addConnector, addArrowFromPoints,
+  deleteSelectedShapes, deleteSelectedTextBoxes, deleteSelectedConnectors,
 } from './document.js';
 import {
   createResizeNodeCmd, createMoveNodesCmd, createMoveArrowEndCmd,
+  createMoveShapesCmd, createResizeShapeCmd, createMoveTextBoxesCmd,
+  createMoveConnectorsCmd,
 } from './undo.js';
 import { flushPanelEdit } from './history.js';
 import { getNodeEdgePoint } from './utils.js';
@@ -97,6 +105,77 @@ function onPointerDown(e) {
   }
 
   if (e.button === 0) {
+    const tool = getActiveTool();
+    if (tool === TOOLS.NODE) {
+      state.selected.clear();
+      state.selectedConnection = null;
+      state.selectedArrows.clear();
+      state.selectedShapes.clear();
+      state.selectedTextBoxes.clear();
+      state.selectedConnectors.clear();
+      state.arrowDragTarget = null;
+      addNodeAt(world.x, world.y);
+      refreshSidePanel();
+      e.preventDefault();
+      return;
+    }
+    if (tool === TOOLS.TEXT) {
+      state.selected.clear();
+      state.selectedConnection = null;
+      state.selectedArrows.clear();
+      state.selectedShapes.clear();
+      state.selectedTextBoxes.clear();
+      state.selectedConnectors.clear();
+      state.arrowDragTarget = null;
+      addTextBoxAt(world.x, world.y);
+      refreshSidePanel();
+      e.preventDefault();
+      return;
+    }
+    if (tool === TOOLS.SHAPES) {
+      state.selected.clear();
+      state.selectedConnection = null;
+      state.selectedArrows.clear();
+      state.selectedShapes.clear();
+      state.selectedTextBoxes.clear();
+      state.selectedConnectors.clear();
+      state.arrowDragTarget = null;
+      addShapeAt(world.x, world.y, getShapeSubType());
+      refreshSidePanel();
+      e.preventDefault();
+      return;
+    }
+    if (tool === TOOLS.ARROW) {
+      state.selected.clear();
+      state.selectedConnection = null;
+      state.selectedArrows.clear();
+      state.selectedShapes.clear();
+      state.selectedTextBoxes.clear();
+      state.selectedConnectors.clear();
+      state.arrowDragTarget = null;
+      state.drawingTool = 'arrow';
+      state.drawingStartX = world.x;
+      state.drawingStartY = world.y;
+      canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
+    if (tool === TOOLS.CONNECTION_LINE) {
+      state.selected.clear();
+      state.selectedConnection = null;
+      state.selectedArrows.clear();
+      state.selectedShapes.clear();
+      state.selectedTextBoxes.clear();
+      state.selectedConnectors.clear();
+      state.arrowDragTarget = null;
+      state.drawingTool = 'connector';
+      state.drawingStartX = world.x;
+      state.drawingStartY = world.y;
+      canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
+
     const arrowEndHit = hitTestArrowEnd(world.x, world.y);
     if (arrowEndHit) {
       state.selected.clear();
@@ -178,6 +257,131 @@ function onPointerDown(e) {
     }
 
     {
+      const shapeEdge = getShapeEdgeAt(world.x, world.y);
+      if (shapeEdge) {
+        flushPanelEdit();
+        state.selected.clear();
+        state.selectedConnection = null;
+        state.selectedArrows.clear();
+        state.selectedTextBoxes.clear();
+        state.selectedConnectors.clear();
+        state.selectedShapes.clear();
+        state.selectedShapes.add(shapeEdge.idx);
+        state.isResizingShape = true;
+        state.resizeShapeIdx = shapeEdge.idx;
+        state.resizeShapeId = state.shapes[shapeEdge.idx].id;
+        state.resizeShapeHandle = shapeEdge.handle;
+        state.resizeShapeStartWorldX = world.x;
+        state.resizeShapeStartWorldY = world.y;
+        const s = state.shapes[shapeEdge.idx];
+        state.resizeShapeStartBounds = { x: s.x, y: s.y, w: s.w, h: s.h };
+        refreshSidePanel();
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
+
+    {
+      const shapeHit = hitTestShape(world.x, world.y);
+      if (shapeHit !== -1) {
+        state.selected.clear();
+        state.selectedConnection = null;
+        state.selectedArrows.clear();
+        state.selectedTextBoxes.clear();
+        state.selectedConnectors.clear();
+        if (e.ctrlKey) {
+          if (state.selectedShapes.has(shapeHit)) state.selectedShapes.delete(shapeHit);
+          refreshSidePanel();
+          e.preventDefault();
+          return;
+        }
+        if (e.shiftKey) {
+          state.selectedShapes.add(shapeHit);
+        } else if (!state.selectedShapes.has(shapeHit)) {
+          state.selectedShapes.clear();
+          state.selectedShapes.add(shapeHit);
+        }
+        state.pointerDownScreenX = sx;
+        state.pointerDownScreenY = sy;
+        state.pendingClickIndex = -3;
+        state.pendingShiftKey = e.shiftKey;
+        state.pendingCtrlKey = e.ctrlKey;
+        state.didDragSincePointerDown = false;
+        refreshSidePanel();
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
+
+    {
+      const tbHit = hitTestTextBox(world.x, world.y);
+      if (tbHit !== -1) {
+        state.selected.clear();
+        state.selectedConnection = null;
+        state.selectedArrows.clear();
+        state.selectedShapes.clear();
+        state.selectedConnectors.clear();
+        if (e.ctrlKey) {
+          if (state.selectedTextBoxes.has(tbHit)) state.selectedTextBoxes.delete(tbHit);
+          refreshSidePanel();
+          e.preventDefault();
+          return;
+        }
+        if (e.shiftKey) {
+          state.selectedTextBoxes.add(tbHit);
+        } else if (!state.selectedTextBoxes.has(tbHit)) {
+          state.selectedTextBoxes.clear();
+          state.selectedTextBoxes.add(tbHit);
+        }
+        state.pointerDownScreenX = sx;
+        state.pointerDownScreenY = sy;
+        state.pendingClickIndex = -4;
+        state.pendingShiftKey = e.shiftKey;
+        state.pendingCtrlKey = e.ctrlKey;
+        state.didDragSincePointerDown = false;
+        refreshSidePanel();
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
+
+    {
+      const connHit = hitTestConnector(world.x, world.y);
+      if (connHit !== -1) {
+        state.selected.clear();
+        state.selectedConnection = null;
+        state.selectedArrows.clear();
+        state.selectedShapes.clear();
+        state.selectedTextBoxes.clear();
+        if (e.ctrlKey) {
+          if (state.selectedConnectors.has(connHit)) state.selectedConnectors.delete(connHit);
+          refreshSidePanel();
+          e.preventDefault();
+          return;
+        }
+        if (e.shiftKey) {
+          state.selectedConnectors.add(connHit);
+        } else if (!state.selectedConnectors.has(connHit)) {
+          state.selectedConnectors.clear();
+          state.selectedConnectors.add(connHit);
+        }
+        state.pointerDownScreenX = sx;
+        state.pointerDownScreenY = sy;
+        state.pendingClickIndex = -5;
+        state.pendingShiftKey = e.shiftKey;
+        state.pendingCtrlKey = e.ctrlKey;
+        state.didDragSincePointerDown = false;
+        refreshSidePanel();
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
+
+    {
       const bodyHit = hitTestArrowBody(world.x, world.y);
       if (bodyHit !== -1) {
         state.selected.clear();
@@ -226,6 +430,9 @@ function onPointerDown(e) {
     state.isSelectingBox = true;
     state.selectedConnection = null;
     state.selectedArrows.clear();
+    state.selectedShapes.clear();
+    state.selectedTextBoxes.clear();
+    state.selectedConnectors.clear();
     state.arrowDragTarget = null;
     state.boxStartX = world.x;
     state.boxStartY = world.y;
@@ -250,6 +457,11 @@ function onPointerMove(e) {
 
   if (state.connectingFrom !== null) {
     state.connectingMouseWorld = { x: world.x, y: world.y };
+  }
+
+  if (state.drawingTool) {
+    e.preventDefault();
+    return;
   }
 
   if (state.isDraggingArrowEnd && state.arrowDragTarget) {
@@ -337,6 +549,39 @@ function onPointerMove(e) {
     return;
   }
 
+  if (state.isResizingShape) {
+    const dx = world.x - state.resizeShapeStartWorldX;
+    const dy = world.y - state.resizeShapeStartWorldY;
+    const start = state.resizeShapeStartBounds;
+    const s = state.shapes[state.resizeShapeIdx];
+    const MIN_W = 20; const MIN_H = 20;
+    let newX = start.x, newY = start.y, newW = start.w, newH = start.h;
+
+    switch (state.resizeShapeHandle) {
+      case 'left':   newX = start.x + dx; newW = start.w - dx; break;
+      case 'right':  newW = start.w + dx; break;
+      case 'top':    newY = start.y + dy; newH = start.h - dy; break;
+      case 'bottom': newH = start.h + dy; break;
+      case 'tl':     newX = start.x + dx; newY = start.y + dy; newW = start.w - dx; newH = start.h - dy; break;
+      case 'tr':     newY = start.y + dy; newW = start.w + dx; newH = start.h - dy; break;
+      case 'bl':     newX = start.x + dx; newW = start.w - dx; newH = start.h + dy; break;
+      case 'br':     newW = start.w + dx; newH = start.h + dy; break;
+    }
+
+    if (newW < MIN_W) {
+      if (state.resizeShapeHandle.includes('l')) newX = start.x + start.w - MIN_W;
+      newW = MIN_W;
+    }
+    if (newH < MIN_H) {
+      if (state.resizeShapeHandle[0] === 't') newY = start.y + start.h - MIN_H;
+      newH = MIN_H;
+    }
+
+    s.x = newX; s.y = newY; s.w = newW; s.h = newH;
+    e.preventDefault();
+    return;
+  }
+
   if (state.isDraggingNode) {
     const dx = world.x - state.dragStartWorldX;
     const dy = world.y - state.dragStartWorldY;
@@ -352,6 +597,48 @@ function onPointerMove(e) {
         a.y1 = s.y1 + dy;
         a.x2 = s.x2 + dx;
         a.y2 = s.y2 + dy;
+      }
+    }
+    e.preventDefault();
+    return;
+  }
+
+  if (state.isDraggingShape) {
+    const dx = world.x - state.dragStartWorldX;
+    const dy = world.y - state.dragStartWorldY;
+    for (const item of state.dragShapeStarts) {
+      const s = state.shapes[item.i];
+      s.x = item.x + dx;
+      s.y = item.y + dy;
+    }
+    e.preventDefault();
+    return;
+  }
+
+  if (state.isDraggingTextBox) {
+    const dx = world.x - state.dragStartWorldX;
+    const dy = world.y - state.dragStartWorldY;
+    for (const item of state.dragTextBoxStarts) {
+      const tb = state.textBoxes[item.i];
+      tb.x = item.x + dx;
+      tb.y = item.y + dy;
+    }
+    e.preventDefault();
+    return;
+  }
+
+  if (state.isDraggingConnectorBody && state.dragConnectorBodySnapshots.length > 0) {
+    if (state.dragArrowBodyStartWorld) {
+      const dx = world.x - state.dragArrowBodyStartWorld.x;
+      const dy = world.y - state.dragArrowBodyStartWorld.y;
+      for (const snap of state.dragConnectorBodySnapshots) {
+        const c = state.connectors[snap.idx];
+        if (c) {
+          c.x1 = snap.x1 + dx;
+          c.y1 = snap.y1 + dy;
+          c.x2 = snap.x2 + dx;
+          c.y2 = snap.y2 + dy;
+        }
       }
     }
     e.preventDefault();
@@ -400,6 +687,53 @@ function onPointerMove(e) {
     }
   }
 
+  if (state.pendingClickIndex === -3 && state.selectedShapes.size > 0 && (e.buttons & 1) === 1) {
+    const moveDx = Math.abs(sx - state.pointerDownScreenX);
+    const moveDy = Math.abs(sy - state.pointerDownScreenY);
+    if (moveDx >= DRAG_THRESHOLD_PX || moveDy >= DRAG_THRESHOLD_PX) {
+      state.isDraggingShape = true;
+      state.didDragSincePointerDown = true;
+      state.dragStartWorldX = world.x;
+      state.dragStartWorldY = world.y;
+      state.dragShapeStarts = [];
+      for (const si of state.selectedShapes) {
+        const s = state.shapes[si];
+        if (s) state.dragShapeStarts.push({ i: si, x: s.x, y: s.y, id: s.id });
+      }
+    }
+  }
+
+  if (state.pendingClickIndex === -4 && state.selectedTextBoxes.size > 0 && (e.buttons & 1) === 1) {
+    const moveDx = Math.abs(sx - state.pointerDownScreenX);
+    const moveDy = Math.abs(sy - state.pointerDownScreenY);
+    if (moveDx >= DRAG_THRESHOLD_PX || moveDy >= DRAG_THRESHOLD_PX) {
+      state.isDraggingTextBox = true;
+      state.didDragSincePointerDown = true;
+      state.dragStartWorldX = world.x;
+      state.dragStartWorldY = world.y;
+      state.dragTextBoxStarts = [];
+      for (const ti of state.selectedTextBoxes) {
+        const tb = state.textBoxes[ti];
+        if (tb) state.dragTextBoxStarts.push({ i: ti, x: tb.x, y: tb.y, id: tb.id });
+      }
+    }
+  }
+
+  if (state.pendingClickIndex === -5 && state.selectedConnectors.size > 0 && (e.buttons & 1) === 1) {
+    const moveDx = Math.abs(sx - state.pointerDownScreenX);
+    const moveDy = Math.abs(sy - state.pointerDownScreenY);
+    if (moveDx >= DRAG_THRESHOLD_PX || moveDy >= DRAG_THRESHOLD_PX) {
+      state.isDraggingConnectorBody = true;
+      state.dragArrowBodyStartWorld = { x: world.x, y: world.y };
+      state.dragConnectorBodySnapshots = [];
+      for (const ci of state.selectedConnectors) {
+        const c = state.connectors[ci];
+        if (c) state.dragConnectorBodySnapshots.push({ idx: ci, x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2 });
+      }
+      state.didDragSincePointerDown = true;
+    }
+  }
+
   if (state.pendingClickIndex === -2 && state.selectedArrows.size > 0 && (e.buttons & 1) === 1) {
     const moveDx = Math.abs(sx - state.pointerDownScreenX);
     const moveDy = Math.abs(sy - state.pointerDownScreenY);
@@ -426,11 +760,17 @@ function onPointerMove(e) {
   let cursorSet = false;
   state.hoveredHandleInfo = null;
 
+  const activeTool = getActiveTool();
+
   if (state.connectingFrom !== null) {
     canvas.style.cursor = 'crosshair';
     cursorSet = true;
   }
-  if (!state.isDraggingNode && !state.isResizing && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
+  if (!cursorSet && activeTool !== TOOLS.CURSOR) {
+    canvas.style.cursor = 'crosshair';
+    cursorSet = true;
+  }
+  if (!state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
     const handleHit = getEdgeAt(world.x, world.y);
     if (handleHit) {
       canvas.style.cursor = handleHit.cursor;
@@ -438,18 +778,25 @@ function onPointerMove(e) {
       cursorSet = true;
     }
   }
-  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isPanning && !state.isSelectingBox && state.connectingFrom === null && !state.isDraggingArrowEnd) {
+  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
+    const shapeEdge = getShapeEdgeAt(world.x, world.y);
+    if (shapeEdge) {
+      canvas.style.cursor = shapeEdge.cursor;
+      cursorSet = true;
+    }
+  }
+  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && state.connectingFrom === null && !state.isDraggingArrowEnd) {
     const connHit = hitTestConnection(world.x, world.y);
     if (connHit !== null) {
       canvas.style.cursor = 'pointer';
       cursorSet = true;
     }
   }
-  if (state.isDraggingArrowBody) {
+  if (state.isDraggingArrowBody || state.isDraggingConnectorBody) {
     canvas.style.cursor = 'move';
     cursorSet = true;
   }
-  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd && !state.isDraggingArrowBody) {
+  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd && !state.isDraggingArrowBody) {
     const bodyHit = hitTestArrowBody(world.x, world.y);
     if (bodyHit !== -1) {
       canvas.style.cursor = 'pointer';
@@ -462,6 +809,22 @@ function onPointerMove(e) {
       const n = state.nodes[i];
       if (world.x >= n.x && world.x <= n.x + n.w && world.y >= n.y && world.y <= n.y + n.h) {
         overSelected = true; break;
+      }
+    }
+    if (!overSelected) {
+      for (const si of state.selectedShapes) {
+        const s = state.shapes[si];
+        if (s && world.x >= s.x && world.x <= s.x + s.w && world.y >= s.y && world.y <= s.y + s.h) {
+          overSelected = true; break;
+        }
+      }
+    }
+    if (!overSelected) {
+      for (const ti of state.selectedTextBoxes) {
+        const tb = state.textBoxes[ti];
+        if (tb && world.x >= tb.x && world.x <= tb.x + tb.w && world.y >= tb.y && world.y <= tb.y + tb.h) {
+          overSelected = true; break;
+        }
       }
     }
     canvas.style.cursor = overSelected ? 'move' : 'grab';
@@ -492,23 +855,53 @@ function onPointerMove(e) {
       }
     }
 
-    let newSelected;
+    const boxShapeHits = [];
+    for (let si = 0; si < state.shapes.length; si++) {
+      if (isShapeInBox(state.shapes[si], bx1, by1, bx2, by2)) {
+        boxShapeHits.push(si);
+      }
+    }
+
+    const boxTBHits = [];
+    for (let ti = 0; ti < state.textBoxes.length; ti++) {
+      const tb = state.textBoxes[ti];
+      if (!(tb.x + tb.w < bx1 || tb.x > bx2 || tb.y + tb.h < by1 || tb.y > by2)) {
+        boxTBHits.push(ti);
+      }
+    }
+
+    const boxConnHits = [];
+    for (let ci = 0; ci < state.connectors.length; ci++) {
+      if (isConnectorInBox(state.connectors[ci], bx1, by1, bx2, by2)) {
+        boxConnHits.push(ci);
+      }
+    }
+
     if (state.boxMode === 'replace') {
-      newSelected = new Set(hits);
+      state.selected.clear();
+      hits.forEach(i => state.selected.add(i));
       state.selectedArrows.clear();
+      state.selectedShapes.clear();
+      state.selectedTextBoxes.clear();
+      state.selectedConnectors.clear();
       state.arrowDragTarget = null;
       for (const ai of boxArrowHits) state.selectedArrows.add(ai);
+      for (const si of boxShapeHits) state.selectedShapes.add(si);
+      for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
+      for (const ci of boxConnHits) state.selectedConnectors.add(ci);
     } else if (state.boxMode === 'add') {
-      newSelected = new Set(state.boxBaseSelection);
-      for (const i of hits) newSelected.add(i);
+      for (const i of hits) state.selected.add(i);
       for (const ai of boxArrowHits) state.selectedArrows.add(ai);
+      for (const si of boxShapeHits) state.selectedShapes.add(si);
+      for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
+      for (const ci of boxConnHits) state.selectedConnectors.add(ci);
     } else {
-      newSelected = new Set(state.boxBaseSelection);
-      for (const i of hits) newSelected.delete(i);
+      for (const i of hits) state.selected.delete(i);
       for (const ai of boxArrowHits) { state.selectedArrows.delete(ai); state.arrowDragTarget = null; }
+      for (const si of boxShapeHits) state.selectedShapes.delete(si);
+      for (const ti of boxTBHits) state.selectedTextBoxes.delete(ti);
+      for (const ci of boxConnHits) state.selectedConnectors.delete(ci);
     }
-    state.selected.clear();
-    for (const i of newSelected) state.selected.add(i);
     refreshSidePanel();
   }
 }
@@ -533,6 +926,20 @@ function onPointerUp(e) {
     }
     state.isResizing = false;
     state.resizeNodeId = -1;
+  }
+  if (state.isResizingShape) {
+    const s = state.shapes[state.resizeShapeIdx];
+    if (s && state.resizeShapeStartBounds) {
+      if (s.x !== state.resizeShapeStartBounds.x || s.y !== state.resizeShapeStartBounds.y ||
+          s.w !== state.resizeShapeStartBounds.w || s.h !== state.resizeShapeStartBounds.h) {
+        _history.push(createResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, state.resizeShapeId,
+          { x: state.resizeShapeStartBounds.x, y: state.resizeShapeStartBounds.y, w: state.resizeShapeStartBounds.w, h: state.resizeShapeStartBounds.h },
+          { x: s.x, y: s.y, w: s.w, h: s.h }));
+      }
+    }
+    state.isResizingShape = false;
+    state.resizeShapeId = -1;
+    state.resizeShapeStartBounds = null;
   }
   if (state.isPanning) {
     state.isPanning = false;
@@ -566,6 +973,74 @@ function onPointerUp(e) {
       }
       state.dragArrowStarts = [];
     }
+  }
+  if (state.isDraggingShape) {
+    const moves = [];
+    for (const item of state.dragShapeStarts) {
+      const s = state.shapes[item.i];
+      if (s && (s.x !== item.x || s.y !== item.y)) {
+        moves.push({ id: item.id, fromX: item.x, fromY: item.y, toX: s.x, toY: s.y });
+      }
+    }
+    if (moves.length > 0) {
+      _history.push(createMoveShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, moves));
+    }
+    state.isDraggingShape = false;
+    state.dragShapeStarts = [];
+  }
+  if (state.isDraggingTextBox) {
+    const moves = [];
+    for (const item of state.dragTextBoxStarts) {
+      const tb = state.textBoxes[item.i];
+      if (tb && (tb.x !== item.x || tb.y !== item.y)) {
+        moves.push({ id: item.id, fromX: item.x, fromY: item.y, toX: tb.x, toY: tb.y });
+      }
+    }
+    if (moves.length > 0) {
+      _history.push(createMoveTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, moves));
+    }
+    state.isDraggingTextBox = false;
+    state.dragTextBoxStarts = [];
+  }
+  if (state.isDraggingConnectorBody && state.dragConnectorBodySnapshots.length > 0) {
+    for (const snap of state.dragConnectorBodySnapshots) {
+      const c = state.connectors[snap.idx];
+      if (c) {
+        const moved = c.x1 !== snap.x1 || c.y1 !== snap.y1 || c.x2 !== snap.x2 || c.y2 !== snap.y2;
+        if (moved) {
+          _history.push(createMoveConnectorsCmd(state.connectors, state.selectedConnectors, [{
+            id: c.id,
+            fromX1: snap.x1, fromY1: snap.y1, fromX2: snap.x2, fromY2: snap.y2,
+            toX1: c.x1, toY1: c.y1, toX2: c.x2, toY2: c.y2,
+          }]));
+        }
+      }
+    }
+    state.isDraggingConnectorBody = false;
+    state.dragConnectorBodySnapshots = [];
+    state.dragArrowBodyStartWorld = null;
+  }
+
+  if (state.drawingTool) {
+    if (state.drawingTool === 'arrow') {
+      const dx = world.x - state.drawingStartX;
+      const dy = world.y - state.drawingStartY;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+        addArrowFromPoints(state.drawingStartX, state.drawingStartY, world.x, world.y);
+      }
+    } else if (state.drawingTool === 'connector') {
+      const dx = world.x - state.drawingStartX;
+      const dy = world.y - state.drawingStartY;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+        addConnector(state.drawingStartX, state.drawingStartY, world.x, world.y);
+      }
+    }
+    state.drawingTool = null;
+    state.drawingStartX = 0;
+    state.drawingStartY = 0;
+    try { canvas.releasePointerCapture(e.pointerId); } catch {}
+    refreshSidePanel();
+    return;
   }
   if (state.isDraggingArrowEnd && state.arrowDragTarget) {
     const arrow = state.arrows[state.arrowDragTarget.arrowIdx];
@@ -640,25 +1115,59 @@ function onPointerUp(e) {
       }
     }
 
+    const boxShapeHits = [];
+    for (let si = 0; si < state.shapes.length; si++) {
+      if (isShapeInBox(state.shapes[si], bx1, by1, bx2, by2)) {
+        boxShapeHits.push(si);
+      }
+    }
+
+    const boxTBHits = [];
+    for (let ti = 0; ti < state.textBoxes.length; ti++) {
+      const tb = state.textBoxes[ti];
+      if (!(tb.x + tb.w < bx1 || tb.x > bx2 || tb.y + tb.h < by1 || tb.y > by2)) {
+        boxTBHits.push(ti);
+      }
+    }
+
+    const boxConnHits = [];
+    for (let ci = 0; ci < state.connectors.length; ci++) {
+      if (isConnectorInBox(state.connectors[ci], bx1, by1, bx2, by2)) {
+        boxConnHits.push(ci);
+      }
+    }
+
     if (state.boxMode === 'replace') {
       state.selected.clear();
       hits.forEach(i => state.selected.add(i));
       state.selectedArrows.clear();
+      state.selectedShapes.clear();
+      state.selectedTextBoxes.clear();
+      state.selectedConnectors.clear();
       state.arrowDragTarget = null;
       for (const ai of boxArrowHits) state.selectedArrows.add(ai);
+      for (const si of boxShapeHits) state.selectedShapes.add(si);
+      for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
+      for (const ci of boxConnHits) state.selectedConnectors.add(ci);
     } else if (state.boxMode === 'add') {
       hits.forEach(i => state.selected.add(i));
       for (const ai of boxArrowHits) state.selectedArrows.add(ai);
+      for (const si of boxShapeHits) state.selectedShapes.add(si);
+      for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
+      for (const ci of boxConnHits) state.selectedConnectors.add(ci);
     } else if (state.boxMode === 'remove') {
       hits.forEach(i => state.selected.delete(i));
       for (const ai of boxArrowHits) { state.selectedArrows.delete(ai); state.arrowDragTarget = null; }
+      for (const si of boxShapeHits) state.selectedShapes.delete(si);
+      for (const ti of boxTBHits) state.selectedTextBoxes.delete(ti);
+      for (const ci of boxConnHits) state.selectedConnectors.delete(ci);
     }
 
     state.isSelectingBox = false;
     refreshSidePanel();
   }
 
-  if (state.pendingClickIndex !== -1 && state.pendingClickIndex !== -2 && !state.didDragSincePointerDown) {
+  if (state.pendingClickIndex !== -1 && state.pendingClickIndex !== -2 && state.pendingClickIndex !== -3 && state.pendingClickIndex !== -4 && state.pendingClickIndex !== -5 && !state.didDragSincePointerDown) {
     if (state.selected.has(state.pendingClickIndex) && state.selected.size > 1 && !state.pendingShiftKey) {
       state.selected.clear();
       state.selected.add(state.pendingClickIndex);

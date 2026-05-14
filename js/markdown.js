@@ -67,7 +67,10 @@ function parseMarkdownLines(text) {
   const result = [];
   for (const line of rawLines) {
     const trimmed = line.trimStart();
-    if (!trimmed) continue;
+    if (!trimmed) {
+      result.push({ type: 'blank' });
+      continue;
+    }
 
     let type = 'paragraph';
     let checked = false;
@@ -244,6 +247,12 @@ export function renderMarkdownBody(ctx, text, x, y, maxWidth, maxHeight, baseFon
       prefixW = barW + barPad;
     }
 
+    if (line.type === 'blank') {
+      if (currentY + lh > y + maxHeight) return;
+      currentY += lh;
+      continue;
+    }
+
     const contentMaxW = maxWidth - prefixW;
     if (contentMaxW <= 0) break;
 
@@ -283,6 +292,10 @@ export function renderMarkdownToHtml(text) {
 
   let html = '';
   for (const line of lines) {
+    if (line.type === 'blank') {
+      html += '<div class="md-block md-blank"><br></div>';
+      continue;
+    }
     let inner = '';
     for (const span of line.spans) {
       let t = escHtml(span.text);
@@ -293,17 +306,68 @@ export function renderMarkdownToHtml(text) {
       inner += t;
     }
     switch (line.type) {
-      case 'h1': html += '<h3 class="md-h1">' + inner + '</h3>'; break;
-      case 'h2': html += '<h4 class="md-h2">' + inner + '</h4>'; break;
-      case 'h3': html += '<h5 class="md-h3">' + inner + '</h5>'; break;
-      case 'blockquote': html += '<blockquote class="md-blockquote">' + inner + '</blockquote>'; break;
-      case 'bullet': html += '<div class="md-bullet"><span class="md-bullet-marker">\u2022</span> ' + inner + '</div>'; break;
-      case 'numbered': html += '<div class="md-numbered"><span class="md-numbered-marker">' + escHtml(line.prefix.trimEnd()) + '</span> ' + inner + '</div>'; break;
-      case 'checkbox': html += '<div class="md-checkbox"><span class="md-checkbox-box">' + (line.checked ? '[x]' : '[ ]') + '</span> ' + inner + '</div>'; break;
-      default: html += '<div class="md-paragraph">' + inner + '</div>'; break;
+      case 'h1': html += '<div class="md-block md-h1"><strong>' + inner + '</strong></div>'; break;
+      case 'h2': html += '<div class="md-block md-h2"><strong>' + inner + '</strong></div>'; break;
+      case 'h3': html += '<div class="md-block md-h3"><strong>' + inner + '</strong></div>'; break;
+      case 'blockquote': html += '<div class="md-block md-blockquote">' + inner + '</div>'; break;
+      case 'bullet': html += '<div class="md-block md-bullet"><span class="md-marker" contenteditable="false">\u2022</span> ' + inner + '</div>'; break;
+      case 'numbered': html += '<div class="md-block md-numbered"><span class="md-marker" contenteditable="false">' + escHtml(line.prefix.trimEnd()) + '</span> ' + inner + '</div>'; break;
+      case 'checkbox': html += '<div class="md-block md-checkbox"><span class="md-marker" contenteditable="false">' + (line.checked ? '[x]' : '[ ]') + '</span> ' + inner + '</div>'; break;
+      default: html += '<div class="md-block md-paragraph">' + (inner || '<br>') + '</div>'; break;
     }
   }
   return html;
+}
+
+function extractInlineMd(node) {
+  let out = '';
+  for (const ch of node.childNodes) {
+    if (ch.nodeType === Node.TEXT_NODE) {
+      out += ch.textContent;
+    } else if (ch.nodeType === Node.ELEMENT_NODE) {
+      if (ch.getAttribute('contenteditable') === 'false') continue;
+      const tag = ch.tagName.toLowerCase();
+      const inner = extractInlineMd(ch);
+      if (tag === 'strong' || tag === 'b') out += '**' + inner + '**';
+      else if (tag === 'em' || tag === 'i') out += '*' + inner + '*';
+      else if (tag === 'code') out += '`' + inner + '`';
+      else if (tag === 'del' || tag === 's' || tag === 'strike') out += '~~' + inner + '~~';
+      else if (tag === 'br') out += '\n';
+      else out += inner;
+    }
+  }
+  return out;
+}
+
+export function htmlToMarkdown(root) {
+  const lines = [];
+  for (const el of root.children) {
+    const cls = el.classList;
+    let prefix = '';
+
+    if (cls.contains('md-h1')) prefix = '# ';
+    else if (cls.contains('md-h2')) prefix = '## ';
+    else if (cls.contains('md-h3')) prefix = '### ';
+    else if (cls.contains('md-blockquote')) prefix = '> ';
+    else if (cls.contains('md-bullet')) prefix = '- ';
+    else if (cls.contains('md-numbered')) {
+      const m = el.querySelector('.md-marker');
+      prefix = (m ? m.textContent.trim() : '1.') + ' ';
+    }
+    else if (cls.contains('md-checkbox')) {
+      const m = el.querySelector('.md-marker');
+      const checked = m && /x/i.test(m.textContent);
+      prefix = '- [' + (checked ? 'x' : ' ') + '] ';
+    }
+
+    const text = extractInlineMd(el).replace(/\n$/, '');
+    if (text || prefix) {
+      lines.push(prefix + text);
+    } else {
+      lines.push('');
+    }
+  }
+  return lines.join('\n');
 }
 
 export function renderMarkdownTitle(ctx, text, cx, y, maxWidth, baseFontFamily, baseFontSize, color) {

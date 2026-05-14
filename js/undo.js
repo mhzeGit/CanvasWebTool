@@ -223,3 +223,212 @@ export function createMoveArrowEndCmd(arrows, arrowIdx, fromState, toState) {
     description: 'Move Arrow Point'
   };
 }
+
+export function createAddShapeCmd(shapes, selectedShapes, refreshPanelFn, shape, insertedAt) {
+  const shapeId = shape.id;
+  return {
+    undo() {
+      const idx = shapes.findIndex(s => s.id === shapeId);
+      if (idx !== -1) shapes.splice(idx, 1);
+      selectedShapes.clear();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      shapes.splice(insertedAt, 0, shape);
+      selectedShapes.clear();
+      selectedShapes.add(insertedAt);
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: 'Add Shape'
+  };
+}
+
+export function createDeleteShapesCmd(shapes, selectedShapes, refreshPanelFn, deletedEntries) {
+  return {
+    undo() {
+      for (let i = 0; i < deletedEntries.length; i++) {
+        shapes.splice(deletedEntries[i].index, 0, deletedEntries[i].shape);
+      }
+      selectedShapes.clear();
+      for (const entry of deletedEntries) selectedShapes.add(entry.index);
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const ids = new Set(deletedEntries.map(e => e.shape.id));
+      for (let i = shapes.length - 1; i >= 0; i--) {
+        if (ids.has(shapes[i].id)) shapes.splice(i, 1);
+      }
+      selectedShapes.clear();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: deletedEntries.length === 1 ? 'Delete Shape' : `Delete ${deletedEntries.length} Shapes`
+  };
+}
+
+export function createMoveShapesCmd(shapes, selectedShapes, refreshPanelFn, moves) {
+  return {
+    undo() {
+      for (const m of moves) {
+        const found = shapes.find(s => s.id === m.id);
+        if (found) { found.x = m.fromX; found.y = m.fromY; }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (const m of moves) {
+        const found = shapes.find(s => s.id === m.id);
+        if (found) { found.x = m.toX; found.y = m.toY; }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: moves.length === 1 ? 'Move Shape' : `Move ${moves.length} Shapes`
+  };
+}
+
+export function createResizeShapeCmd(shapes, selectedShapes, refreshPanelFn, shapeId, fromBounds, toBounds) {
+  return {
+    undo() {
+      const found = shapes.find(s => s.id === shapeId);
+      if (found) {
+        found.x = fromBounds.x; found.y = fromBounds.y;
+        found.w = fromBounds.w; found.h = fromBounds.h;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const found = shapes.find(s => s.id === shapeId);
+      if (found) {
+        found.x = toBounds.x; found.y = toBounds.y;
+        found.w = toBounds.w; found.h = toBounds.h;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: 'Resize Shape'
+  };
+}
+
+export function createAddTextBoxCmd(textBoxes, selectedTextBoxes, refreshPanelFn, textBox, insertedAt) {
+  const tbId = textBox.id;
+  return {
+    undo() {
+      const idx = textBoxes.findIndex(t => t.id === tbId);
+      if (idx !== -1) textBoxes.splice(idx, 1);
+      selectedTextBoxes.clear();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      textBoxes.splice(insertedAt, 0, textBox);
+      selectedTextBoxes.clear();
+      selectedTextBoxes.add(insertedAt);
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: 'Add Text Box'
+  };
+}
+
+export function createDeleteTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPanelFn, deletedEntries) {
+  return {
+    undo() {
+      for (let i = 0; i < deletedEntries.length; i++) {
+        textBoxes.splice(deletedEntries[i].index, 0, deletedEntries[i].textBox);
+      }
+      selectedTextBoxes.clear();
+      for (const entry of deletedEntries) selectedTextBoxes.add(entry.index);
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const ids = new Set(deletedEntries.map(e => e.textBox.id));
+      for (let i = textBoxes.length - 1; i >= 0; i--) {
+        if (ids.has(textBoxes[i].id)) textBoxes.splice(i, 1);
+      }
+      selectedTextBoxes.clear();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: deletedEntries.length === 1 ? 'Delete Text Box' : `Delete ${deletedEntries.length} Text Boxes`
+  };
+}
+
+export function createMoveTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPanelFn, moves) {
+  return {
+    undo() {
+      for (const m of moves) {
+        const found = textBoxes.find(t => t.id === m.id);
+        if (found) { found.x = m.fromX; found.y = m.fromY; }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (const m of moves) {
+        const found = textBoxes.find(t => t.id === m.id);
+        if (found) { found.x = m.toX; found.y = m.toY; }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: moves.length === 1 ? 'Move Text Box' : `Move ${moves.length} Text Boxes`
+  };
+}
+
+export function createAddConnectorCmd(connectors, selectedConnectors, refreshPanelFn, connector, insertedAt) {
+  const connId = connector.id;
+  return {
+    undo() {
+      const idx = connectors.findIndex(c => c.id === connId);
+      if (idx !== -1) connectors.splice(idx, 1);
+      selectedConnectors.clear();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      connectors.splice(insertedAt, 0, connector);
+      selectedConnectors.clear();
+      selectedConnectors.add(insertedAt);
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: 'Add Connector'
+  };
+}
+
+export function createDeleteConnectorsCmd(connectors, selectedConnectors, refreshPanelFn, deletedEntries) {
+  return {
+    undo() {
+      for (let i = 0; i < deletedEntries.length; i++) {
+        connectors.splice(deletedEntries[i].index, 0, deletedEntries[i].connector);
+      }
+      selectedConnectors.clear();
+      for (const entry of deletedEntries) selectedConnectors.add(entry.index);
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const ids = new Set(deletedEntries.map(e => e.connector.id));
+      for (let i = connectors.length - 1; i >= 0; i--) {
+        if (ids.has(connectors[i].id)) connectors.splice(i, 1);
+      }
+      selectedConnectors.clear();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: deletedEntries.length === 1 ? 'Delete Connector' : `Delete ${deletedEntries.length} Connectors`
+  };
+}
+
+export function createMoveConnectorsCmd(connectors, selectedConnectors, moves) {
+  return {
+    undo() {
+      for (const m of moves) {
+        const found = connectors.find(c => c.id === m.id);
+        if (found) {
+          found.x1 = m.fromX1; found.y1 = m.fromY1;
+          found.x2 = m.fromX2; found.y2 = m.fromY2;
+        }
+      }
+    },
+    redo() {
+      for (const m of moves) {
+        const found = connectors.find(c => c.id === m.id);
+        if (found) {
+          found.x1 = m.toX1; found.y1 = m.toY1;
+          found.x2 = m.toX2; found.y2 = m.toY2;
+        }
+      }
+    },
+    description: moves.length === 1 ? 'Move Connector' : `Move ${moves.length} Connectors`
+  };
+}
