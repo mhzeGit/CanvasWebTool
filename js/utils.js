@@ -159,28 +159,36 @@ export function drawWrappedTextWithEllipsisAligned(ctx, font, text, cx, y, maxWi
   ctx.restore();
 }
 
-export function getNodeEdgePoint(node, targetX, targetY) {
-  const cx = node.x + node.w / 2;
-  const cy = node.y + node.h / 2;
+export function getRectEdgePoint(x, y, w, h, targetX, targetY) {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
   const dx = targetX - cx;
   const dy = targetY - cy;
 
-  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return { x: cx, y: cy, side: 'right' };
+  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return { x: cx, y: cy };
 
-  const hw = node.w / 2;
-  const hh = node.h / 2;
+  const hw = w / 2;
+  const hh = h / 2;
 
   if (dx !== 0) {
     const t = dx > 0 ? hw / dx : -hw / dx;
     const yAtEdge = cy + dy * t;
-    if (yAtEdge >= node.y && yAtEdge <= node.y + node.h) {
-      return { x: cx + (dx > 0 ? hw : -hw), y: yAtEdge, side: dx > 0 ? 'right' : 'left' };
+    if (yAtEdge >= y && yAtEdge <= y + h) {
+      return { x: cx + (dx > 0 ? hw : -hw), y: yAtEdge };
     }
   }
 
   const t = dy > 0 ? hh / dy : -hh / dy;
   const xAtEdge = cx + dx * t;
-  return { x: xAtEdge, y: cy + (dy > 0 ? hh : -hh), side: dy > 0 ? 'bottom' : 'top' };
+  return { x: xAtEdge, y: cy + (dy > 0 ? hh : -hh) };
+}
+
+export function getNodeEdgePoint(node, targetX, targetY) {
+  return getRectEdgePoint(node.x, node.y, node.w, node.h, targetX, targetY);
+}
+
+export function getObjectEdgePoint(obj, targetX, targetY) {
+  return getRectEdgePoint(obj.x, obj.y, obj.w, obj.h, targetX, targetY);
 }
 
 export function getEdgeAt(wx, wy, entities, edgeMargin) {

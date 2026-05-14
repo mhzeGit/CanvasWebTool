@@ -1,11 +1,10 @@
 import { state } from './state.js';
-import { screenToWorld } from './utils.js';
+import { screenToWorld, computeResizeBounds, getObjectEdgePoint } from './utils.js';
 import { hitTestNode } from './nodes.js';
 import { hitTestConnection } from './connections.js';
-import { hitTestArrowEnd, hitTestArrowBody, isArrowInBox, getArrowEndpoint } from './arrows.js';
+import { hitTestArrowEnd, hitTestArrowBody, isArrowInBox } from './arrows.js';
 import { getShapeEdgeAt, isShapeInBox } from './shapes.js';
 import { getTextBoxEdgeAt } from './textboxes.js';
-import { computeResizeBounds } from './utils.js';
 import { hitTestConnector, isConnectorInBox } from './connectors.js';
 import { getActiveTool, getShapeSubType, TOOLS } from './toolManager.js';
 import { openContextMenu, closeContextMenu } from './context-menu.js';
@@ -23,8 +22,6 @@ import {
   createMoveConnectorsCmd, createResizeTextBoxCmd,
 } from './undo.js';
 import { flushPanelEdit } from './history.js';
-import { getNodeEdgePoint } from './utils.js';
-import { findNodeAtPoint } from './nodes.js';
 import { DRAG_THRESHOLD_PX, NODE_MIN_W, NODE_MIN_H, SHAPE_MIN_W, SHAPE_MIN_H, TEXTBOX_MIN_W, TEXTBOX_MIN_H } from './config.js';
 import { getEdgeAt, findNodeAtEdge } from './nodes.js';
 
@@ -95,8 +92,15 @@ function onPointerCancel(e) {
     state.drawingShapeType = null;
     state.drawingStartX = 0;
     state.drawingStartY = 0;
+    state.drawingStartConnected = null;
   }
   try { state.canvas.releasePointerCapture(e.pointerId); } catch {}
+}
+
+function findConnectedObjectAtPoint(wx, wy) {
+  const hit = state.getTopHitAt(wx, wy);
+  if (hit) return { type: hit.type, index: hit.i };
+  return null;
 }
 
 function onPointerDown(e) {
@@ -204,6 +208,8 @@ function onPointerDown(e) {
       state.drawingTool = 'arrow';
       state.drawingStartX = world.x;
       state.drawingStartY = world.y;
+      const startHit = state.getTopHitAt(world.x, world.y);
+      state.drawingStartConnected = startHit ? { type: startHit.type, index: startHit.i } : null;
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
       return;
@@ -219,6 +225,8 @@ function onPointerDown(e) {
       state.drawingTool = 'connector';
       state.drawingStartX = world.x;
       state.drawingStartY = world.y;
+      const startHit = state.getTopHitAt(world.x, world.y);
+      state.drawingStartConnected = startHit ? { type: startHit.type, index: startHit.i } : null;
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
       return;
@@ -238,7 +246,9 @@ function onPointerDown(e) {
         x1: arrow.x1, y1: arrow.y1,
         x2: arrow.x2, y2: arrow.y2,
         connectedFrom: arrow.connectedFrom,
-        connectedTo: arrow.connectedTo
+        connectedTo: arrow.connectedTo,
+        connectedFromType: arrow.connectedFromType,
+        connectedToType: arrow.connectedToType,
       };
       refreshSidePanel();
       canvas.setPointerCapture(e.pointerId);
@@ -557,26 +567,40 @@ function onPointerMove(e) {
       if (state.arrowDragTarget.end === 'start') {
         arrow.x1 = world.x;
         arrow.y1 = world.y;
-        const snapNode = findNodeAtPoint(world.x, world.y);
-        if (snapNode !== -1 && snapNode !== arrow.connectedTo) {
-          arrow.connectedFrom = snapNode;
-          const edge = getNodeEdgePoint(state.nodes[snapNode], arrow.x2, arrow.y2);
-          arrow.x1 = edge.x;
-          arrow.y1 = edge.y;
-        } else if (snapNode === -1) {
+        const snapHit = state.getTopHitAt(world.x, world.y);
+        if (snapHit && (snapHit.type !== 'node' || snapHit.i !== arrow.connectedTo)) {
+          arrow.connectedFrom = snapHit.i;
+          arrow.connectedFromType = snapHit.type;
+          const obj = snapHit.type === 'node' ? state.nodes[snapHit.i]
+            : snapHit.type === 'shape' ? state.shapes[snapHit.i]
+            : state.textBoxes[snapHit.i];
+          if (obj) {
+            const edge = getObjectEdgePoint(obj, arrow.x2, arrow.y2);
+            arrow.x1 = edge.x;
+            arrow.y1 = edge.y;
+          }
+        } else if (!snapHit) {
           arrow.connectedFrom = null;
+          arrow.connectedFromType = null;
         }
       } else {
         arrow.x2 = world.x;
         arrow.y2 = world.y;
-        const snapNode = findNodeAtPoint(world.x, world.y);
-        if (snapNode !== -1 && snapNode !== arrow.connectedFrom) {
-          arrow.connectedTo = snapNode;
-          const edge = getNodeEdgePoint(state.nodes[snapNode], arrow.x1, arrow.y1);
-          arrow.x2 = edge.x;
-          arrow.y2 = edge.y;
-        } else if (snapNode === -1) {
+        const snapHit = state.getTopHitAt(world.x, world.y);
+        if (snapHit && (snapHit.type !== 'node' || snapHit.i !== arrow.connectedFrom)) {
+          arrow.connectedTo = snapHit.i;
+          arrow.connectedToType = snapHit.type;
+          const obj = snapHit.type === 'node' ? state.nodes[snapHit.i]
+            : snapHit.type === 'shape' ? state.shapes[snapHit.i]
+            : state.textBoxes[snapHit.i];
+          if (obj) {
+            const edge = getObjectEdgePoint(obj, arrow.x1, arrow.y1);
+            arrow.x2 = edge.x;
+            arrow.y2 = edge.y;
+          }
+        } else if (!snapHit) {
           arrow.connectedTo = null;
+          arrow.connectedToType = null;
         }
       }
     }
@@ -597,6 +621,8 @@ function onPointerMove(e) {
           a.y2 = snap.y2 + dy;
           a.connectedFrom = null;
           a.connectedTo = null;
+          a.connectedFromType = null;
+          a.connectedToType = null;
         }
       }
     }
@@ -799,7 +825,9 @@ function onPointerMove(e) {
             x1: a.x1, y1: a.y1,
             x2: a.x2, y2: a.y2,
             connectedFrom: a.connectedFrom,
-            connectedTo: a.connectedTo
+            connectedTo: a.connectedTo,
+            connectedFromType: a.connectedFromType,
+            connectedToType: a.connectedToType,
           });
         }
       }
@@ -870,7 +898,9 @@ function onPointerMove(e) {
             x1: a.x1, y1: a.y1,
             x2: a.x2, y2: a.y2,
             connectedFrom: a.connectedFrom,
-            connectedTo: a.connectedTo
+            connectedTo: a.connectedTo,
+            connectedFromType: a.connectedFromType,
+            connectedToType: a.connectedToType,
           });
         }
       }
@@ -1105,8 +1135,12 @@ function onPointerUp(e) {
         const a = state.arrows[s.idx];
         if (a && (a.x1 !== s.x1 || a.y1 !== s.y1 || a.x2 !== s.x2 || a.y2 !== s.y2)) {
           _history.push(createMoveArrowEndCmd(state.arrows, s.idx,
-            { x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2, connectedFrom: s.connectedFrom, connectedTo: s.connectedTo },
-            { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2, connectedFrom: a.connectedFrom, connectedTo: a.connectedTo }
+            { x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2,
+              connectedFrom: s.connectedFrom, connectedTo: s.connectedTo,
+              connectedFromType: s.connectedFromType, connectedToType: s.connectedToType },
+            { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2,
+              connectedFrom: a.connectedFrom, connectedTo: a.connectedTo,
+              connectedFromType: a.connectedFromType, connectedToType: a.connectedToType }
           ));
         }
       }
@@ -1234,13 +1268,85 @@ function onPointerUp(e) {
         const dx = world.x - state.drawingStartX;
         const dy = world.y - state.drawingStartY;
         if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-          addArrowFromPoints(state.drawingStartX, state.drawingStartY, world.x, world.y);
+          const endHit = state.getTopHitAt(world.x, world.y);
+          const endConnected = endHit ? { type: endHit.type, index: endHit.i } : null;
+          let startX = state.drawingStartX;
+          let startY = state.drawingStartY;
+          let endX = world.x;
+          let endY = world.y;
+          if (state.drawingStartConnected) {
+            const obj = state.drawingStartConnected.type === 'node' ? state.nodes[state.drawingStartConnected.index]
+              : state.drawingStartConnected.type === 'shape' ? state.shapes[state.drawingStartConnected.index]
+              : state.textBoxes[state.drawingStartConnected.index];
+            if (obj) {
+              const refPt = endConnected
+                ? { x: (endConnected.type === 'node' ? state.nodes[endConnected.index] : endConnected.type === 'shape' ? state.shapes[endConnected.index] : state.textBoxes[endConnected.index])?.x ?? endX, y: (endConnected.type === 'node' ? state.nodes[endConnected.index] : endConnected.type === 'shape' ? state.shapes[endConnected.index] : state.textBoxes[endConnected.index])?.y ?? endY }
+                : { x: endX, y: endY };
+              const edge = getObjectEdgePoint(obj, refPt.x, refPt.y);
+              startX = edge.x;
+              startY = edge.y;
+            }
+          }
+          if (endConnected) {
+            const obj = endConnected.type === 'node' ? state.nodes[endConnected.index]
+              : endConnected.type === 'shape' ? state.shapes[endConnected.index]
+              : state.textBoxes[endConnected.index];
+            if (obj) {
+              const refPt = state.drawingStartConnected
+                ? { x: startX, y: startY }
+                : { x: startX, y: startY };
+              const edge = getObjectEdgePoint(obj, refPt.x, refPt.y);
+              endX = edge.x;
+              endY = edge.y;
+            }
+          }
+          addArrowFromPoints(startX, startY, endX, endY,
+            state.drawingStartConnected ? state.drawingStartConnected.index : null,
+            endConnected ? endConnected.index : null,
+            state.drawingStartConnected ? state.drawingStartConnected.type : null,
+            endConnected ? endConnected.type : null);
         }
       } else if (state.drawingTool === 'connector') {
         const dx = world.x - state.drawingStartX;
         const dy = world.y - state.drawingStartY;
         if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-          addConnector(state.drawingStartX, state.drawingStartY, world.x, world.y);
+          const endHit = state.getTopHitAt(world.x, world.y);
+          const endConnected = endHit ? { type: endHit.type, index: endHit.i } : null;
+          let startX = state.drawingStartX;
+          let startY = state.drawingStartY;
+          let endX = world.x;
+          let endY = world.y;
+          if (state.drawingStartConnected) {
+            const obj = state.drawingStartConnected.type === 'node' ? state.nodes[state.drawingStartConnected.index]
+              : state.drawingStartConnected.type === 'shape' ? state.shapes[state.drawingStartConnected.index]
+              : state.textBoxes[state.drawingStartConnected.index];
+            if (obj) {
+              const refPt = endConnected
+                ? { x: (endConnected.type === 'node' ? state.nodes[endConnected.index] : endConnected.type === 'shape' ? state.shapes[endConnected.index] : state.textBoxes[endConnected.index])?.x ?? endX, y: (endConnected.type === 'node' ? state.nodes[endConnected.index] : endConnected.type === 'shape' ? state.shapes[endConnected.index] : state.textBoxes[endConnected.index])?.y ?? endY }
+                : { x: endX, y: endY };
+              const edge = getObjectEdgePoint(obj, refPt.x, refPt.y);
+              startX = edge.x;
+              startY = edge.y;
+            }
+          }
+          if (endConnected) {
+            const obj = endConnected.type === 'node' ? state.nodes[endConnected.index]
+              : endConnected.type === 'shape' ? state.shapes[endConnected.index]
+              : state.textBoxes[endConnected.index];
+            if (obj) {
+              const refPt = state.drawingStartConnected
+                ? { x: startX, y: startY }
+                : { x: startX, y: startY };
+              const edge = getObjectEdgePoint(obj, refPt.x, refPt.y);
+              endX = edge.x;
+              endY = edge.y;
+            }
+          }
+          addConnector(startX, startY, endX, endY,
+            state.drawingStartConnected ? state.drawingStartConnected.index : null,
+            endConnected ? endConnected.index : null,
+            state.drawingStartConnected ? state.drawingStartConnected.type : null,
+            endConnected ? endConnected.type : null);
         }
       } else if (state.drawingTool === 'shape') {
         const dx = world.x - state.drawingStartX;
@@ -1270,6 +1376,7 @@ function onPointerUp(e) {
       state.drawingShapeType = null;
       state.drawingStartX = 0;
       state.drawingStartY = 0;
+      state.drawingStartConnected = null;
       try { canvas.releasePointerCapture(e.pointerId); } catch {}
       refreshSidePanel();
     }
@@ -1281,17 +1388,23 @@ function onPointerUp(e) {
       const moved = arrow.x1 !== state.dragArrowEndSnapshot.x1 || arrow.y1 !== state.dragArrowEndSnapshot.y1 ||
                     arrow.x2 !== state.dragArrowEndSnapshot.x2 || arrow.y2 !== state.dragArrowEndSnapshot.y2 ||
                     arrow.connectedFrom !== state.dragArrowEndSnapshot.connectedFrom ||
-                    arrow.connectedTo !== state.dragArrowEndSnapshot.connectedTo;
+                    arrow.connectedTo !== state.dragArrowEndSnapshot.connectedTo ||
+                    arrow.connectedFromType !== state.dragArrowEndSnapshot.connectedFromType ||
+                    arrow.connectedToType !== state.dragArrowEndSnapshot.connectedToType;
       if (moved) {
         _history.push(createMoveArrowEndCmd(state.arrows, state.arrowDragTarget.arrowIdx,
           { x1: state.dragArrowEndSnapshot.x1, y1: state.dragArrowEndSnapshot.y1,
             x2: state.dragArrowEndSnapshot.x2, y2: state.dragArrowEndSnapshot.y2,
             connectedFrom: state.dragArrowEndSnapshot.connectedFrom,
-            connectedTo: state.dragArrowEndSnapshot.connectedTo },
+            connectedTo: state.dragArrowEndSnapshot.connectedTo,
+            connectedFromType: state.dragArrowEndSnapshot.connectedFromType,
+            connectedToType: state.dragArrowEndSnapshot.connectedToType },
           { x1: arrow.x1, y1: arrow.y1,
             x2: arrow.x2, y2: arrow.y2,
             connectedFrom: arrow.connectedFrom,
-            connectedTo: arrow.connectedTo }
+            connectedTo: arrow.connectedTo,
+            connectedFromType: arrow.connectedFromType,
+            connectedToType: arrow.connectedToType }
         ));
       }
     }
@@ -1311,10 +1424,13 @@ function onPointerUp(e) {
             { x1: snap.x1, y1: snap.y1,
               x2: snap.x2, y2: snap.y2,
               connectedFrom: snap.connectedFrom,
-              connectedTo: snap.connectedTo },
+              connectedTo: snap.connectedTo,
+              connectedFromType: snap.connectedFromType,
+              connectedToType: snap.connectedToType },
             { x1: a.x1, y1: a.y1,
               x2: a.x2, y2: a.y2,
-              connectedFrom: null, connectedTo: null }
+              connectedFrom: null, connectedTo: null,
+              connectedFromType: null, connectedToType: null }
           ));
         }
       }

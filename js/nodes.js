@@ -119,6 +119,7 @@ export function drawOneNode(idx) {
     if (n.text && n.text.length > 0) {
       ctx.save();
       const bodyBaseFontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
+      const bodyFontSize = n.fontSize || 12;
       renderMarkdownBody(
         ctx,
         n.text,
@@ -127,15 +128,16 @@ export function drawOneNode(idx) {
         Math.max(0, n.w - padding * 2),
         Math.max(0, n.h - titleH - padding * 2),
         bodyBaseFontFamily,
-        12,
-        DEFAULT_TEXT_COLOR,
-        14
+        bodyFontSize,
+        n.textColor || DEFAULT_TEXT_COLOR,
+        Math.round(bodyFontSize * 1.4)
       );
       ctx.restore();
     } else {
+      const bodyFontSize = n.fontSize || 12;
       ctx.save();
       ctx.fillStyle = PLACEHOLDER_COLOR;
-      ctx.font = `12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+      ctx.font = `${bodyFontSize}px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       const maxTextWidth = Math.max(0, n.w - padding * 2);

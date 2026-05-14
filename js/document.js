@@ -12,7 +12,7 @@ import {
 } from './undo.js';
 import { serializeDocument, deserializeDocument, FILE_EXTENSION } from './format.js';
 import { saveToFile, loadFromFile } from './file-io.js';
-import { screenToWorld, getNodeEdgePoint } from './utils.js';
+import { screenToWorld, getNodeEdgePoint, getObjectEdgePoint } from './utils.js';
 import { refreshSidePanel } from './side-panel.js';
 import { DEFAULT_NODE_COLOR } from './config.js';
 
@@ -29,7 +29,7 @@ export function addNodeAtCenter() {
 export function addNodeAt(worldX, worldY) {
   flushPanelEdit();
   const w = 240; const h = 160;
-  const node = { id: nextNodeId(), x: worldX - w / 2, y: worldY - h / 2, w, h, color: DEFAULT_NODE_COLOR, title: '', titleColor: '#e7e7e7', text: '', parentId: null, parentType: null };
+  const node = { id: nextNodeId(), x: worldX - w / 2, y: worldY - h / 2, w, h, color: DEFAULT_NODE_COLOR, title: '', titleColor: '#e7e7e7', text: '', textColor: '#ddd', fontSize: 12, parentId: null, parentType: null };
   const idx = state.nodes.length;
   state.nodes.push(node);
   state.selected.clear();
@@ -74,6 +74,8 @@ export function addArrowAt(worldX, worldY, connectNodeIdx) {
     x1, y1, x2, y2,
     connectedFrom,
     connectedTo,
+    connectedFromType: connectedFrom !== null ? 'node' : null,
+    connectedToType: null,
     color: '#6bb5ff'
   };
 
@@ -146,11 +148,15 @@ export function addTextBoxAt(worldX, worldY, optW, optH) {
   history.push(createAddTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, textBox, idx));
 }
 
-export function addConnector(x1, y1, x2, y2) {
+export function addConnector(x1, y1, x2, y2, connectedFrom, connectedTo, connectedFromType, connectedToType) {
   flushPanelEdit();
   const connector = {
     id: state.nextConnectorId++,
     x1, y1, x2, y2,
+    connectedFrom: connectedFrom ?? null,
+    connectedTo: connectedTo ?? null,
+    connectedFromType: connectedFromType ?? null,
+    connectedToType: connectedToType ?? null,
     color: '#6bb5ff',
   };
   const idx = state.connectors.length;
@@ -163,13 +169,15 @@ export function addConnector(x1, y1, x2, y2) {
   history.push(createAddConnectorCmd(state.connectors, state.selectedConnectors, refreshSidePanel, connector, idx));
 }
 
-export function addArrowFromPoints(x1, y1, x2, y2) {
+export function addArrowFromPoints(x1, y1, x2, y2, connectedFrom, connectedTo, connectedFromType, connectedToType) {
   flushPanelEdit();
   const arrow = {
     id: state.nextArrowId++,
     x1, y1, x2, y2,
-    connectedFrom: null,
-    connectedTo: null,
+    connectedFrom: connectedFrom ?? null,
+    connectedTo: connectedTo ?? null,
+    connectedFromType: connectedFromType ?? null,
+    connectedToType: connectedToType ?? null,
     color: '#6bb5ff',
   };
   const idx = state.arrows.length;
@@ -188,7 +196,26 @@ export function deleteSelectedShapes() {
   if (state.selectedShapes.size === 0) return;
   flushPanelEdit();
   const sortedIndices = Array.from(state.selectedShapes).sort((a, b) => a - b);
+  const deletedSet = new Set(sortedIndices);
   const deletedEntries = sortedIndices.map(i => ({ shape: state.shapes[i], index: i }));
+
+  for (const arrow of state.arrows) {
+    if (arrow.connectedFrom !== null && arrow.connectedFromType === 'shape' && deletedSet.has(arrow.connectedFrom)) {
+      arrow.connectedFrom = null; arrow.connectedFromType = null;
+    }
+    if (arrow.connectedTo !== null && arrow.connectedToType === 'shape' && deletedSet.has(arrow.connectedTo)) {
+      arrow.connectedTo = null; arrow.connectedToType = null;
+    }
+  }
+  for (const conn of state.connectors) {
+    if (conn.connectedFrom !== null && conn.connectedFromType === 'shape' && deletedSet.has(conn.connectedFrom)) {
+      conn.connectedFrom = null; conn.connectedFromType = null;
+    }
+    if (conn.connectedTo !== null && conn.connectedToType === 'shape' && deletedSet.has(conn.connectedTo)) {
+      conn.connectedTo = null; conn.connectedToType = null;
+    }
+  }
+
   for (let i = sortedIndices.length - 1; i >= 0; i--) {
     state.shapes.splice(sortedIndices[i], 1);
   }
@@ -202,7 +229,26 @@ export function deleteSelectedTextBoxes() {
   if (state.selectedTextBoxes.size === 0) return;
   flushPanelEdit();
   const sortedIndices = Array.from(state.selectedTextBoxes).sort((a, b) => a - b);
+  const deletedSet = new Set(sortedIndices);
   const deletedEntries = sortedIndices.map(i => ({ textBox: state.textBoxes[i], index: i }));
+
+  for (const arrow of state.arrows) {
+    if (arrow.connectedFrom !== null && arrow.connectedFromType === 'textBox' && deletedSet.has(arrow.connectedFrom)) {
+      arrow.connectedFrom = null; arrow.connectedFromType = null;
+    }
+    if (arrow.connectedTo !== null && arrow.connectedToType === 'textBox' && deletedSet.has(arrow.connectedTo)) {
+      arrow.connectedTo = null; arrow.connectedToType = null;
+    }
+  }
+  for (const conn of state.connectors) {
+    if (conn.connectedFrom !== null && conn.connectedFromType === 'textBox' && deletedSet.has(conn.connectedFrom)) {
+      conn.connectedFrom = null; conn.connectedFromType = null;
+    }
+    if (conn.connectedTo !== null && conn.connectedToType === 'textBox' && deletedSet.has(conn.connectedTo)) {
+      conn.connectedTo = null; conn.connectedToType = null;
+    }
+  }
+
   for (let i = sortedIndices.length - 1; i >= 0; i--) {
     state.textBoxes.splice(sortedIndices[i], 1);
   }
@@ -267,12 +313,39 @@ export function deleteSelectedNodes() {
 
   for (const arrow of state.arrows) {
     if (arrow.connectedFrom !== null) {
-      const newIdx = indexMap[arrow.connectedFrom];
-      arrow.connectedFrom = newIdx !== undefined ? newIdx : null;
+      const fromType = arrow.connectedFromType || 'node';
+      if (fromType === 'node') {
+        const newIdx = indexMap[arrow.connectedFrom];
+        arrow.connectedFrom = newIdx !== undefined ? newIdx : null;
+        if (arrow.connectedFrom === null) arrow.connectedFromType = null;
+      }
     }
     if (arrow.connectedTo !== null) {
-      const newIdx = indexMap[arrow.connectedTo];
-      arrow.connectedTo = newIdx !== undefined ? newIdx : null;
+      const toType = arrow.connectedToType || 'node';
+      if (toType === 'node') {
+        const newIdx = indexMap[arrow.connectedTo];
+        arrow.connectedTo = newIdx !== undefined ? newIdx : null;
+        if (arrow.connectedTo === null) arrow.connectedToType = null;
+      }
+    }
+  }
+
+  for (const conn of state.connectors) {
+    if (conn.connectedFrom !== null) {
+      const fromType = conn.connectedFromType || 'node';
+      if (fromType === 'node') {
+        const newIdx = indexMap[conn.connectedFrom];
+        conn.connectedFrom = newIdx !== undefined ? newIdx : null;
+        if (conn.connectedFrom === null) conn.connectedFromType = null;
+      }
+    }
+    if (conn.connectedTo !== null) {
+      const toType = conn.connectedToType || 'node';
+      if (toType === 'node') {
+        const newIdx = indexMap[conn.connectedTo];
+        conn.connectedTo = newIdx !== undefined ? newIdx : null;
+        if (conn.connectedTo === null) conn.connectedToType = null;
+      }
     }
   }
 

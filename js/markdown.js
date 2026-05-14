@@ -72,6 +72,11 @@ function parseMarkdownLines(text) {
       continue;
     }
 
+    if (/^_{3}\s*$/.test(trimmed)) {
+      result.push({ type: 'hr' });
+      continue;
+    }
+
     let type = 'paragraph';
     let checked = false;
     let prefix = '';
@@ -253,6 +258,22 @@ export function renderMarkdownBody(ctx, text, x, y, maxWidth, maxHeight, baseFon
       continue;
     }
 
+    if (line.type === 'hr') {
+      if (currentY + lh > y + maxHeight) return;
+      const hrY = currentY + lh / 2;
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, hrY);
+      ctx.lineTo(x + maxWidth, hrY);
+      ctx.stroke();
+      ctx.restore();
+      currentY += lh;
+      continue;
+    }
+
     const contentMaxW = maxWidth - prefixW;
     if (contentMaxW <= 0) break;
 
@@ -313,6 +334,7 @@ export function renderMarkdownToHtml(text) {
       case 'bullet': html += '<div class="md-block md-bullet"><span class="md-marker" contenteditable="false">\u2022</span> ' + inner + '</div>'; break;
       case 'numbered': html += '<div class="md-block md-numbered"><span class="md-marker" contenteditable="false">' + escHtml(line.prefix.trimEnd()) + '</span> ' + inner + '</div>'; break;
       case 'checkbox': html += '<div class="md-block md-checkbox"><span class="md-marker" contenteditable="false">' + (line.checked ? '[x]' : '[ ]') + '</span> ' + inner + '</div>'; break;
+      case 'hr': html += '<div class="md-block md-hr"><hr></div>'; break;
       default: html += '<div class="md-block md-paragraph">' + (inner || '<br>') + '</div>'; break;
     }
   }
@@ -358,6 +380,10 @@ export function htmlToMarkdown(root) {
       const m = el.querySelector('.md-marker');
       const checked = m && /x/i.test(m.textContent);
       prefix = '- [' + (checked ? 'x' : ' ') + '] ';
+    }
+    else if (cls.contains('md-hr')) {
+      lines.push('___');
+      continue;
     }
 
     const text = extractInlineMd(el).replace(/\n$/, '');

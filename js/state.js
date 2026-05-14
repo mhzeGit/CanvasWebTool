@@ -279,6 +279,7 @@ export const state = {
   drawingShapeType: null,
   drawingStartX: 0,
   drawingStartY: 0,
+  drawingStartConnected: null,
 
   pendingClickIndex: -1,
   pointerDownScreenX: 0,

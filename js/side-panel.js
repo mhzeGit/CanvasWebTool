@@ -289,6 +289,8 @@ export function refreshSidePanel() {
     '<div class="panel-row"><label>Title</label><input id="panelTitle" class="panel-input" type="text" value="' + state.escAttr(n.title ?? '') + '" placeholder="' + state.escAttr(TITLE_PLACEHOLDER) + '" /></div>',
     '<div class="panel-row"><label>Title Color</label><input id="panelTitleColor" class="panel-input panel-input-color" type="color" value="' + (n.titleColor ?? '#e7e7e7') + '" /></div>',
     '<div class="panel-row"><label>Color</label><input id="panelColor" class="panel-input panel-input-color" type="color" value="' + (n.color ?? '#1a1a1a') + '" /></div>',
+    '<div class="panel-row"><label>Text Color</label><input id="panelTextColor" class="panel-input panel-input-color" type="color" value="' + (n.textColor ?? '#ddd') + '" /></div>',
+    '<div class="panel-row"><label>Font Size</label><input id="panelFontSize" class="panel-input" type="number" min="8" max="72" value="' + (n.fontSize ?? 12) + '" /></div>',
     '<div class="panel-row"><label>Width</label><input id="panelW" class="panel-input" type="number" min="10" value="' + n.w + '" /></div>',
     '<div class="panel-row"><label>Height</label><input id="panelH" class="panel-input" type="number" min="10" value="' + n.h + '" /></div>',
     parentHtml,
@@ -299,6 +301,8 @@ export function refreshSidePanel() {
   const titleInput = document.getElementById('panelTitle');
   const titleColorInput = document.getElementById('panelTitleColor');
   const colorInput = document.getElementById('panelColor');
+  const textColorInput = document.getElementById('panelTextColor');
+  const fontSizeInput = document.getElementById('panelFontSize');
   const wInput = document.getElementById('panelW');
   const hInput = document.getElementById('panelH');
   const textInput = document.getElementById('panelText');
@@ -317,6 +321,19 @@ export function refreshSidePanel() {
     colorInput.addEventListener('input', (ev) => { n.color = ev.target.value; });
     colorInput.addEventListener('pointerdown', () => { startPanelEdit(nodeId, 'color', n.color); });
     colorInput.addEventListener('change', () => { flushPanelEdit(refreshSidePanel); });
+  }
+  if (textColorInput) {
+    textColorInput.addEventListener('input', (ev) => { n.textColor = ev.target.value; });
+    textColorInput.addEventListener('pointerdown', () => { startPanelEdit(nodeId, 'textColor', n.textColor); });
+    textColorInput.addEventListener('change', () => { flushPanelEdit(refreshSidePanel); });
+  }
+  if (fontSizeInput) {
+    fontSizeInput.addEventListener('input', (ev) => {
+      const v = parseFloat(ev.target.value);
+      if (!Number.isNaN(v) && v >= 8) n.fontSize = v;
+    });
+    fontSizeInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'fontSize', n.fontSize); });
+    fontSizeInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
   }
   if (wInput) {
     wInput.setAttribute('data-drag-number', 'true');

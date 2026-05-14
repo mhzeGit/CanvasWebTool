@@ -6,7 +6,7 @@ import { drawConnection, drawConnectionPreview } from './connections.js';
 import { drawArrows, updateArrowPositionsFromConnections } from './arrows.js';
 import { drawShapes, drawOneShape, drawShapePreview } from './shapes.js';
 import { drawTextBoxes, drawOneTextBox, drawTextBoxPreview } from './textboxes.js';
-import { drawConnectors, drawConnectorPreview, drawArrowPreview } from './connectors.js';
+import { drawConnectors, drawConnectorPreview, drawArrowPreview, updateConnectorPositionsFromConnections } from './connectors.js';
 import { initPointer } from './pointer.js';
 import { setupKeyboard } from './keyboard.js';
 import { setupContextMenu, initContextMenu } from './context-menu.js';
@@ -68,6 +68,7 @@ function animate() {
   }
 
   updateArrowPositionsFromConnections();
+  updateConnectorPositionsFromConnections();
   drawArrows();
   drawConnectors();
   const drawOrder = state.getAllDrawOrder();

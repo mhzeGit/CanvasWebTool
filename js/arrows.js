@@ -3,32 +3,52 @@ import {
   ARROW_END_RADIUS, ARROW_END_HIT_RADIUS, ARROW_BODY_HIT_THRESHOLD,
   ARROW_HEAD_LENGTH, ARROW_HEAD_ANGLE, DEFAULT_ARROW_COLOR,
 } from './config.js';
-import { getNodeEdgePoint } from './utils.js';
-import { findNodeAtPoint } from './nodes.js';
+import { getObjectEdgePoint } from './utils.js';
+
+function getConnectedObject(arrow, which) {
+  const idx = which === 'start' ? arrow.connectedFrom : arrow.connectedTo;
+  const type = which === 'start' ? arrow.connectedFromType : arrow.connectedToType;
+  if (idx === null || idx === undefined) return null;
+  const resolvedType = type || 'node';
+  if (resolvedType === 'node' && state.nodes[idx]) return state.nodes[idx];
+  if (resolvedType === 'shape' && state.shapes[idx]) return state.shapes[idx];
+  if (resolvedType === 'textBox' && state.textBoxes[idx]) return state.textBoxes[idx];
+  return null;
+}
+
+function getOtherEndpoint(arrow, which) {
+  if (which === 'start') {
+    const other = getConnectedObject(arrow, 'end');
+    return other ? getObjectEdgePoint(other, arrow.x1, arrow.y1) : { x: arrow.x2, y: arrow.y2 };
+  } else {
+    const other = getConnectedObject(arrow, 'start');
+    return other ? getObjectEdgePoint(other, arrow.x2, arrow.y2) : { x: arrow.x1, y: arrow.y1 };
+  }
+}
 
 export function getArrowEndpoint(arrow, which) {
-  if (which === 'start') {
-    if (arrow.connectedFrom !== null && state.nodes[arrow.connectedFrom]) {
-      return getNodeEdgePoint(state.nodes[arrow.connectedFrom], arrow.x2, arrow.y2);
-    }
-    return { x: arrow.x1, y: arrow.y1 };
-  } else {
-    if (arrow.connectedTo !== null && state.nodes[arrow.connectedTo]) {
-      return getNodeEdgePoint(state.nodes[arrow.connectedTo], arrow.x1, arrow.y1);
-    }
-    return { x: arrow.x2, y: arrow.y2 };
+  const obj = getConnectedObject(arrow, which);
+  if (obj) {
+    const otherPt = getOtherEndpoint(arrow, which);
+    return getObjectEdgePoint(obj, otherPt.x, otherPt.y);
   }
+  return which === 'start' ? { x: arrow.x1, y: arrow.y1 } : { x: arrow.x2, y: arrow.y2 };
 }
 
 export function updateArrowPositionsFromConnections() {
   for (const arrow of state.arrows) {
-    if (arrow.connectedFrom !== null && state.nodes[arrow.connectedFrom]) {
-      const edge = getNodeEdgePoint(state.nodes[arrow.connectedFrom], arrow.x2, arrow.y2);
+    const startObj = getConnectedObject(arrow, 'start');
+    const endObj = getConnectedObject(arrow, 'end');
+
+    if (startObj) {
+      const refPt = endObj ? { x: endObj.x + endObj.w / 2, y: endObj.y + endObj.h / 2 } : { x: arrow.x2, y: arrow.y2 };
+      const edge = getObjectEdgePoint(startObj, refPt.x, refPt.y);
       arrow.x1 = edge.x;
       arrow.y1 = edge.y;
     }
-    if (arrow.connectedTo !== null && state.nodes[arrow.connectedTo]) {
-      const edge = getNodeEdgePoint(state.nodes[arrow.connectedTo], arrow.x1, arrow.y1);
+    if (endObj) {
+      const refPt = startObj ? { x: startObj.x + startObj.w / 2, y: startObj.y + startObj.h / 2 } : { x: arrow.x1, y: arrow.y1 };
+      const edge = getObjectEdgePoint(endObj, refPt.x, refPt.y);
       arrow.x2 = edge.x;
       arrow.y2 = edge.y;
     }

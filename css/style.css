@@ -309,6 +309,14 @@ canvas#gridCanvas {
   display: none;
 }
 
+.panel-markdown-preview hr,
+.md-block.md-hr hr {
+  border: none;
+  border-top: 1px solid #444;
+  margin: 12px 0;
+  opacity: 0.6;
+}
+
 /* Shared markdown block styles (preview + editor) */
 .md-block {
   margin: 1px 0;
