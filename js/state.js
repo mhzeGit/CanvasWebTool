@@ -55,9 +55,88 @@ function checkAndUpdateParenting(nodeIndex) {
   const containerIdx = findSmallestContainer(nodeIndex);
   if (containerIdx !== -1) {
     node.parentId = state.nodes[containerIdx].id;
+    node.parentType = 'node';
   } else {
     node.parentId = null;
+    node.parentType = null;
   }
+}
+
+function containerArea(entity) {
+  return entity.w * entity.h;
+}
+
+function rectInRect(ax, ay, aw, ah, bx, by, bw, bh) {
+  return bx >= ax && by >= ay && bx + bw <= ax + aw && by + bh <= ay + ah;
+}
+
+function findParentForRect(rx, ry, rw, rh, excludeId, excludeType) {
+  let bestId = null;
+  let bestType = null;
+  let bestArea = Infinity;
+  for (let i = 0; i < state.nodes.length; i++) {
+    const n = state.nodes[i];
+    if (n.id === excludeId && excludeType === 'node') continue;
+    const area = containerArea(n);
+    if (area < bestArea && rectInRect(n.x, n.y, n.w, n.h, rx, ry, rw, rh)) {
+      bestId = n.id; bestType = 'node'; bestArea = area;
+    }
+  }
+  for (let i = 0; i < state.shapes.length; i++) {
+    const s = state.shapes[i];
+    if (s.id === excludeId && excludeType === 'shape') continue;
+    const area = containerArea(s);
+    if (area < bestArea && rectInRect(s.x, s.y, s.w, s.h, rx, ry, rw, rh)) {
+      bestId = s.id; bestType = 'shape'; bestArea = area;
+    }
+  }
+  for (let i = 0; i < state.textBoxes.length; i++) {
+    const t = state.textBoxes[i];
+    if (t.id === excludeId && excludeType === 'textBox') continue;
+    const area = containerArea(t);
+    if (area < bestArea && rectInRect(t.x, t.y, t.w, t.h, rx, ry, rw, rh)) {
+      bestId = t.id; bestType = 'textBox'; bestArea = area;
+    }
+  }
+  return bestId ? { parentId: bestId, parentType: bestType } : null;
+}
+
+function reparentAll() {
+  for (let i = 0; i < state.nodes.length; i++) {
+    const n = state.nodes[i];
+    const p = findParentForRect(n.x, n.y, n.w, n.h, n.id, 'node');
+    if (p) { n.parentId = p.parentId; n.parentType = p.parentType; }
+    else { n.parentId = null; n.parentType = null; }
+  }
+  for (let i = 0; i < state.shapes.length; i++) {
+    const s = state.shapes[i];
+    const p = findParentForRect(s.x, s.y, s.w, s.h, s.id, 'shape');
+    if (p) { s.parentId = p.parentId; s.parentType = p.parentType; }
+    else { s.parentId = null; s.parentType = null; }
+  }
+  for (let i = 0; i < state.textBoxes.length; i++) {
+    const t = state.textBoxes[i];
+    const p = findParentForRect(t.x, t.y, t.w, t.h, t.id, 'textBox');
+    if (p) { t.parentId = p.parentId; t.parentType = p.parentType; }
+    else { t.parentId = null; t.parentType = null; }
+  }
+}
+
+function getChildrenByParentId(parentId, parentType) {
+  const children = [];
+  for (let i = 0; i < state.nodes.length; i++) {
+    const n = state.nodes[i];
+    if (n.parentId === parentId && n.parentType === parentType) children.push({ type: 'node', index: i });
+  }
+  for (let i = 0; i < state.shapes.length; i++) {
+    const s = state.shapes[i];
+    if (s.parentId === parentId && s.parentType === parentType) children.push({ type: 'shape', index: i });
+  }
+  for (let i = 0; i < state.textBoxes.length; i++) {
+    const t = state.textBoxes[i];
+    if (t.parentId === parentId && t.parentType === parentType) children.push({ type: 'textBox', index: i });
+  }
+  return children;
 }
 
 function getDragGroup(selectedIndices) {
@@ -165,6 +244,8 @@ export const state = {
   selectedShapes: new Set(),
   isDraggingShape: false,
   dragShapeStarts: [],
+  dragChildShapeStarts: [],
+  dragChildTextBoxStarts: [],
   isResizingShape: false,
   resizeShapeIdx: -1,
   resizeShapeId: -1,
@@ -178,6 +259,13 @@ export const state = {
   selectedTextBoxes: new Set(),
   isDraggingTextBox: false,
   dragTextBoxStarts: [],
+  isResizingTextBox: false,
+  resizeTextBoxIdx: -1,
+  resizeTextBoxId: -1,
+  resizeTextBoxHandle: '',
+  resizeTextBoxStartWorldX: 0,
+  resizeTextBoxStartWorldY: 0,
+  resizeTextBoxStartBounds: null,
 
   connectors: [],
   nextConnectorId: 1,
@@ -213,10 +301,38 @@ export const state = {
   hoveredHandleInfo: null,
 
   getDrawOrder,
+  getTopHitAt(wx, wy) {
+    const order = state.getAllDrawOrder();
+    for (let i = order.length - 1; i >= 0; i--) {
+      const item = order[i];
+      let e;
+      if (item.type === 'node') e = state.nodes[item.i];
+      else if (item.type === 'shape') e = state.shapes[item.i];
+      else e = state.textBoxes[item.i];
+      if (e && wx >= e.x && wx <= e.x + e.w && wy >= e.y && wy <= e.y + e.h) return item;
+    }
+    return null;
+  },
+  getAllDrawOrder() {
+    const items = [];
+    for (let i = 0; i < state.shapes.length; i++) {
+      items.push({ type: 'shape', i, area: state.shapes[i].w * state.shapes[i].h });
+    }
+    for (let i = 0; i < state.textBoxes.length; i++) {
+      items.push({ type: 'textBox', i, area: state.textBoxes[i].w * state.textBoxes[i].h });
+    }
+    for (let i = 0; i < state.nodes.length; i++) {
+      items.push({ type: 'node', i, area: state.nodes[i].w * state.nodes[i].h });
+    }
+    items.sort((a, b) => b.area - a.area);
+    return items;
+  },
   markDrawOrderDirty,
   isFullyContained,
   findSmallestContainer,
   checkAndUpdateParenting,
+  reparentAll,
+  getChildrenByParentId,
   getDragGroup,
   findNodeById,
   computeSelectionKey,

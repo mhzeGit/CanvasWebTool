@@ -29,15 +29,13 @@ export function addNodeAtCenter() {
 export function addNodeAt(worldX, worldY) {
   flushPanelEdit();
   const w = 240; const h = 160;
-  const node = { id: nextNodeId(), x: worldX - w / 2, y: worldY - h / 2, w, h, color: DEFAULT_NODE_COLOR, title: '', titleColor: '#e7e7e7', text: '', parentId: null };
+  const node = { id: nextNodeId(), x: worldX - w / 2, y: worldY - h / 2, w, h, color: DEFAULT_NODE_COLOR, title: '', titleColor: '#e7e7e7', text: '', parentId: null, parentType: null };
   const idx = state.nodes.length;
   state.nodes.push(node);
   state.selected.clear();
   state.selected.add(idx);
   state.markDrawOrderDirty();
-  for (let i = 0; i < state.nodes.length; i++) {
-    state.checkAndUpdateParenting(i);
-  }
+  state.reparentAll();
   refreshSidePanel();
   history.push(createAddNodeCmd(state.nodes, state.selected, refreshSidePanel, node, idx));
 }
@@ -106,6 +104,8 @@ export function addShapeAt(worldX, worldY, shapeType, optW, optH) {
     borderColor: '#6bb5ff',
     borderWidth: 2,
     cornerRadius: type === 'rectangle' ? 4 : 0,
+    parentId: null,
+    parentType: null,
   };
   const idx = state.shapes.length;
   state.shapes.push(shape);
@@ -133,6 +133,8 @@ export function addTextBoxAt(worldX, worldY, optW, optH) {
     borderColor: '#444',
     textColor: '#ddd',
     fontSize: 14,
+    parentId: null,
+    parentType: null,
   };
   const idx = state.textBoxes.length;
   state.textBoxes.push(textBox);
@@ -191,6 +193,7 @@ export function deleteSelectedShapes() {
     state.shapes.splice(sortedIndices[i], 1);
   }
   state.selectedShapes.clear();
+  state.reparentAll();
   refreshSidePanel();
   history.push(createDeleteShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, deletedEntries));
 }
@@ -204,6 +207,7 @@ export function deleteSelectedTextBoxes() {
     state.textBoxes.splice(sortedIndices[i], 1);
   }
   state.selectedTextBoxes.clear();
+  state.reparentAll();
   refreshSidePanel();
   history.push(createDeleteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, deletedEntries));
 }
@@ -217,6 +221,7 @@ export function deleteSelectedConnectors() {
     state.connectors.splice(sortedIndices[i], 1);
   }
   state.selectedConnectors.clear();
+  state.reparentAll();
   refreshSidePanel();
   history.push(createDeleteConnectorsCmd(state.connectors, state.selectedConnectors, refreshSidePanel, deletedEntries));
 }
@@ -277,9 +282,7 @@ export function deleteSelectedNodes() {
 
   state.selected.clear();
   state.markDrawOrderDirty();
-  for (let i = 0; i < state.nodes.length; i++) {
-    state.checkAndUpdateParenting(i);
-  }
+  state.reparentAll();
   refreshSidePanel();
   history.push(createDeleteNodesCmd(state.nodes, state.selected, refreshSidePanel, deletedEntries));
 }
@@ -300,7 +303,8 @@ export function duplicateSelectedNodes() {
       title: n.title,
       titleColor: n.titleColor,
       text: n.text,
-      parentId: null
+      parentId: null,
+      parentType: null
     });
   }
   const startIdx = state.nodes.length;
@@ -312,9 +316,7 @@ export function duplicateSelectedNodes() {
   state.selected.clear();
   for (let i = 0; i < dupes.length; i++) state.selected.add(startIdx + i);
   state.markDrawOrderDirty();
-  for (let i = 0; i < state.nodes.length; i++) {
-    state.checkAndUpdateParenting(i);
-  }
+  state.reparentAll();
   refreshSidePanel();
   history.push(createDuplicateNodesCmd(state.nodes, state.selected, refreshSidePanel, entries));
 }
@@ -367,7 +369,8 @@ export function pasteNodesAt(worldX, worldY) {
       title: c.title,
       titleColor: c.titleColor,
       text: c.text,
-      parentId: null
+      parentId: null,
+      parentType: null
     };
     const idx = state.nodes.length;
     state.nodes.push(node);
@@ -376,9 +379,7 @@ export function pasteNodesAt(worldX, worldY) {
   state.selected.clear();
   for (let i = 0; i < pastedEntries.length; i++) state.selected.add(pastedEntries[i].index);
   state.markDrawOrderDirty();
-  for (let i = 0; i < state.nodes.length; i++) {
-    state.checkAndUpdateParenting(i);
-  }
+  state.reparentAll();
   refreshSidePanel();
   history.push(createPasteNodesCmd(state.nodes, state.selected, refreshSidePanel, pastedEntries));
 }
@@ -480,9 +481,7 @@ export function restoreDocumentState(docState) {
   state.scale = state.targetScale = vp.scale ?? 1;
 
   state.markDrawOrderDirty();
-  for (let i = 0; i < state.nodes.length; i++) {
-    state.checkAndUpdateParenting(i);
-  }
+  state.reparentAll();
   refreshSidePanel();
 }
 

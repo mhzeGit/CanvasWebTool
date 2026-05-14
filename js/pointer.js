@@ -3,8 +3,9 @@ import { screenToWorld } from './utils.js';
 import { hitTestNode } from './nodes.js';
 import { hitTestConnection } from './connections.js';
 import { hitTestArrowEnd, hitTestArrowBody, isArrowInBox, getArrowEndpoint } from './arrows.js';
-import { hitTestShape, getShapeEdgeAt, isShapeInBox } from './shapes.js';
-import { hitTestTextBox, getTextBoxEdgeAt } from './textboxes.js';
+import { getShapeEdgeAt, isShapeInBox } from './shapes.js';
+import { getTextBoxEdgeAt } from './textboxes.js';
+import { computeResizeBounds } from './utils.js';
 import { hitTestConnector, isConnectorInBox } from './connectors.js';
 import { getActiveTool, getShapeSubType, TOOLS } from './toolManager.js';
 import { openContextMenu, closeContextMenu } from './context-menu.js';
@@ -19,12 +20,12 @@ import {
 import {
   createResizeNodeCmd, createMoveNodesCmd, createMoveArrowEndCmd,
   createMoveShapesCmd, createResizeShapeCmd, createMoveTextBoxesCmd,
-  createMoveConnectorsCmd,
+  createMoveConnectorsCmd, createResizeTextBoxCmd,
 } from './undo.js';
 import { flushPanelEdit } from './history.js';
 import { getNodeEdgePoint } from './utils.js';
 import { findNodeAtPoint } from './nodes.js';
-import { DRAG_THRESHOLD_PX, NODE_MIN_W, NODE_MIN_H } from './config.js';
+import { DRAG_THRESHOLD_PX, NODE_MIN_W, NODE_MIN_H, SHAPE_MIN_W, SHAPE_MIN_H, TEXTBOX_MIN_W, TEXTBOX_MIN_H } from './config.js';
 import { getEdgeAt, findNodeAtEdge } from './nodes.js';
 
 let _history;
@@ -39,6 +40,37 @@ function setupListeners() {
   state.canvas.addEventListener('pointermove', onPointerMove);
   state.canvas.addEventListener('pointerup', onPointerUp);
   state.canvas.addEventListener('pointercancel', onPointerCancel);
+}
+
+function gatherChildDragStarts() {
+  state.dragChildShapeStarts = [];
+  state.dragChildTextBoxStarts = [];
+  const parentIds = new Set();
+  const parentTypes = new Set();
+  for (const si of state.selected) {
+    parentIds.add(state.nodes[si].id);
+    parentTypes.add('node');
+  }
+  for (const si of state.selectedShapes) {
+    parentIds.add(state.shapes[si].id);
+    parentTypes.add('shape');
+  }
+  for (const ti of state.selectedTextBoxes) {
+    parentIds.add(state.textBoxes[ti].id);
+    parentTypes.add('textBox');
+  }
+  for (let i = 0; i < state.shapes.length; i++) {
+    const s = state.shapes[i];
+    if (s.parentId !== null && parentIds.has(s.parentId) && parentTypes.has(s.parentType)) {
+      state.dragChildShapeStarts.push({ i, x: s.x, y: s.y, id: s.id });
+    }
+  }
+  for (let i = 0; i < state.textBoxes.length; i++) {
+    const tb = state.textBoxes[i];
+    if (tb.parentId !== null && parentIds.has(tb.parentId) && parentTypes.has(tb.parentType)) {
+      state.dragChildTextBoxStarts.push({ i, x: tb.x, y: tb.y, id: tb.id });
+    }
+  }
 }
 
 export function deleteArrowFn(ai) {
@@ -244,34 +276,6 @@ function onPointerDown(e) {
       return;
     }
 
-    if (hit !== -1) {
-      state.selectedConnection = null;
-      state.arrowDragTarget = null;
-      if (!e.shiftKey && !state.selected.has(hit)) {
-        state.selectedArrows.clear();
-      }
-      state.pointerDownScreenX = sx;
-      state.pointerDownScreenY = sy;
-      state.pendingClickIndex = hit;
-      state.pendingShiftKey = e.shiftKey;
-      state.pendingCtrlKey = e.ctrlKey;
-      state.didDragSincePointerDown = false;
-
-      if (e.ctrlKey) {
-        if (state.selected.has(hit)) state.selected.delete(hit);
-        state.pendingClickIndex = -1;
-        e.preventDefault();
-        return;
-      }
-      if (e.shiftKey) {
-        state.selected.add(hit);
-      }
-
-      canvas.setPointerCapture(e.pointerId);
-      e.preventDefault();
-      return;
-    }
-
     {
       const shapeEdge = getShapeEdgeAt(world.x, world.y);
       if (shapeEdge) {
@@ -299,31 +303,24 @@ function onPointerDown(e) {
     }
 
     {
-      const shapeHit = hitTestShape(world.x, world.y);
-      if (shapeHit !== -1) {
+      const tbEdge = getTextBoxEdgeAt(world.x, world.y);
+      if (tbEdge) {
+        flushPanelEdit();
         state.selected.clear();
         state.selectedConnection = null;
         state.selectedArrows.clear();
-        state.selectedTextBoxes.clear();
+        state.selectedShapes.clear();
         state.selectedConnectors.clear();
-        if (e.ctrlKey) {
-          if (state.selectedShapes.has(shapeHit)) state.selectedShapes.delete(shapeHit);
-          refreshSidePanel();
-          e.preventDefault();
-          return;
-        }
-        if (e.shiftKey) {
-          state.selectedShapes.add(shapeHit);
-        } else if (!state.selectedShapes.has(shapeHit)) {
-          state.selectedShapes.clear();
-          state.selectedShapes.add(shapeHit);
-        }
-        state.pointerDownScreenX = sx;
-        state.pointerDownScreenY = sy;
-        state.pendingClickIndex = -3;
-        state.pendingShiftKey = e.shiftKey;
-        state.pendingCtrlKey = e.ctrlKey;
-        state.didDragSincePointerDown = false;
+        state.selectedTextBoxes.clear();
+        state.selectedTextBoxes.add(tbEdge.idx);
+        state.isResizingTextBox = true;
+        state.resizeTextBoxIdx = tbEdge.idx;
+        state.resizeTextBoxId = state.textBoxes[tbEdge.idx].id;
+        state.resizeTextBoxHandle = tbEdge.handle;
+        state.resizeTextBoxStartWorldX = world.x;
+        state.resizeTextBoxStartWorldY = world.y;
+        const tb = state.textBoxes[tbEdge.idx];
+        state.resizeTextBoxStartBounds = { x: tb.x, y: tb.y, w: tb.w, h: tb.h };
         refreshSidePanel();
         canvas.setPointerCapture(e.pointerId);
         e.preventDefault();
@@ -332,35 +329,109 @@ function onPointerDown(e) {
     }
 
     {
-      const tbHit = hitTestTextBox(world.x, world.y);
-      if (tbHit !== -1) {
-        state.selected.clear();
-        state.selectedConnection = null;
-        state.selectedArrows.clear();
-        state.selectedShapes.clear();
-        state.selectedConnectors.clear();
-        if (e.ctrlKey) {
-          if (state.selectedTextBoxes.has(tbHit)) state.selectedTextBoxes.delete(tbHit);
+      const topHit = state.getTopHitAt(world.x, world.y);
+      if (topHit) {
+        if (topHit.type === 'node') {
+          state.selectedConnection = null;
+          state.arrowDragTarget = null;
+          if (!e.shiftKey && !e.ctrlKey) {
+            state.selected.clear();
+            state.selectedArrows.clear();
+            state.selectedShapes.clear();
+            state.selectedTextBoxes.clear();
+            state.selectedConnectors.clear();
+          }
+          hit = topHit.i;
+          state.pointerDownScreenX = sx;
+          state.pointerDownScreenY = sy;
+          state.pendingClickIndex = hit;
+          state.pendingShiftKey = e.shiftKey;
+          state.pendingCtrlKey = e.ctrlKey;
+          state.didDragSincePointerDown = false;
+          if (e.ctrlKey) {
+            if (state.selected.has(hit)) state.selected.delete(hit);
+            state.pendingClickIndex = -1;
+            refreshSidePanel();
+            e.preventDefault();
+            return;
+          }
+          if (e.shiftKey) {
+            state.selected.add(hit);
+          } else {
+            state.selected.clear();
+            state.selected.add(hit);
+          }
           refreshSidePanel();
+          canvas.setPointerCapture(e.pointerId);
           e.preventDefault();
           return;
         }
-        if (e.shiftKey) {
-          state.selectedTextBoxes.add(tbHit);
-        } else if (!state.selectedTextBoxes.has(tbHit)) {
-          state.selectedTextBoxes.clear();
-          state.selectedTextBoxes.add(tbHit);
+        if (topHit.type === 'shape') {
+          if (!e.shiftKey && !e.ctrlKey) {
+            state.selected.clear();
+            state.selectedConnection = null;
+            state.selectedArrows.clear();
+            state.selectedShapes.clear();
+            state.selectedTextBoxes.clear();
+            state.selectedConnectors.clear();
+            state.arrowDragTarget = null;
+          }
+          if (e.ctrlKey) {
+            if (state.selectedShapes.has(topHit.i)) state.selectedShapes.delete(topHit.i);
+            refreshSidePanel();
+            e.preventDefault();
+            return;
+          }
+          if (e.shiftKey) {
+            state.selectedShapes.add(topHit.i);
+          } else if (!state.selectedShapes.has(topHit.i)) {
+            state.selectedShapes.clear();
+            state.selectedShapes.add(topHit.i);
+          }
+          state.pendingClickIndex = -3;
+          state.pointerDownScreenX = sx;
+          state.pointerDownScreenY = sy;
+          state.pendingShiftKey = e.shiftKey;
+          state.pendingCtrlKey = e.ctrlKey;
+          state.didDragSincePointerDown = false;
+          refreshSidePanel();
+          canvas.setPointerCapture(e.pointerId);
+          e.preventDefault();
+          return;
         }
-        state.pointerDownScreenX = sx;
-        state.pointerDownScreenY = sy;
-        state.pendingClickIndex = -4;
-        state.pendingShiftKey = e.shiftKey;
-        state.pendingCtrlKey = e.ctrlKey;
-        state.didDragSincePointerDown = false;
-        refreshSidePanel();
-        canvas.setPointerCapture(e.pointerId);
-        e.preventDefault();
-        return;
+        if (topHit.type === 'textBox') {
+          if (!e.shiftKey && !e.ctrlKey) {
+            state.selected.clear();
+            state.selectedConnection = null;
+            state.selectedArrows.clear();
+            state.selectedShapes.clear();
+            state.selectedTextBoxes.clear();
+            state.selectedConnectors.clear();
+            state.arrowDragTarget = null;
+          }
+          if (e.ctrlKey) {
+            if (state.selectedTextBoxes.has(topHit.i)) state.selectedTextBoxes.delete(topHit.i);
+            refreshSidePanel();
+            e.preventDefault();
+            return;
+          }
+          if (e.shiftKey) {
+            state.selectedTextBoxes.add(topHit.i);
+          } else if (!state.selectedTextBoxes.has(topHit.i)) {
+            state.selectedTextBoxes.clear();
+            state.selectedTextBoxes.add(topHit.i);
+          }
+          state.pendingClickIndex = -4;
+          state.pointerDownScreenX = sx;
+          state.pointerDownScreenY = sy;
+          state.pendingShiftKey = e.shiftKey;
+          state.pendingCtrlKey = e.ctrlKey;
+          state.didDragSincePointerDown = false;
+          refreshSidePanel();
+          canvas.setPointerCapture(e.pointerId);
+          e.preventDefault();
+          return;
+        }
       }
     }
 
@@ -598,46 +669,77 @@ function onPointerMove(e) {
     return;
   }
 
+  if (state.isResizingTextBox) {
+    const dx = world.x - state.resizeTextBoxStartWorldX;
+    const dy = world.y - state.resizeTextBoxStartWorldY;
+    const tb = state.textBoxes[state.resizeTextBoxIdx];
+    const b = computeResizeBounds(state.resizeTextBoxStartBounds, state.resizeTextBoxHandle, dx, dy, TEXTBOX_MIN_W, TEXTBOX_MIN_H);
+    tb.x = b.x; tb.y = b.y; tb.w = b.w; tb.h = b.h;
+    e.preventDefault();
+    return;
+  }
+
+  const dragDx = world.x - state.dragStartWorldX;
+  const dragDy = world.y - state.dragStartWorldY;
+
   if (state.isDraggingNode) {
-    const dx = world.x - state.dragStartWorldX;
-    const dy = world.y - state.dragStartWorldY;
     for (const item of state.dragGroupStarts) {
       const n = state.nodes[item.i];
-      n.x = item.x + dx;
-      n.y = item.y + dy;
+      n.x = item.x + dragDx;
+      n.y = item.y + dragDy;
     }
     for (const s of state.dragArrowStarts) {
       const a = state.arrows[s.idx];
       if (a && a.connectedFrom === null && a.connectedTo === null) {
-        a.x1 = s.x1 + dx;
-        a.y1 = s.y1 + dy;
-        a.x2 = s.x2 + dx;
-        a.y2 = s.y2 + dy;
+        a.x1 = s.x1 + dragDx;
+        a.y1 = s.y1 + dragDy;
+        a.x2 = s.x2 + dragDx;
+        a.y2 = s.y2 + dragDy;
       }
+    }
+    for (const item of state.dragChildShapeStarts) {
+      const s = state.shapes[item.i];
+      if (s) { s.x = item.x + dragDx; s.y = item.y + dragDy; }
+    }
+    for (const item of state.dragChildTextBoxStarts) {
+      const tb = state.textBoxes[item.i];
+      if (tb) { tb.x = item.x + dragDx; tb.y = item.y + dragDy; }
     }
     e.preventDefault();
     return;
   }
 
   if (state.isDraggingShape) {
-    const dx = world.x - state.dragStartWorldX;
-    const dy = world.y - state.dragStartWorldY;
     for (const item of state.dragShapeStarts) {
       const s = state.shapes[item.i];
-      s.x = item.x + dx;
-      s.y = item.y + dy;
+      s.x = item.x + dragDx;
+      s.y = item.y + dragDy;
+    }
+    for (const item of state.dragChildShapeStarts) {
+      const s = state.shapes[item.i];
+      if (s) { s.x = item.x + dragDx; s.y = item.y + dragDy; }
+    }
+    for (const item of state.dragChildTextBoxStarts) {
+      const tb = state.textBoxes[item.i];
+      if (tb) { tb.x = item.x + dragDx; tb.y = item.y + dragDy; }
     }
     e.preventDefault();
     return;
   }
 
   if (state.isDraggingTextBox) {
-    const dx = world.x - state.dragStartWorldX;
-    const dy = world.y - state.dragStartWorldY;
     for (const item of state.dragTextBoxStarts) {
       const tb = state.textBoxes[item.i];
-      tb.x = item.x + dx;
-      tb.y = item.y + dy;
+      tb.x = item.x + dragDx;
+      tb.y = item.y + dragDy;
+    }
+    for (const item of state.dragChildShapeStarts) {
+      const s = state.shapes[item.i];
+      if (s) { s.x = item.x + dragDx; s.y = item.y + dragDy; }
+    }
+    for (const item of state.dragChildTextBoxStarts) {
+      const tb = state.textBoxes[item.i];
+      if (tb) { tb.x = item.x + dragDx; tb.y = item.y + dragDy; }
     }
     e.preventDefault();
     return;
@@ -687,6 +789,7 @@ function onPointerMove(e) {
       state.dragStartWorldX = world.x;
       state.dragStartWorldY = world.y;
       state.dragGroupStarts = state.getDragGroup(state.selected).map(it => ({ ...it, id: state.nodes[it.i].id }));
+      gatherChildDragStarts();
       state.dragArrowStarts = [];
       for (const ai of state.selectedArrows) {
         const a = state.arrows[ai];
@@ -716,6 +819,7 @@ function onPointerMove(e) {
         const s = state.shapes[si];
         if (s) state.dragShapeStarts.push({ i: si, x: s.x, y: s.y, id: s.id });
       }
+      gatherChildDragStarts();
     }
   }
 
@@ -732,6 +836,7 @@ function onPointerMove(e) {
         const tb = state.textBoxes[ti];
         if (tb) state.dragTextBoxStarts.push({ i: ti, x: tb.x, y: tb.y, id: tb.id });
       }
+      gatherChildDragStarts();
     }
   }
 
@@ -786,7 +891,7 @@ function onPointerMove(e) {
     canvas.style.cursor = 'crosshair';
     cursorSet = true;
   }
-  if (!state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
+  if (!state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
     const handleHit = getEdgeAt(world.x, world.y);
     if (handleHit) {
       canvas.style.cursor = handleHit.cursor;
@@ -794,14 +899,21 @@ function onPointerMove(e) {
       cursorSet = true;
     }
   }
-  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
+  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
     const shapeEdge = getShapeEdgeAt(world.x, world.y);
     if (shapeEdge) {
       canvas.style.cursor = shapeEdge.cursor;
       cursorSet = true;
     }
   }
-  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && state.connectingFrom === null && !state.isDraggingArrowEnd) {
+  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
+    const tbEdge = getTextBoxEdgeAt(world.x, world.y);
+    if (tbEdge) {
+      canvas.style.cursor = tbEdge.cursor;
+      cursorSet = true;
+    }
+  }
+  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && state.connectingFrom === null && !state.isDraggingArrowEnd) {
     const connHit = hitTestConnection(world.x, world.y);
     if (connHit !== null) {
       canvas.style.cursor = 'pointer';
@@ -812,7 +924,7 @@ function onPointerMove(e) {
     canvas.style.cursor = 'move';
     cursorSet = true;
   }
-  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd && !state.isDraggingArrowBody) {
+  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd && !state.isDraggingArrowBody) {
     const bodyHit = hitTestArrowBody(world.x, world.y);
     if (bodyHit !== -1) {
       canvas.style.cursor = 'pointer';
@@ -936,9 +1048,7 @@ function onPointerUp(e) {
         { x: state.resizeStartNode.x, y: state.resizeStartNode.y, w: state.resizeStartNode.w, h: state.resizeStartNode.h },
         { x: n.x, y: n.y, w: n.w, h: n.h }));
       state.markDrawOrderDirty();
-      for (let i = 0; i < state.nodes.length; i++) {
-        state.checkAndUpdateParenting(i);
-      }
+      state.reparentAll();
     }
     state.isResizing = false;
     state.resizeNodeId = -1;
@@ -957,6 +1067,21 @@ function onPointerUp(e) {
     state.resizeShapeId = -1;
     state.resizeShapeStartBounds = null;
   }
+  if (state.isResizingTextBox) {
+    const tb = state.textBoxes[state.resizeTextBoxIdx];
+    if (tb && state.resizeTextBoxStartBounds) {
+      if (tb.x !== state.resizeTextBoxStartBounds.x || tb.y !== state.resizeTextBoxStartBounds.y ||
+          tb.w !== state.resizeTextBoxStartBounds.w || tb.h !== state.resizeTextBoxStartBounds.h) {
+        _history.push(createResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, state.resizeTextBoxId,
+          { x: state.resizeTextBoxStartBounds.x, y: state.resizeTextBoxStartBounds.y, w: state.resizeTextBoxStartBounds.w, h: state.resizeTextBoxStartBounds.h },
+          { x: tb.x, y: tb.y, w: tb.w, h: tb.h }));
+        state.reparentAll();
+      }
+    }
+    state.isResizingTextBox = false;
+    state.resizeTextBoxId = -1;
+    state.resizeTextBoxStartBounds = null;
+  }
   if (state.isPanning) {
     state.isPanning = false;
   }
@@ -972,9 +1097,7 @@ function onPointerUp(e) {
     }
     if (moves.length > 0) {
       _history.push(createMoveNodesCmd(state.nodes, state.selected, refreshSidePanel, moves));
-      for (let i = 0; i < state.nodes.length; i++) {
-        state.checkAndUpdateParenting(i);
-      }
+      state.reparentAll();
     }
     state.isDraggingNode = false;
     if (state.dragArrowStarts && state.dragArrowStarts.length > 0) {
@@ -989,6 +1112,28 @@ function onPointerUp(e) {
       }
       state.dragArrowStarts = [];
     }
+    const childShapeMoves = [];
+    for (const item of state.dragChildShapeStarts) {
+      const s = state.shapes[item.i];
+      if (s && (s.x !== item.x || s.y !== item.y)) {
+        childShapeMoves.push({ id: item.id, fromX: item.x, fromY: item.y, toX: s.x, toY: s.y });
+      }
+    }
+    if (childShapeMoves.length > 0) {
+      _history.push(createMoveShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, childShapeMoves));
+    }
+    const childTBMoves = [];
+    for (const item of state.dragChildTextBoxStarts) {
+      const tb = state.textBoxes[item.i];
+      if (tb && (tb.x !== item.x || tb.y !== item.y)) {
+        childTBMoves.push({ id: item.id, fromX: item.x, fromY: item.y, toX: tb.x, toY: tb.y });
+      }
+    }
+    if (childTBMoves.length > 0) {
+      _history.push(createMoveTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, childTBMoves));
+    }
+    state.dragChildShapeStarts = [];
+    state.dragChildTextBoxStarts = [];
   }
   if (state.isDraggingShape) {
     const moves = [];
@@ -1003,6 +1148,29 @@ function onPointerUp(e) {
     }
     state.isDraggingShape = false;
     state.dragShapeStarts = [];
+    const childShapeMoves = [];
+    for (const item of state.dragChildShapeStarts) {
+      const s = state.shapes[item.i];
+      if (s && (s.x !== item.x || s.y !== item.y)) {
+        childShapeMoves.push({ id: item.id, fromX: item.x, fromY: item.y, toX: s.x, toY: s.y });
+      }
+    }
+    if (childShapeMoves.length > 0) {
+      _history.push(createMoveShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, childShapeMoves));
+    }
+    const childTBMoves = [];
+    for (const item of state.dragChildTextBoxStarts) {
+      const tb = state.textBoxes[item.i];
+      if (tb && (tb.x !== item.x || tb.y !== item.y)) {
+        childTBMoves.push({ id: item.id, fromX: item.x, fromY: item.y, toX: tb.x, toY: tb.y });
+      }
+    }
+    if (childTBMoves.length > 0) {
+      _history.push(createMoveTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, childTBMoves));
+    }
+    state.dragChildShapeStarts = [];
+    state.dragChildTextBoxStarts = [];
+    state.reparentAll();
   }
   if (state.isDraggingTextBox) {
     const moves = [];
@@ -1017,6 +1185,29 @@ function onPointerUp(e) {
     }
     state.isDraggingTextBox = false;
     state.dragTextBoxStarts = [];
+    const childShapeMoves = [];
+    for (const item of state.dragChildShapeStarts) {
+      const s = state.shapes[item.i];
+      if (s && (s.x !== item.x || s.y !== item.y)) {
+        childShapeMoves.push({ id: item.id, fromX: item.x, fromY: item.y, toX: s.x, toY: s.y });
+      }
+    }
+    if (childShapeMoves.length > 0) {
+      _history.push(createMoveShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, childShapeMoves));
+    }
+    const childTBMoves = [];
+    for (const item of state.dragChildTextBoxStarts) {
+      const tb = state.textBoxes[item.i];
+      if (tb && (tb.x !== item.x || tb.y !== item.y)) {
+        childTBMoves.push({ id: item.id, fromX: item.x, fromY: item.y, toX: tb.x, toY: tb.y });
+      }
+    }
+    if (childTBMoves.length > 0) {
+      _history.push(createMoveTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, childTBMoves));
+    }
+    state.dragChildShapeStarts = [];
+    state.dragChildTextBoxStarts = [];
+    state.reparentAll();
   }
   if (state.isDraggingConnectorBody && state.dragConnectorBodySnapshots.length > 0) {
     for (const snap of state.dragConnectorBodySnapshots) {
@@ -1131,6 +1322,7 @@ function onPointerUp(e) {
     state.isDraggingArrowBody = false;
     state.dragArrowBodySnapshots = [];
     state.dragArrowBodyStartWorld = null;
+    state.reparentAll();
     refreshSidePanel();
   }
 

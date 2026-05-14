@@ -28,6 +28,10 @@ export const RMB_MENU_THRESHOLD_MS = 250;
 export const EDGE_MARGIN = 12;
 export const NODE_MIN_W = 100;
 export const NODE_MIN_H = 70;
+export const SHAPE_MIN_W = 20;
+export const SHAPE_MIN_H = 20;
+export const TEXTBOX_MIN_W = 10;
+export const TEXTBOX_MIN_H = 10;
 
 export const CONN_HIT_THRESHOLD = 8;
 

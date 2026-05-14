@@ -307,6 +307,28 @@ export function createResizeShapeCmd(shapes, selectedShapes, refreshPanelFn, sha
   };
 }
 
+export function createResizeTextBoxCmd(textBoxes, selectedTextBoxes, refreshPanelFn, tbId, fromBounds, toBounds) {
+  return {
+    undo() {
+      const found = textBoxes.find(t => t.id === tbId);
+      if (found) {
+        found.x = fromBounds.x; found.y = fromBounds.y;
+        found.w = fromBounds.w; found.h = fromBounds.h;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const found = textBoxes.find(t => t.id === tbId);
+      if (found) {
+        found.x = toBounds.x; found.y = toBounds.y;
+        found.w = toBounds.w; found.h = toBounds.h;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: 'Resize Text Box'
+  };
+}
+
 export function createShapePropertyChangeCmd(shapes, selectedShapes, refreshPanelFn, shapeId, property, oldValue, newValue) {
   return {
     undo() {

@@ -183,6 +183,51 @@ export function getNodeEdgePoint(node, targetX, targetY) {
   return { x: xAtEdge, y: cy + (dy > 0 ? hh : -hh), side: dy > 0 ? 'bottom' : 'top' };
 }
 
+export function getEdgeAt(wx, wy, entities, edgeMargin) {
+  for (let i = entities.length - 1; i >= 0; i--) {
+    const e = entities[i];
+    const onLeft = Math.abs(wx - e.x) <= edgeMargin;
+    const onRight = Math.abs(wx - (e.x + e.w)) <= edgeMargin;
+    const onTop = Math.abs(wy - e.y) <= edgeMargin;
+    const onBottom = Math.abs(wy - (e.y + e.h)) <= edgeMargin;
+    const inX = wx >= e.x - edgeMargin && wx <= e.x + e.w + edgeMargin;
+    const inY = wy >= e.y - edgeMargin && wy <= e.y + e.h + edgeMargin;
+    if (!inX || !inY) continue;
+    if (onLeft && onTop) return { idx: i, handle: 'tl', cursor: 'nw-resize' };
+    if (onRight && onTop) return { idx: i, handle: 'tr', cursor: 'ne-resize' };
+    if (onLeft && onBottom) return { idx: i, handle: 'bl', cursor: 'sw-resize' };
+    if (onRight && onBottom) return { idx: i, handle: 'br', cursor: 'se-resize' };
+    if (onLeft) return { idx: i, handle: 'left', cursor: 'ew-resize' };
+    if (onRight) return { idx: i, handle: 'right', cursor: 'ew-resize' };
+    if (onTop) return { idx: i, handle: 'top', cursor: 'ns-resize' };
+    if (onBottom) return { idx: i, handle: 'bottom', cursor: 'ns-resize' };
+  }
+  return null;
+}
+
+export function computeResizeBounds(start, handle, dx, dy, minW, minH) {
+  let newX = start.x, newY = start.y, newW = start.w, newH = start.h;
+  switch (handle) {
+    case 'left':   newX = start.x + dx; newW = start.w - dx; break;
+    case 'right':  newW = start.w + dx; break;
+    case 'top':    newY = start.y + dy; newH = start.h - dy; break;
+    case 'bottom': newH = start.h + dy; break;
+    case 'tl':     newX = start.x + dx; newY = start.y + dy; newW = start.w - dx; newH = start.h - dy; break;
+    case 'tr':     newY = start.y + dy; newW = start.w + dx; newH = start.h - dy; break;
+    case 'bl':     newX = start.x + dx; newW = start.w - dx; newH = start.h + dy; break;
+    case 'br':     newW = start.w + dx; newH = start.h + dy; break;
+  }
+  if (newW < minW) {
+    if (handle.includes('l')) newX = start.x + start.w - minW;
+    newW = minW;
+  }
+  if (newH < minH) {
+    if (handle[0] === 't') newY = start.y + start.h - minH;
+    newH = minH;
+  }
+  return { x: newX, y: newY, w: newW, h: newH };
+}
+
 export function getPointOnBezier(x1, y1, cx1, cy1, cx2, cy2, x2, y2, t) {
   const mt = 1 - t;
   const mt2 = mt * mt;

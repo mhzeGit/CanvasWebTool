@@ -1,6 +1,11 @@
 {
   "worktrees": {},
-  "sessions": {},
+  "sessions": {
+    "ses_1d8db8c10ffeH864iakn78XIzZ": {
+      "worktreeId": null,
+      "createdAt": "2026-05-14T15:39:20.970Z"
+    }
+  },
   "tabOrder": {
     "local": [
       "ses_1dd7279a3ffeOsvAvGfxeHL897",
@@ -18,7 +23,8 @@
       "ses_1d9e15195ffe3j7MCzF846hBdF",
       "ses_1d9a4cf00ffe4EZ03YjWOrF6q2",
       "ses_1d964fe73ffeqtSXNy4a7dQuXl",
-      "pending:4"
+      "pending:4",
+      "ses_1d8db8c10ffeH864iakn78XIzZ"
     ]
   }
 }

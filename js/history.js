@@ -58,16 +58,12 @@ export function performUndo() {
   flushPanelEdit();
   history.undo();
   state.markDrawOrderDirty();
-  for (let i = 0; i < state.nodes.length; i++) {
-    state.checkAndUpdateParenting(i);
-  }
+  state.reparentAll();
 }
 
 export function performRedo() {
   flushPanelEdit();
   history.redo();
   state.markDrawOrderDirty();
-  for (let i = 0; i < state.nodes.length; i++) {
-    state.checkAndUpdateParenting(i);
-  }
+  state.reparentAll();
 }
