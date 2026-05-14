@@ -1,4 +1,4 @@
-import { parseMarkdownLines, NAMED_COLORS } from './markdown.js';
+import { parseMarkdownLines, NAMED_COLORS, normalizeColor } from './markdown.js';
 
 export function markdownToBlocks(text) {
   if (!text) return [{ t: 'p', s: [{ t: '' }] }];
@@ -51,7 +51,7 @@ export function blocksToMarkdown(blocks) {
     while (i < spanList.length) {
       const sp = spanList[i];
       if (sp.fc) {
-        const entry = Object.entries(NAMED_COLORS).find(([, v]) => v === sp.fc);
+        const entry = Object.entries(NAMED_COLORS).find(([, v]) => v === normalizeColor(sp.fc));
         if (entry) {
           let j = i + 1;
           while (j < spanList.length && spanList[j].fc === sp.fc) j++;
@@ -231,7 +231,7 @@ function collectAncestorFormat(node, blockEl) {
         fmt.lk = cur.getAttribute('href') || '';
       }
       if (tag === 'span' || tag === 'font') {
-        const c = cur.style && cur.style.color ? cur.style.color : (cur.getAttribute && cur.getAttribute('color'));
+        const c = cur.style && cur.style.color ? normalizeColor(cur.style.color) : (cur.getAttribute && cur.getAttribute('color'));
         if (c && !fmt.fc) fmt.fc = c;
         const fs = cur.style && cur.style.fontSize ? cur.style.fontSize : null;
         if (fs && !fmt.fs) {

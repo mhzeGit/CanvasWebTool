@@ -11,6 +11,17 @@ export const NAMED_COLORS = {
   gray: '#bdbdbd',
 };
 
+export function normalizeColor(val) {
+  if (!val) return val;
+  const s = val.trim().toLowerCase();
+  const rgb = s.match(/^rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/);
+  if (rgb) {
+    return '#' + [rgb[1], rgb[2], rgb[3]].map(n => parseInt(n, 10).toString(16).padStart(2, '0')).join('');
+  }
+  if (/^#[0-9a-f]{6}$/.test(s) || /^#[0-9a-f]{3}$/.test(s)) return s;
+  return val;
+}
+
 function getNamedColor(name) {
   return NAMED_COLORS[name.toLowerCase()] || null;
 }
