@@ -119,12 +119,23 @@ export function parseInlineSpans(text) {
   return spans;
 }
 
+function getIndentLevel(line) {
+  let spaces = 0;
+  for (const ch of line) {
+    if (ch === ' ') spaces++;
+    else if (ch === '\t') spaces += 4;
+    else break;
+  }
+  return Math.floor(spaces / 4);
+}
+
 export function parseMarkdownLines(text) {
   if (!text) return [];
   const rawLines = text.split('\n');
   const result = [];
   for (const line of rawLines) {
     const trimmed = line.trimStart();
+    const level = getIndentLevel(line);
     if (!trimmed) {
       result.push({ type: 'blank' });
       continue;
@@ -183,7 +194,7 @@ export function parseMarkdownLines(text) {
 
     const spans = parseInlineSpans(content);
     if (spans.length > 0) {
-      result.push({ type, checked, prefix, spans });
+      result.push({ type, checked, prefix, spans, level });
     }
   }
   return result;
@@ -410,14 +421,15 @@ export function renderMarkdownToHtml(text) {
       if (span.italic) t = '<em>' + t + '</em>';
       inner += t;
     }
+    const levelAttr = line.level ? ' data-l="' + line.level + '"' : '';
     switch (line.type) {
       case 'h1': html += '<div class="md-block md-h1"><strong>' + inner + '</strong></div>'; break;
       case 'h2': html += '<div class="md-block md-h2"><strong>' + inner + '</strong></div>'; break;
       case 'h3': html += '<div class="md-block md-h3"><strong>' + inner + '</strong></div>'; break;
-      case 'blockquote': html += '<div class="md-block md-blockquote">' + inner + '</div>'; break;
-      case 'bullet': html += '<div class="md-block md-bullet"><span class="md-marker" contenteditable="false">\u2022</span> ' + inner + '</div>'; break;
-      case 'numbered': html += '<div class="md-block md-numbered"><span class="md-marker" contenteditable="false">' + escHtml(line.prefix.trimEnd()) + '</span> ' + inner + '</div>'; break;
-      case 'checkbox': html += '<div class="md-block md-checkbox"><span class="md-marker" contenteditable="false">' + (line.checked ? '[x]' : '[ ]') + '</span> ' + inner + '</div>'; break;
+      case 'blockquote': html += '<div class="md-block md-blockquote"' + levelAttr + '>' + inner + '</div>'; break;
+      case 'bullet': html += '<div class="md-block md-bullet"' + levelAttr + '><span class="md-marker" contenteditable="false">\u2022</span> ' + inner + '</div>'; break;
+      case 'numbered': html += '<div class="md-block md-numbered"' + levelAttr + '><span class="md-marker" contenteditable="false">' + escHtml(line.prefix.trimEnd()) + '</span> ' + inner + '</div>'; break;
+      case 'checkbox': html += '<div class="md-block md-checkbox"' + levelAttr + '><span class="md-marker" contenteditable="false">' + (line.checked ? '[x]' : '[ ]') + '</span> ' + inner + '</div>'; break;
       default: html += '<div class="md-block md-paragraph">' + (inner || '<br>') + '</div>'; break;
     }
   }

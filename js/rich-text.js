@@ -10,6 +10,7 @@ export function markdownToBlocks(text) {
     const typeMap = { h1: 'h1', h2: 'h2', h3: 'h3', blockquote: 'qt', bullet: 'bul', numbered: 'num', checkbox: 'chk', paragraph: 'p' };
     const bt = typeMap[line.type] || 'p';
     const block = { t: bt, s: [] };
+    if (line.level) block.l = line.level;
     if (bt === 'chk') block.c = line.checked || false;
     if (bt === 'num' && line.prefix) {
       const num = parseInt(line.prefix, 10);
@@ -38,6 +39,7 @@ export function blocksToMarkdown(blocks) {
   for (const bl of blocks) {
     if (bl.t === 'hr') { lines.push('___'); continue; }
     let prefix = '';
+    const indent = '    '.repeat(bl.l || 0);
     if (bl.t === 'h1') prefix = '# ';
     else if (bl.t === 'h2') prefix = '## ';
     else if (bl.t === 'h3') prefix = '### ';
@@ -45,7 +47,7 @@ export function blocksToMarkdown(blocks) {
     else if (bl.t === 'bul') prefix = '- ';
     else if (bl.t === 'num') prefix = (bl.n || 1) + '. ';
     else if (bl.t === 'chk') prefix = '- [' + (bl.c ? 'x' : ' ') + '] ';
-    let line = prefix;
+    let line = indent + prefix;
     const spanList = bl.s || [];
     let i = 0;
     while (i < spanList.length) {
@@ -132,8 +134,9 @@ export function blocksToHtml(blocks) {
     else if (bl.t === 'num') prefix = '<span class="rt-marker" contenteditable="false">' + (bl.n || 1) + '.</span> ';
     let extraStyle = '';
     if (bl.al && bl.al !== 'l' && bl.al !== 'left') extraStyle = 'text-align:' + (bl.al === 'c' || bl.al === 'center' ? 'center' : 'right') + ';';
+    const levelAttr = bl.l ? ' data-l="' + bl.l + '"' : '';
     const styleAttr = extraStyle ? ' style="' + extraStyle + '"' : '';
-    html += '<div class="' + cls + '"' + styleAttr + '>' + prefix + (inner || '<br>') + '</div>';
+    html += '<div class="' + cls + '"' + levelAttr + styleAttr + '>' + prefix + (inner || '<br>') + '</div>';
   }
   return html;
 }
@@ -197,8 +200,9 @@ export function blocksToEditorHtml(blocks) {
     else if (bl.t === 'num') prefix = '<span class="rt-marker" contenteditable="false">' + (bl.n || 1) + '.</span> ';
     let extraStyle = '';
     if (bl.al && bl.al !== 'l' && bl.al !== 'left') extraStyle = 'text-align:' + (bl.al === 'c' || bl.al === 'center' ? 'center' : 'right') + ';';
+    const levelAttr = bl.l ? ' data-l="' + bl.l + '"' : '';
     const styleAttr = extraStyle ? ' style="' + extraStyle + '"' : '';
-    html += '<div class="' + cls + '"' + styleAttr + '>' + prefix + (inner || '<br>') + '</div>';
+    html += '<div class="' + cls + '"' + levelAttr + styleAttr + '>' + prefix + (inner || '<br>') + '</div>';
   }
   return html;
 }
@@ -296,6 +300,8 @@ export function htmlToBlocks(container) {
     if (bt === 'hr') { blocks.push({ t: 'hr' }); continue; }
 
     const baseProps = { t: bt };
+    const l = parseInt(blockEl.dataset.l);
+    if (l > 0) baseProps.l = l;
     if (blockEl.style.textAlign === 'center') baseProps.al = 'c';
     else if (blockEl.style.textAlign === 'right') baseProps.al = 'r';
     if (bt === 'chk') {
@@ -526,29 +532,31 @@ export function renderRichText(ctx, blocks, x, y, maxW, maxH, fontFamily, baseFo
     }
 
     let prefixW = 0;
+    const levelIndent = (bl.l || 0) * 1.05 * baseFontSize;
+    const lx = x + levelIndent;
     if (bl.t === 'chk') {
       const boxSize = baseFontSize * 0.85;
       const boxY = currentY + (lh - boxSize) / 2;
       ctx.save();
       ctx.strokeStyle = brightenColor(textColor, 0.4);
       ctx.lineWidth = 1.5;
-      ctx.strokeRect(x, boxY, boxSize, boxSize);
+      ctx.strokeRect(lx, boxY, boxSize, boxSize);
       if (bl.c) {
         ctx.fillStyle = '#4caf50';
         ctx.font = (boxSize * 0.8) + 'px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('✓', x + boxSize / 2, boxY + boxSize / 2 + 1);
+        ctx.fillText('\u2713', lx + boxSize / 2, boxY + boxSize / 2 + 1);
       }
       ctx.restore();
       prefixW = boxSize + prefixPad;
     } else if (bl.t === 'bul') {
       const ps = { t: '\u2022', b: true, i: false };
-      drawOneSpan(ctx, ps, x, currentY, brightenColor(textColor, 0.4), fontFamily, baseFontSize);
+      drawOneSpan(ctx, ps, lx, currentY, brightenColor(textColor, 0.4), fontFamily, baseFontSize);
       prefixW = spanWidth(ctx, ps, baseFontSize, fontFamily) + prefixPad;
     } else if (bl.t === 'num') {
       const ps = { t: (bl.n || '1') + '.', b: false, i: false };
-      drawOneSpan(ctx, ps, x, currentY, brightenColor(textColor, 0.4), fontFamily, baseFontSize);
+      drawOneSpan(ctx, ps, lx, currentY, brightenColor(textColor, 0.4), fontFamily, baseFontSize);
       prefixW = spanWidth(ctx, ps, baseFontSize, fontFamily) + prefixPad;
     } else if (bl.t === 'qt') {
       const barW = 3;
@@ -558,24 +566,24 @@ export function renderRichText(ctx, blocks, x, y, maxW, maxH, fontFamily, baseFo
         b: s.b || false,
         fs: s.fs || fontSize
       }));
-      const qtContentMaxW = maxW - (barW + barPad);
+      const qtContentMaxW = maxW - levelIndent - (barW + barPad);
       const qtLines = buildDisplayLines(ctx, qtSpans, qtContentMaxW, fontSize, fontFamily);
       const qtH = qtLines.length * lh;
       const bgPad = 4;
       ctx.save();
       ctx.globalAlpha = 0.06;
       ctx.fillStyle = textColor;
-      ctx.fillRect(x, currentY - bgPad, maxW, qtH + bgPad * 2);
+      ctx.fillRect(lx, currentY - bgPad, maxW - levelIndent, qtH + bgPad * 2);
       ctx.restore();
       ctx.save();
       ctx.globalAlpha = 0.5;
       ctx.fillStyle = textColor;
-      ctx.fillRect(x, currentY, barW, qtH);
+      ctx.fillRect(lx, currentY, barW, qtH);
       ctx.restore();
       prefixW = barW + barPad;
     }
 
-    const contentMaxW = maxW - prefixW;
+    const contentMaxW = maxW - levelIndent - prefixW;
     if (contentMaxW <= 0) break;
 
     const spans = (bl.s || []).map(s => ({
@@ -604,7 +612,7 @@ export function renderRichText(ctx, blocks, x, y, maxW, maxH, fontFamily, baseFo
         alignOffset = contentMaxW - totalLineW;
       }
 
-      let cx = x + prefixW + Math.max(0, alignOffset);
+      let cx = lx + prefixW + Math.max(0, alignOffset);
       for (let wi = 0; wi < words.length; wi++) {
         const w = words[wi];
         drawOneSpan(ctx, w, cx, currentY, textColor, fontFamily, baseFontSize);

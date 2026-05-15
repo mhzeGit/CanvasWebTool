@@ -425,11 +425,13 @@ function handleEnter(editor, ev) {
   const isNumbered = block.classList.contains('rt-numbered');
   const isCheckbox = block.classList.contains('rt-checkbox');
   const isList = isBullet || isNumbered || isCheckbox;
+  const blockLevel = parseInt(block.dataset.l) || 0;
 
   if ((isList || isHeading || isQuote) && !block.textContent.replace(/[\u2022\[\]xX\d.]/g, '').trim()) {
     block.className = 'rt-block rt-paragraph';
     const marker = block.querySelector('.rt-marker');
     if (marker) marker.remove();
+    block.removeAttribute('data-l');
     block.innerHTML = '<br>';
     placeCursorAtEnd(block);
     editor.dispatchEvent(new Event('input', { bubbles: true }));
@@ -439,6 +441,7 @@ function handleEnter(editor, ev) {
   const newBlock = document.createElement('div');
   if (isList || isQuote) {
     newBlock.className = block.className;
+    if (blockLevel > 0) newBlock.dataset.l = blockLevel;
     if (isBullet) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span> <br>';
     else if (isNumbered) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">1.</span> <br>';
     else if (isCheckbox) newBlock.innerHTML = '<span class="rt-marker" data-checked="0" contenteditable="false"></span> <br>';
@@ -555,50 +558,63 @@ function _applyBlockMarkdown(block) {
   if (!text || !text.trim()) return false;
   if (!block.classList.contains('rt-paragraph')) return false;
 
-  const hMatch = text.match(/^(#{1,3})\s(.+)/);
+  let indent = 0;
+  const indentMatch = text.match(/^(\s+)/);
+  if (indentMatch) {
+    const spaces = indentMatch[1].replace(/\t/g, '    ');
+    indent = Math.floor(spaces.length / 4);
+  }
+  const content = text.trimStart();
+
+  const hMatch = content.match(/^(#{1,3})\s(.+)/);
   if (hMatch) {
     const level = hMatch[1].length;
     const cls = level === 1 ? 'rt-h1' : level === 2 ? 'rt-h2' : 'rt-h3';
     block.classList.remove('rt-paragraph');
     block.classList.add(cls);
     block.innerHTML = _renderInlineMarkdown(hMatch[2]);
+    if (indent > 0) block.dataset.l = indent; else block.removeAttribute('data-l');
     placeCursorAtEnd(block);
     return true;
   }
 
-  const chkMatch = text.match(/^(?:-\s*)?\[(\s|x|X)\]\s+(.+)/);
+  const chkMatch = content.match(/^(?:-\s*)?\[(\s|x|X)\]\s+(.+)/);
   if (chkMatch) {
     const checked = chkMatch[1].toLowerCase() === 'x';
     block.classList.remove('rt-paragraph');
     block.classList.add('rt-checkbox');
     block.innerHTML = '<span class="rt-marker" data-checked="' + (checked ? '1' : '0') + '" contenteditable="false"></span> ' + _renderInlineMarkdown(chkMatch[2]);
+    if (indent > 0) block.dataset.l = indent; else block.removeAttribute('data-l');
     placeCursorAtEnd(block);
     return true;
   }
 
-  const bulMatch = text.match(/^([-*])\s(.+)/);
+  const bulMatch = content.match(/^([-*])\s(.+)/);
   if (bulMatch) {
     block.classList.remove('rt-paragraph');
     block.classList.add('rt-bullet');
     block.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span> ' + _renderInlineMarkdown(bulMatch[2]);
+    if (indent > 0) block.dataset.l = indent; else block.removeAttribute('data-l');
     placeCursorAtEnd(block);
     return true;
   }
 
-  const qtMatch = text.match(/^>\s?(.+)/);
+  const qtMatch = content.match(/^>\s?(.+)/);
   if (qtMatch) {
     block.classList.remove('rt-paragraph');
     block.classList.add('rt-quote');
     block.innerHTML = _renderInlineMarkdown(qtMatch[1]) || '<br>';
+    if (indent > 0) block.dataset.l = indent; else block.removeAttribute('data-l');
     placeCursorAtEnd(block);
     return true;
   }
 
-  const numMatch = text.match(/^(\d+)\.\s(.+)/);
+  const numMatch = content.match(/^(\d+)\.\s(.+)/);
   if (numMatch) {
     block.classList.remove('rt-paragraph');
     block.classList.add('rt-numbered');
     block.innerHTML = '<span class="rt-marker" contenteditable="false">' + numMatch[1] + '.</span> ' + _renderInlineMarkdown(numMatch[2]);
+    if (indent > 0) block.dataset.l = indent; else block.removeAttribute('data-l');
     placeCursorAtEnd(block);
     return true;
   }

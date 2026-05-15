@@ -291,12 +291,14 @@ function setupMarkdownEditor(editorId, opts) {
       const isQuote = block.classList.contains('rt-quote');
       const isList = block.classList.contains('rt-bullet') || block.classList.contains('rt-numbered') || block.classList.contains('rt-checkbox');
       const isSpecial = isHeading || isQuote || isList;
+      const blockLevel = parseInt(block.dataset.l) || 0;
 
       const trimmed = block.textContent.replace(/[\u2022\[\]xX\d.]/g, '').trim();
       if (!trimmed && isSpecial) {
         block.className = 'rt-block rt-paragraph';
         const marker = block.querySelector('.rt-marker');
         if (marker) marker.remove();
+        block.removeAttribute('data-l');
         block.innerHTML = '<br>';
         const r2 = document.createRange();
         r2.selectNodeContents(block);
@@ -308,6 +310,7 @@ function setupMarkdownEditor(editorId, opts) {
         const newBlock = document.createElement('div');
         if (isList || isQuote) {
           newBlock.className = block.className;
+          if (blockLevel > 0) newBlock.dataset.l = blockLevel;
           if (block.classList.contains('rt-bullet')) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span> <br>';
           else if (block.classList.contains('rt-numbered')) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">1.</span> <br>';
           else if (block.classList.contains('rt-checkbox')) newBlock.innerHTML = '<span class="rt-marker" data-checked="0" contenteditable="false"></span> <br>';

@@ -632,6 +632,25 @@ canvas#gridCanvas {
   text-indent: -1em;
 }
 
+.md-block.md-bullet[data-l="1"],
+.md-block.md-numbered[data-l="1"],
+.md-block.md-checkbox[data-l="1"] {
+  padding-left: 2em;
+  text-indent: -2em;
+}
+.md-block.md-bullet[data-l="2"],
+.md-block.md-numbered[data-l="2"],
+.md-block.md-checkbox[data-l="2"] {
+  padding-left: 3em;
+  text-indent: -3em;
+}
+.md-block.md-bullet[data-l="3"],
+.md-block.md-numbered[data-l="3"],
+.md-block.md-checkbox[data-l="3"] {
+  padding-left: 4em;
+  text-indent: -4em;
+}
+
 .md-marker {
   color: var(--text-muted);
   font-weight: 600;
@@ -731,13 +750,32 @@ canvas#gridCanvas {
 
 .rt-bullet, .rt-numbered {
   margin: 1px 0;
-  padding-left: 1.0em;
+  padding-left: 1.05em;
 }
 
 .rt-bullet .rt-marker, .rt-numbered .rt-marker {
   display: inline-block;
-  margin-left: -1.0em;
+  margin-left: -1.05em;
   padding-right: 0.3em;
+}
+
+.rt-bullet[data-l="1"], .rt-numbered[data-l="1"] {
+  padding-left: 2.1em;
+}
+.rt-bullet[data-l="1"] .rt-marker, .rt-numbered[data-l="1"] .rt-marker {
+  margin-left: -1.05em;
+}
+.rt-bullet[data-l="2"], .rt-numbered[data-l="2"] {
+  padding-left: 3.15em;
+}
+.rt-bullet[data-l="2"] .rt-marker, .rt-numbered[data-l="2"] .rt-marker {
+  margin-left: -1.05em;
+}
+.rt-bullet[data-l="3"], .rt-numbered[data-l="3"] {
+  padding-left: 4.2em;
+}
+.rt-bullet[data-l="3"] .rt-marker, .rt-numbered[data-l="3"] .rt-marker {
+  margin-left: -1.05em;
 }
 
 .rt-checkbox {
@@ -1189,13 +1227,32 @@ canvas#arrowCanvas {
 }
 .entity-textbox-content .rt-bullet, .entity-textbox-content .rt-numbered, .entity-textbox-content .rt-checkbox {
   margin: 0.05em 0;
-  padding-left: 1.00em;
+  padding-left: 1.05em;
 }
 
 .entity-textbox-content .rt-bullet .rt-marker, .entity-textbox-content .rt-numbered .rt-marker {
   display: inline-block;
-  margin-left: -1.00em;
+  margin-left: -1.05em;
   padding-right: 0.3em;
+}
+
+.entity-textbox-content .rt-bullet[data-l="1"], .entity-textbox-content .rt-numbered[data-l="1"] {
+  padding-left: 2.1em;
+}
+.entity-textbox-content .rt-bullet[data-l="1"] .rt-marker, .entity-textbox-content .rt-numbered[data-l="1"] .rt-marker {
+  margin-left: -1.05em;
+}
+.entity-textbox-content .rt-bullet[data-l="2"], .entity-textbox-content .rt-numbered[data-l="2"] {
+  padding-left: 3.15em;
+}
+.entity-textbox-content .rt-bullet[data-l="2"] .rt-marker, .entity-textbox-content .rt-numbered[data-l="2"] .rt-marker {
+  margin-left: -1.05em;
+}
+.entity-textbox-content .rt-bullet[data-l="3"], .entity-textbox-content .rt-numbered[data-l="3"] {
+  padding-left: 4.2em;
+}
+.entity-textbox-content .rt-bullet[data-l="3"] .rt-marker, .entity-textbox-content .rt-numbered[data-l="3"] .rt-marker {
+  margin-left: -1.05em;
 }
 
 .entity-textbox-content .rt-checkbox {
