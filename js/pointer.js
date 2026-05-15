@@ -473,10 +473,6 @@ function onPointerDown(e) {
 
     state.isSelectingBox = true;
     state.selectedConnection = null;
-    state.selectedArrows.clear();
-    state.selectedShapes.clear();
-    state.selectedTextBoxes.clear();
-    state.selectedConnectors.clear();
     state.arrowDragTarget = null;
     state.boxStartX = world.x;
     state.boxStartY = world.y;
@@ -484,6 +480,12 @@ function onPointerDown(e) {
     state.boxEndY = world.y;
     state.boxMode = e.shiftKey ? 'add' : (e.ctrlKey ? 'remove' : 'replace');
     state.boxBaseSelection = new Set(state.selectedTextBoxes);
+    if (state.boxMode === 'replace') {
+      state.selectedTextBoxes.clear();
+      state.selectedShapes.clear();
+      state.selectedArrows.clear();
+      state.selectedConnectors.clear();
+    }
     canvas.setPointerCapture(e.pointerId);
     e.preventDefault();
   }

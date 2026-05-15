@@ -1020,6 +1020,15 @@ canvas#gridCanvas {
   display: none;
 }
 
+#marquee {
+  position: fixed;
+  pointer-events: none;
+  display: none;
+  z-index: 1000;
+  border: 1px solid rgba(90, 160, 255, 0.9);
+  background: rgba(90, 160, 255, 0.15);
+}
+
 .entity {
   position: fixed;
   pointer-events: none;

@@ -349,7 +349,9 @@ export function htmlToBlocks(container) {
     for (const child of blockEl.childNodes) {
       processNode(child);
     }
-    subBlocks.push(current);
+    if (current.s.length > 0 || subBlocks.length === 0) {
+      subBlocks.push(current);
+    }
 
     for (const sb of subBlocks) {
       if (sb.s.length === 0) sb.s.push({ t: '' });

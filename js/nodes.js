@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { EDGE_MARGIN } from './config.js';
-import { getEdgeAt as getEntityEdgeAt, drawRoundedRect, getDarkerColor, getBorderColor } from './utils.js';
+import { getEdgeAt as getEntityEdgeAt, drawRoundedRect, getDarkerColor, getBorderColor, worldToScreen } from './utils.js';
 
 export function hitTestNode(wx, wy) {
   for (let i = state.nodes.length - 1; i >= 0; i--) {
@@ -68,18 +68,23 @@ export function drawNodePreview() {
 }
 
 export function drawSelectionMarquee() {
-  if (!state.isSelectingBox) return;
+  const el = document.getElementById('marquee');
+  if (!state.isSelectingBox) {
+    if (el) el.style.display = 'none';
+    return;
+  }
+  const canvasRect = state.canvas.getBoundingClientRect();
   const x1 = Math.min(state.boxStartX, state.boxEndX);
   const y1 = Math.min(state.boxStartY, state.boxEndY);
-  const w = Math.abs(state.boxEndX - state.boxStartX);
-  const h = Math.abs(state.boxEndY - state.boxStartY);
-  const ctx = state.ctx;
-  const dpr = window.devicePixelRatio || 1;
-  ctx.lineWidth = 1 / (state.scale * dpr);
-  ctx.strokeStyle = 'rgba(90,160,255,0.9)';
-  ctx.fillStyle = 'rgba(90,160,255,0.15)';
-  ctx.beginPath();
-  ctx.rect(x1, y1, w, h);
-  ctx.fill();
-  ctx.stroke();
+  const x2 = Math.max(state.boxStartX, state.boxEndX);
+  const y2 = Math.max(state.boxStartY, state.boxEndY);
+  const s1 = worldToScreen(x1, y1, state.offsetX, state.offsetY, state.scale);
+  const s2 = worldToScreen(x2, y2, state.offsetX, state.offsetY, state.scale);
+  if (el) {
+    el.style.left = (s1.x + canvasRect.left) + 'px';
+    el.style.top = (s1.y + canvasRect.top) + 'px';
+    el.style.width = (s2.x - s1.x) + 'px';
+    el.style.height = (s2.y - s1.y) + 'px';
+    el.style.display = 'block';
+  }
 }
