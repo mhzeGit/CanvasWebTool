@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { screenToWorld, computeResizeBounds, getObjectEdgePoint } from './utils.js';
+import { screenToWorld, getObjectEdgePoint } from './utils.js';
 import { hitTestNode, getEdgeAt, findNodeAtEdge } from './nodes.js';
 import { hitTestConnection } from './connections.js';
 import { hitTestArrowEnd, hitTestArrowBody, isArrowInBox } from './arrows.js';
@@ -23,6 +23,7 @@ import {
 } from './undo.js';
 import { flushPanelEdit } from './history.js';
 import { DRAG_THRESHOLD_PX, TEXTBOX_MIN_W, TEXTBOX_MIN_H, SHAPE_MIN_W, SHAPE_MIN_H } from './config.js';
+import { getSnapIncrement, snapValue, snapResizeBounds } from './snap.js';
 
 let _history;
 
@@ -319,7 +320,15 @@ function onPointerDown(e) {
           state.pendingCtrlKey = e.ctrlKey;
           state.didDragSincePointerDown = false;
           if (e.ctrlKey) {
-            if (state.selectedTextBoxes.has(hit)) state.selectedTextBoxes.delete(hit);
+            if (state.selectedTextBoxes.has(hit)) {
+              state.pendingClickIndex = hit;
+              state.pendingShiftKey = false;
+              state.pendingCtrlKey = true;
+              state.didDragSincePointerDown = false;
+              canvas.setPointerCapture(e.pointerId);
+              e.preventDefault();
+              return;
+            }
             state.pendingClickIndex = -1;
             refreshSidePanel();
             e.preventDefault();
@@ -346,7 +355,18 @@ function onPointerDown(e) {
             state.arrowDragTarget = null;
           }
           if (e.ctrlKey) {
-            if (state.selectedShapes.has(topHit.i)) state.selectedShapes.delete(topHit.i);
+            if (state.selectedShapes.has(topHit.i)) {
+              state.pendingClickIndex = -3;
+              state.pendingClickItemIdx = topHit.i;
+              state.pointerDownScreenX = sx;
+              state.pointerDownScreenY = sy;
+              state.pendingShiftKey = false;
+              state.pendingCtrlKey = true;
+              state.didDragSincePointerDown = false;
+              canvas.setPointerCapture(e.pointerId);
+              e.preventDefault();
+              return;
+            }
             refreshSidePanel();
             e.preventDefault();
             return;
@@ -358,6 +378,7 @@ function onPointerDown(e) {
             state.selectedShapes.add(topHit.i);
           }
           state.pendingClickIndex = -3;
+          state.pendingClickItemIdx = topHit.i;
           state.pointerDownScreenX = sx;
           state.pointerDownScreenY = sy;
           state.pendingShiftKey = e.shiftKey;
@@ -490,9 +511,15 @@ function onPointerMove(e) {
   if (state.isDraggingArrowEnd && state.arrowDragTarget) {
     const arrow = state.arrows[state.arrowDragTarget.arrowIdx];
     if (arrow) {
+      const snapEnd = (wx, wy) => {
+        if (!e.ctrlKey) return { x: wx, y: wy };
+        const inc = getSnapIncrement(state.scale);
+        return { x: snapValue(wx, inc), y: snapValue(wy, inc) };
+      };
       if (state.arrowDragTarget.end === 'start') {
-        arrow.x1 = world.x;
-        arrow.y1 = world.y;
+        const snapped = snapEnd(world.x, world.y);
+        arrow.x1 = snapped.x;
+        arrow.y1 = snapped.y;
         const snapHit = state.getTopHitAt(world.x, world.y);
         if (snapHit) {
           arrow.connectedFrom = snapHit.i;
@@ -509,8 +536,9 @@ function onPointerMove(e) {
           arrow.connectedFromType = null;
         }
       } else {
-        arrow.x2 = world.x;
-        arrow.y2 = world.y;
+        const snapped = snapEnd(world.x, world.y);
+        arrow.x2 = snapped.x;
+        arrow.y2 = snapped.y;
         const snapHit = state.getTopHitAt(world.x, world.y);
         if (snapHit) {
           arrow.connectedTo = snapHit.i;
@@ -536,13 +564,15 @@ function onPointerMove(e) {
     if (state.dragArrowBodyStartWorld) {
       const dx = world.x - state.dragArrowBodyStartWorld.x;
       const dy = world.y - state.dragArrowBodyStartWorld.y;
-      for (const snap of state.dragArrowBodySnapshots) {
-        const a = state.arrows[snap.idx];
+      const snapInc = e.ctrlKey ? getSnapIncrement(state.scale) : null;
+      const snap = (v) => snapInc !== null ? snapValue(v, snapInc) : v;
+      for (const s of state.dragArrowBodySnapshots) {
+        const a = state.arrows[s.idx];
         if (a) {
-          a.x1 = snap.x1 + dx;
-          a.y1 = snap.y1 + dy;
-          a.x2 = snap.x2 + dx;
-          a.y2 = snap.y2 + dy;
+          a.x1 = snap(s.x1 + dx);
+          a.y1 = snap(s.y1 + dy);
+          a.x2 = snap(s.x2 + dx);
+          a.y2 = snap(s.y2 + dy);
           a.connectedFrom = null;
           a.connectedTo = null;
           a.connectedFromType = null;
@@ -557,32 +587,9 @@ function onPointerMove(e) {
   if (state.isResizingShape) {
     const dx = world.x - state.resizeShapeStartWorldX;
     const dy = world.y - state.resizeShapeStartWorldY;
-    const start = state.resizeShapeStartBounds;
     const s = state.shapes[state.resizeShapeIdx];
-    const MIN_W = 20; const MIN_H = 20;
-    let newX = start.x, newY = start.y, newW = start.w, newH = start.h;
-
-    switch (state.resizeShapeHandle) {
-      case 'left':   newX = start.x + dx; newW = start.w - dx; break;
-      case 'right':  newW = start.w + dx; break;
-      case 'top':    newY = start.y + dy; newH = start.h - dy; break;
-      case 'bottom': newH = start.h + dy; break;
-      case 'tl':     newX = start.x + dx; newY = start.y + dy; newW = start.w - dx; newH = start.h - dy; break;
-      case 'tr':     newY = start.y + dy; newW = start.w + dx; newH = start.h - dy; break;
-      case 'bl':     newX = start.x + dx; newW = start.w - dx; newH = start.h + dy; break;
-      case 'br':     newW = start.w + dx; newH = start.h + dy; break;
-    }
-
-    if (newW < MIN_W) {
-      if (state.resizeShapeHandle.includes('l')) newX = start.x + start.w - MIN_W;
-      newW = MIN_W;
-    }
-    if (newH < MIN_H) {
-      if (state.resizeShapeHandle[0] === 't') newY = start.y + start.h - MIN_H;
-      newH = MIN_H;
-    }
-
-    s.x = newX; s.y = newY; s.w = newW; s.h = newH;
+    const b = snapResizeBounds(state.resizeShapeStartBounds, state.resizeShapeHandle, dx, dy, SHAPE_MIN_W, SHAPE_MIN_H, state.scale, e.ctrlKey);
+    s.x = b.x; s.y = b.y; s.w = b.w; s.h = b.h;
     e.preventDefault();
     return;
   }
@@ -591,7 +598,7 @@ function onPointerMove(e) {
     const dx = world.x - state.resizeTextBoxStartWorldX;
     const dy = world.y - state.resizeTextBoxStartWorldY;
     const tb = state.textBoxes[state.resizeTextBoxIdx];
-    const b = computeResizeBounds(state.resizeTextBoxStartBounds, state.resizeTextBoxHandle, dx, dy, TEXTBOX_MIN_W, TEXTBOX_MIN_H);
+    const b = snapResizeBounds(state.resizeTextBoxStartBounds, state.resizeTextBoxHandle, dx, dy, TEXTBOX_MIN_W, TEXTBOX_MIN_H, state.scale, e.ctrlKey);
     tb.x = b.x; tb.y = b.y; tb.w = b.w; tb.h = b.h;
     e.preventDefault();
     return;
@@ -601,63 +608,77 @@ function onPointerMove(e) {
   const dragDy = world.y - state.dragStartWorldY;
 
   if (state.isDraggingNode) {
+    const snapInc = e.ctrlKey ? getSnapIncrement(state.scale) : null;
+    const snap = (v) => snapInc !== null ? snapValue(v, snapInc) : v;
     for (const item of state.dragGroupStarts) {
       const tb = state.textBoxes[item.i];
-      tb.x = item.x + dragDx;
-      tb.y = item.y + dragDy;
+      tb.x = snap(item.x + dragDx);
+      tb.y = snap(item.y + dragDy);
+    }
+    for (const item of state.dragShapeStarts) {
+      const s = state.shapes[item.i];
+      if (s) { s.x = snap(item.x + dragDx); s.y = snap(item.y + dragDy); }
     }
     for (const s of state.dragArrowStarts) {
       const a = state.arrows[s.idx];
       if (a && a.connectedFrom === null && a.connectedTo === null) {
-        a.x1 = s.x1 + dragDx;
-        a.y1 = s.y1 + dragDy;
-        a.x2 = s.x2 + dragDx;
-        a.y2 = s.y2 + dragDy;
+        a.x1 = snap(s.x1 + dragDx);
+        a.y1 = snap(s.y1 + dragDy);
+        a.x2 = snap(s.x2 + dragDx);
+        a.y2 = snap(s.y2 + dragDy);
       }
     }
     for (const item of state.dragChildShapeStarts) {
       const s = state.shapes[item.i];
-      if (s) { s.x = item.x + dragDx; s.y = item.y + dragDy; }
+      if (s) { s.x = snap(item.x + dragDx); s.y = snap(item.y + dragDy); }
     }
     for (const item of state.dragChildTextBoxStarts) {
       const tb = state.textBoxes[item.i];
-      if (tb) { tb.x = item.x + dragDx; tb.y = item.y + dragDy; }
+      if (tb) { tb.x = snap(item.x + dragDx); tb.y = snap(item.y + dragDy); }
     }
     e.preventDefault();
     return;
   }
 
   if (state.isDraggingShape) {
+    const snapInc = e.ctrlKey ? getSnapIncrement(state.scale) : null;
+    const snap = (v) => snapInc !== null ? snapValue(v, snapInc) : v;
     for (const item of state.dragShapeStarts) {
       const s = state.shapes[item.i];
-      s.x = item.x + dragDx;
-      s.y = item.y + dragDy;
+      s.x = snap(item.x + dragDx);
+      s.y = snap(item.y + dragDy);
+    }
+    for (const item of state.dragGroupStarts) {
+      const tb = state.textBoxes[item.i];
+      if (tb) { tb.x = snap(item.x + dragDx); tb.y = snap(item.y + dragDy); }
     }
     for (const item of state.dragChildShapeStarts) {
       const s = state.shapes[item.i];
-      if (s) { s.x = item.x + dragDx; s.y = item.y + dragDy; }
+      if (s) { s.x = snap(item.x + dragDx); s.y = snap(item.y + dragDy); }
     }
     for (const item of state.dragChildTextBoxStarts) {
       const tb = state.textBoxes[item.i];
-      if (tb) { tb.x = item.x + dragDx; tb.y = item.y + dragDy; }
+      if (tb) { tb.x = snap(item.x + dragDx); tb.y = snap(item.y + dragDy); }
     }
     e.preventDefault();
     return;
   }
 
   if (state.isDraggingTextBox) {
+    const snapInc = e.ctrlKey ? getSnapIncrement(state.scale) : null;
+    const snap = (v) => snapInc !== null ? snapValue(v, snapInc) : v;
     for (const item of state.dragTextBoxStarts) {
       const tb = state.textBoxes[item.i];
-      tb.x = item.x + dragDx;
-      tb.y = item.y + dragDy;
+      tb.x = snap(item.x + dragDx);
+      tb.y = snap(item.y + dragDy);
     }
     for (const item of state.dragChildShapeStarts) {
       const s = state.shapes[item.i];
-      if (s) { s.x = item.x + dragDx; s.y = item.y + dragDy; }
+      if (s) { s.x = snap(item.x + dragDx); s.y = snap(item.y + dragDy); }
     }
     for (const item of state.dragChildTextBoxStarts) {
       const tb = state.textBoxes[item.i];
-      if (tb) { tb.x = item.x + dragDx; tb.y = item.y + dragDy; }
+      if (tb) { tb.x = snap(item.x + dragDx); tb.y = snap(item.y + dragDy); }
     }
     e.preventDefault();
     return;
@@ -667,13 +688,15 @@ function onPointerMove(e) {
     if (state.dragArrowBodyStartWorld) {
       const dx = world.x - state.dragArrowBodyStartWorld.x;
       const dy = world.y - state.dragArrowBodyStartWorld.y;
-      for (const snap of state.dragConnectorBodySnapshots) {
-        const c = state.connectors[snap.idx];
+      const snapInc = e.ctrlKey ? getSnapIncrement(state.scale) : null;
+      const snap = (v) => snapInc !== null ? snapValue(v, snapInc) : v;
+      for (const s of state.dragConnectorBodySnapshots) {
+        const c = state.connectors[s.idx];
         if (c) {
-          c.x1 = snap.x1 + dx;
-          c.y1 = snap.y1 + dy;
-          c.x2 = snap.x2 + dx;
-          c.y2 = snap.y2 + dy;
+          c.x1 = snap(s.x1 + dx);
+          c.y1 = snap(s.y1 + dy);
+          c.x2 = snap(s.x2 + dx);
+          c.y2 = snap(s.y2 + dy);
         }
       }
     }
@@ -711,6 +734,11 @@ function onPointerMove(e) {
         const tb = state.textBoxes[ti];
         if (tb) state.dragGroupStarts.push({ i: ti, x: tb.x, y: tb.y, id: tb.id });
       }
+      state.dragShapeStarts = [];
+      for (const si of state.selectedShapes) {
+        const s = state.shapes[si];
+        if (s) state.dragShapeStarts.push({ i: si, x: s.x, y: s.y, id: s.id });
+      }
       gatherChildDragStarts();
       state.dragArrowStarts = [];
       for (const ai of state.selectedArrows) {
@@ -742,6 +770,11 @@ function onPointerMove(e) {
       for (const si of state.selectedShapes) {
         const s = state.shapes[si];
         if (s) state.dragShapeStarts.push({ i: si, x: s.x, y: s.y, id: s.id });
+      }
+      state.dragGroupStarts = [];
+      for (const ti of state.selectedTextBoxes) {
+        const tb = state.textBoxes[ti];
+        if (tb) state.dragGroupStarts.push({ i: ti, x: tb.x, y: tb.y, id: tb.id });
       }
       gatherChildDragStarts();
     }
@@ -996,6 +1029,17 @@ function onPointerUp(e) {
       _history.push(createMoveTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, moves));
       state.reparentAll();
     }
+    const shapeMoves = [];
+    for (const item of state.dragShapeStarts) {
+      const s = state.shapes[item.i];
+      if (s && (s.x !== item.x || s.y !== item.y)) {
+        shapeMoves.push({ id: item.id, fromX: item.x, fromY: item.y, toX: s.x, toY: s.y });
+      }
+    }
+    if (shapeMoves.length > 0) {
+      _history.push(createMoveShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, shapeMoves));
+    }
+    state.dragShapeStarts = [];
     state.isDraggingNode = false;
     if (state.dragArrowStarts && state.dragArrowStarts.length > 0) {
       for (const s of state.dragArrowStarts) {
@@ -1047,6 +1091,17 @@ function onPointerUp(e) {
     if (moves.length > 0) {
       _history.push(createMoveShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, moves));
     }
+    const tbMoves = [];
+    for (const item of state.dragGroupStarts) {
+      const tb = state.textBoxes[item.i];
+      if (tb && (tb.x !== item.x || tb.y !== item.y)) {
+        tbMoves.push({ id: item.id, fromX: item.x, fromY: item.y, toX: tb.x, toY: tb.y });
+      }
+    }
+    if (tbMoves.length > 0) {
+      _history.push(createMoveTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbMoves));
+    }
+    state.dragGroupStarts = [];
     state.isDraggingShape = false;
     state.dragShapeStarts = [];
     const childShapeMoves = [];
@@ -1387,16 +1442,32 @@ function onPointerUp(e) {
     refreshSidePanel();
   }
 
-  if (state.pendingClickIndex !== -1 && state.pendingClickIndex !== -2 && state.pendingClickIndex !== -3 && state.pendingClickIndex !== -4 && state.pendingClickIndex !== -5 && !state.didDragSincePointerDown) {
-    if (state.selectedTextBoxes.has(state.pendingClickIndex) && state.selectedTextBoxes.size > 1 && !state.pendingShiftKey) {
-      state.selectedTextBoxes.clear();
-      state.selectedTextBoxes.add(state.pendingClickIndex);
-    } else if (!state.selectedTextBoxes.has(state.pendingClickIndex) && !state.pendingShiftKey && !state.pendingCtrlKey) {
-      state.selectedTextBoxes.clear();
-      state.selectedTextBoxes.add(state.pendingClickIndex);
+  if (!state.didDragSincePointerDown) {
+    if (state.pendingCtrlKey) {
+      if (state.pendingClickIndex >= 0 && state.selectedTextBoxes.has(state.pendingClickIndex)) {
+        state.selectedTextBoxes.delete(state.pendingClickIndex);
+      } else if (state.pendingClickIndex === -3 && state.selectedShapes.has(state.pendingClickItemIdx)) {
+        state.selectedShapes.delete(state.pendingClickItemIdx);
+      }
+    } else if (!state.pendingShiftKey) {
+      if (state.pendingClickIndex >= 0) {
+        if (state.selectedTextBoxes.has(state.pendingClickIndex) && state.selectedTextBoxes.size > 1) {
+          state.selectedTextBoxes.clear();
+          state.selectedTextBoxes.add(state.pendingClickIndex);
+        } else if (!state.selectedTextBoxes.has(state.pendingClickIndex)) {
+          state.selectedTextBoxes.clear();
+          state.selectedTextBoxes.add(state.pendingClickIndex);
+        }
+      } else if (state.pendingClickIndex === -3 && state.selectedShapes.size > 1) {
+        if (state.selectedShapes.has(state.pendingClickItemIdx)) {
+          state.selectedShapes.clear();
+          state.selectedShapes.add(state.pendingClickItemIdx);
+        }
+      }
     }
   }
   state.pendingClickIndex = -1;
+  state.pendingClickItemIdx = -1;
   state.didDragSincePointerDown = false;
   state.pendingShiftKey = false;
   state.pendingCtrlKey = false;

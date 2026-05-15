@@ -17,9 +17,11 @@ import { refreshSidePanel } from './side-panel.js';
 import { initPanelResize } from './panel-resize.js';
 import { history, initHistory } from './history.js';
 import {
-  addNodeAt, addArrowAt,
+  addNodeAt, addArrowAt, addNodeAtCenter, addArrowAtCenter, addShapeAtCenter, addConnectorAtCenter,
   deleteSelectedNodes, deleteSelectedShapes, deleteSelectedTextBoxes, deleteSelectedConnectors,
+  deleteSelectedArrows, deleteConnection,
   duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
+  addShapeAt, addConnector,
   newDocument, saveDocument, openDocument,
 } from './document.js';
 import { performUndo, performRedo } from './history.js';
@@ -97,6 +99,11 @@ function animate() {
 function initTopBar() {
   const addNodeBtn = document.getElementById('actionAddNode');
   const addArrowBtn = document.getElementById('actionAddArrow');
+  const addRectBtn = document.getElementById('actionAddRectangle');
+  const addCircleBtn = document.getElementById('actionAddCircle');
+  const addTriangleBtn = document.getElementById('actionAddTriangle');
+  const addDiamondBtn = document.getElementById('actionAddDiamond');
+  const addConnectorBtn = document.getElementById('actionAddConnector');
   const undoBtn = document.getElementById('actionUndo');
   const redoBtn = document.getElementById('actionRedo');
   const newBtn = document.getElementById('actionNew');
@@ -106,6 +113,11 @@ function initTopBar() {
 
   if (addNodeBtn) addNodeBtn.addEventListener('click', (e) => { e.preventDefault(); addNodeAtCenter(); });
   if (addArrowBtn) addArrowBtn.addEventListener('click', (e) => { e.preventDefault(); addArrowAtCenter(); });
+  if (addRectBtn) addRectBtn.addEventListener('click', (e) => { e.preventDefault(); addShapeAtCenter('rectangle'); });
+  if (addCircleBtn) addCircleBtn.addEventListener('click', (e) => { e.preventDefault(); addShapeAtCenter('circle'); });
+  if (addTriangleBtn) addTriangleBtn.addEventListener('click', (e) => { e.preventDefault(); addShapeAtCenter('triangle'); });
+  if (addDiamondBtn) addDiamondBtn.addEventListener('click', (e) => { e.preventDefault(); addShapeAtCenter('diamond'); });
+  if (addConnectorBtn) addConnectorBtn.addEventListener('click', (e) => { e.preventDefault(); addConnectorAtCenter(); });
   if (undoBtn) undoBtn.addEventListener('click', (e) => { e.preventDefault(); performUndo(); });
   if (redoBtn) redoBtn.addEventListener('click', (e) => { e.preventDefault(); performRedo(); });
   if (newBtn) newBtn.addEventListener('click', (e) => { e.preventDefault(); newDocument(); });
@@ -131,6 +143,11 @@ function init() {
 
   initPanelResize();
 
+  function addConnectorAt(worldX, worldY) {
+    const offset = 60;
+    addConnector(worldX - offset, worldY, worldX + offset, worldY);
+  }
+
   initContextMenu({
     addNodeAt,
     addArrowAt,
@@ -139,6 +156,12 @@ function init() {
     copySelectedNodes,
     pasteNodesAt,
     refreshSidePanel,
+    addShapeAt,
+    addConnectorAt,
+    deleteSelectedShapes,
+    deleteSelectedConnectors,
+    deleteSelectedArrows,
+    deleteConnection,
   });
 
   document.addEventListener('pointerdown', (e) => {

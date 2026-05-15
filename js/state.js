@@ -118,6 +118,8 @@ export const state = {
   lastPanY: 0,
 
   clipboard: [],
+  propertyClipboard: null,
+  hoveredPropField: null,
 
   panelPendingEdit: null,
   currentFileName: null,
@@ -199,6 +201,7 @@ export const state = {
   drawingStartConnected: null,
 
   pendingClickIndex: -1,
+  pendingClickItemIdx: -1,
   pointerDownScreenX: 0,
   pointerDownScreenY: 0,
   didDragSincePointerDown: false,

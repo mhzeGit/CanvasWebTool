@@ -1,10 +1,104 @@
 import { state } from './state.js';
 import { screenToWorld } from './utils.js';
-import { hitTestNode } from './nodes.js';
 import { hitTestConnection } from './connections.js';
 import { hitTestArrowEnd, hitTestArrowBody } from './arrows.js';
+import { hitTestConnector } from './connectors.js';
 import { commitEditing } from './inline-editing.js';
-import { deleteSelectedArrows, deleteConnection } from './document.js';
+
+const ADD_ITEM_TYPES = [];
+
+export function registerAddItem(label, createFn) {
+  ADD_ITEM_TYPES.push({ label, create: createFn });
+}
+
+let _addNodeAt, _addArrowAt, _deleteSelectedNodes, _duplicateSelectedNodes;
+let _copySelectedNodes, _pasteNodesAt, _refreshSidePanel;
+let _addShapeAt, _addConnectorAt;
+let _deleteSelectedShapes, _deleteSelectedConnectors;
+let _deleteSelectedArrows, _deleteConnection;
+
+function buildAddSubmenu(worldX, worldY, hitType, hitIndex) {
+  const wrap = document.createElement('div');
+  wrap.className = 'context-submenu-trigger';
+  const btn = document.createElement('button');
+  btn.className = 'context-item has-submenu';
+  btn.innerHTML = '<span>Add</span><span class="submenu-arrow">\u25b8</span>';
+  const sub = document.createElement('div');
+  sub.className = 'context-submenu';
+
+  for (const item of ADD_ITEM_TYPES) {
+    const el = document.createElement('button');
+    el.className = 'context-item';
+    el.textContent = item.label;
+    el.addEventListener('click', () => {
+      item.create(worldX, worldY, hitType, hitIndex);
+      closeContextMenu();
+    });
+    sub.appendChild(el);
+  }
+
+  wrap.appendChild(btn);
+  wrap.appendChild(sub);
+  return wrap;
+}
+
+function makeMenuItem(label, onClick) {
+  const el = document.createElement('button');
+  el.className = 'context-item';
+  el.textContent = label;
+  el.addEventListener('click', () => {
+    onClick();
+    closeContextMenu();
+  });
+  return el;
+}
+
+function detectHit(worldX, worldY) {
+  const topHit = state.getTopHitAt(worldX, worldY);
+  if (topHit) return topHit;
+
+  const connIdx = hitTestConnector(worldX, worldY);
+  if (connIdx !== -1) return { type: 'connector', i: connIdx };
+
+  const connLineHit = hitTestConnection(worldX, worldY);
+  if (connLineHit !== null) return { type: 'connection', i: connLineHit };
+
+  const arrowEndHit = hitTestArrowEnd(worldX, worldY);
+  if (arrowEndHit) return { type: 'arrow', i: arrowEndHit };
+
+  const arrowBodyHit = hitTestArrowBody(worldX, worldY);
+  if (arrowBodyHit !== -1) return { type: 'arrow', i: arrowBodyHit };
+
+  return null;
+}
+
+function isInSelection(type, index) {
+  switch (type) {
+    case 'textBox': return state.selectedTextBoxes.has(index);
+    case 'shape': return state.selectedShapes.has(index);
+    case 'arrow': return state.selectedArrows.has(index);
+    case 'connector': return state.selectedConnectors.has(index);
+    case 'connection': return state.selectedConnection === index;
+  }
+  return false;
+}
+
+function selectSingle(type, index) {
+  state.selectedTextBoxes.clear();
+  state.selectedConnection = null;
+  state.selectedArrows.clear();
+  state.selectedShapes.clear();
+  state.selectedConnectors.clear();
+  state.arrowDragTarget = null;
+
+  switch (type) {
+    case 'textBox': state.selectedTextBoxes.add(index); break;
+    case 'shape': state.selectedShapes.add(index); break;
+    case 'arrow': state.selectedArrows.add(index); break;
+    case 'connector': state.selectedConnectors.add(index); break;
+    case 'connection': state.selectedConnection = index; break;
+  }
+}
 
 export function openContextMenu(e) {
   const canvas = state.canvas;
@@ -12,160 +106,51 @@ export function openContextMenu(e) {
   const sx = e.clientX - rect.left;
   const sy = e.clientY - rect.top;
   const world = screenToWorld(sx, sy, state.offsetX, state.offsetY, state.scale);
-  const hit = hitTestNode(world.x, world.y);
-  const connHit = hit === -1 ? hitTestConnection(world.x, world.y) : null;
-  const arrowEndHit = hit === -1 ? hitTestArrowEnd(world.x, world.y) : null;
-  const arrowBodyHit = (hit === -1 && connHit === null && arrowEndHit === null) ? hitTestArrowBody(world.x, world.y) : -1;
+
+  commitEditing();
+
+  const hit = detectHit(world.x, world.y);
+  const hitType = hit ? hit.type : null;
+  const hitIndex = hit !== null ? hit.i : -1;
+
+  if (hit && !isInSelection(hitType, hitIndex)) {
+    selectSingle(hitType, hitIndex);
+  }
 
   const menu = document.getElementById('contextMenu');
   if (!menu) return;
   menu.innerHTML = '';
 
   const items = [];
-  if (hit !== -1) {
-    if (!state.selectedTextBoxes.has(hit)) {
-      state.selectedTextBoxes.clear();
-      state.selectedTextBoxes.add(hit);
-    }
-    const addWrap = document.createElement('div');
-    addWrap.className = 'context-submenu-trigger';
-    const addBtn = document.createElement('button');
-    addBtn.className = 'context-item has-submenu';
-    addBtn.innerHTML = '<span>Add</span><span class="submenu-arrow">\u25b8</span>';
-    const sub = document.createElement('div');
-    sub.className = 'context-submenu';
-    const addNode = document.createElement('button');
-    addNode.className = 'context-item';
-    addNode.textContent = 'Add Text Box';
-    addNode.addEventListener('click', () => {
-      _addNodeAt(world.x, world.y);
-      closeContextMenu();
-    });
-    sub.appendChild(addNode);
-    const addArrow = document.createElement('button');
-    addArrow.className = 'context-item';
-    addArrow.textContent = 'Add Arrow';
-    addArrow.addEventListener('click', () => {
-      _addArrowAt(world.x, world.y, hit);
-      closeContextMenu();
-    });
-    sub.appendChild(addArrow);
-    addWrap.appendChild(addBtn);
-    addWrap.appendChild(sub);
-    items.push(addWrap);
-    const del = document.createElement('button');
-    del.className = 'context-item';
-    del.textContent = 'Delete';
-    del.addEventListener('click', () => {
-      _deleteSelectedNodes();
-      closeContextMenu();
-    });
-    items.push(del);
 
-    const dup = document.createElement('button');
-    dup.className = 'context-item';
-    dup.textContent = 'Duplicate';
-    dup.addEventListener('click', () => {
-      _duplicateSelectedNodes();
-      closeContextMenu();
-    });
-    items.push(dup);
+  if (hitType === 'textBox' || hitType === 'shape' || hitType === 'connector' || hitType === null) {
+    items.push(buildAddSubmenu(world.x, world.y, hitType, hitIndex));
+  }
 
-    const connectBtn = document.createElement('button');
-    connectBtn.className = 'context-item';
-    connectBtn.textContent = 'Connect to...';
-    connectBtn.addEventListener('click', () => {
-      state.connectingFrom = hit;
-      closeContextMenu();
-    });
-    items.push(connectBtn);
-
-    const copy = document.createElement('button');
-    copy.className = 'context-item';
-    copy.textContent = 'Copy';
-    copy.addEventListener('click', () => {
-      _copySelectedNodes();
-      closeContextMenu();
-    });
-    items.push(copy);
-
+  if (hitType === 'textBox') {
+    items.push(makeMenuItem('Delete', _deleteSelectedNodes));
+    items.push(makeMenuItem('Duplicate', _duplicateSelectedNodes));
+    items.push(makeMenuItem('Connect to...', () => {
+      state.connectingFrom = hitIndex;
+    }));
+    items.push(makeMenuItem('Copy', _copySelectedNodes));
     if (state.clipboard.length > 0) {
-      const paste = document.createElement('button');
-      paste.className = 'context-item';
-      paste.textContent = 'Paste';
-      paste.addEventListener('click', () => {
-        _pasteNodesAt(world.x, world.y);
-        closeContextMenu();
-      });
-      items.push(paste);
+      items.push(makeMenuItem('Paste', () => _pasteNodesAt(world.x, world.y)));
     }
-
-  } else if (arrowBodyHit !== -1) {
-    state.selectedTextBoxes.clear();
-    state.selectedConnection = null;
-    state.selectedArrows.clear();
-    state.arrowDragTarget = null;
-    state.selectedArrows.add(arrowBodyHit);
-    const delArrow = document.createElement('button');
-    delArrow.className = 'context-item';
-    delArrow.textContent = 'Delete Arrow';
-    delArrow.addEventListener('click', () => {
-      deleteSelectedArrows();
-      closeContextMenu();
-    });
-    items.push(delArrow);
-
-  } else if (connHit !== null) {
-    state.selectedConnection = connHit;
-    state.selectedTextBoxes.clear();
-    const delConn = document.createElement('button');
-    delConn.className = 'context-item';
-    delConn.textContent = 'Delete Connection';
-    delConn.addEventListener('click', () => {
-      if (state.selectedConnection !== null) {
-        deleteConnection(state.selectedConnection);
-      }
-      closeContextMenu();
-    });
-    items.push(delConn);
-
+  } else if (hitType === 'shape') {
+    items.push(makeMenuItem('Delete', _deleteSelectedShapes));
+    if (state.clipboard.length > 0) {
+      items.push(makeMenuItem('Paste', () => _pasteNodesAt(world.x, world.y)));
+    }
+  } else if (hitType === 'arrow') {
+    items.push(makeMenuItem('Delete Arrow', _deleteSelectedArrows));
+  } else if (hitType === 'connector') {
+    items.push(makeMenuItem('Delete Connector', _deleteSelectedConnectors));
+  } else if (hitType === 'connection') {
+    items.push(makeMenuItem('Delete Connection', () => _deleteConnection(hitIndex)));
   } else {
-    const addWrap = document.createElement('div');
-    addWrap.className = 'context-submenu-trigger';
-    const addBtn = document.createElement('button');
-    addBtn.className = 'context-item has-submenu';
-    addBtn.innerHTML = '<span>Add</span><span class="submenu-arrow">\u25b8</span>';
-    const sub = document.createElement('div');
-    sub.className = 'context-submenu';
-    const addNode = document.createElement('button');
-    addNode.className = 'context-item';
-    addNode.textContent = 'Add Text Box';
-    addNode.addEventListener('click', () => {
-      _addNodeAt(world.x, world.y);
-      closeContextMenu();
-    });
-    sub.appendChild(addNode);
-    const addArrow = document.createElement('button');
-    addArrow.className = 'context-item';
-    addArrow.textContent = 'Add Arrow';
-    addArrow.addEventListener('click', () => {
-      _addArrowAt(world.x, world.y);
-      closeContextMenu();
-    });
-    sub.appendChild(addArrow);
-    addWrap.appendChild(addBtn);
-    addWrap.appendChild(sub);
-    items.push(addWrap);
-
     if (state.clipboard.length > 0) {
-      const paste = document.createElement('button');
-      paste.className = 'context-item';
-      paste.textContent = 'Paste';
-      paste.addEventListener('click', () => {
-        _pasteNodesAt(world.x, world.y);
-        closeContextMenu();
-      });
-      items.push(paste);
+      items.push(makeMenuItem('Paste', () => _pasteNodesAt(world.x, world.y)));
     }
   }
 
@@ -175,10 +160,8 @@ export function openContextMenu(e) {
   }
 
   for (const it of items) menu.appendChild(it);
-  const px = e.clientX;
-  const py = e.clientY;
-  menu.style.left = px + 'px';
-  menu.style.top = py + 'px';
+  menu.style.left = e.clientX + 'px';
+  menu.style.top = e.clientY + 'px';
   menu.style.display = 'block';
 
   const offClick = (ev) => {
@@ -196,8 +179,21 @@ export function closeContextMenu() {
   if (menu) menu.style.display = 'none';
 }
 
-let _addNodeAt, _addArrowAt, _deleteSelectedNodes, _duplicateSelectedNodes;
-let _copySelectedNodes, _pasteNodesAt, _refreshSidePanel;
+function registerDefaultAddItems() {
+  registerAddItem('Add Text Box', (wx, wy) => _addNodeAt(wx, wy));
+  registerAddItem('Add Arrow', (wx, wy, hitType, hitIndex) => {
+    if (hitType === 'textBox') {
+      _addArrowAt(wx, wy, hitIndex);
+    } else {
+      _addArrowAt(wx, wy);
+    }
+  });
+  registerAddItem('Add Rectangle', (wx, wy) => _addShapeAt(wx, wy, 'rectangle'));
+  registerAddItem('Add Circle', (wx, wy) => _addShapeAt(wx, wy, 'circle'));
+  registerAddItem('Add Triangle', (wx, wy) => _addShapeAt(wx, wy, 'triangle'));
+  registerAddItem('Add Diamond', (wx, wy) => _addShapeAt(wx, wy, 'diamond'));
+  registerAddItem('Add Connector', (wx, wy) => _addConnectorAt(wx, wy));
+}
 
 export function initContextMenu(deps) {
   _addNodeAt = deps.addNodeAt;
@@ -207,6 +203,14 @@ export function initContextMenu(deps) {
   _copySelectedNodes = deps.copySelectedNodes;
   _pasteNodesAt = deps.pasteNodesAt;
   _refreshSidePanel = deps.refreshSidePanel;
+  _addShapeAt = deps.addShapeAt;
+  _addConnectorAt = deps.addConnectorAt;
+  _deleteSelectedShapes = deps.deleteSelectedShapes;
+  _deleteSelectedConnectors = deps.deleteSelectedConnectors;
+  _deleteSelectedArrows = deps.deleteSelectedArrows;
+  _deleteConnection = deps.deleteConnection;
+
+  registerDefaultAddItems();
 }
 
 export function setupContextMenu() {

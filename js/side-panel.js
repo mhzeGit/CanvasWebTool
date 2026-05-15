@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { history, flushPanelEdit, startPanelEdit, startShapePanelEdit, startTextBoxPanelEdit } from './history.js';
+import { history, flushPanelEdit, startPanelEdit, startShapePanelEdit, startTextBoxPanelEdit, startArrowPanelEdit, startConnectionPanelEdit } from './history.js';
 import { colorSwatchHTML, initColorSwatch } from './color-palette.js';
 import {
   createResizeShapeCmd, createResizeTextBoxCmd,
@@ -450,6 +450,7 @@ function _commitShapeSnapshot(property) {
 }
 
 export function refreshSidePanel() {
+  requestAnimationFrame(() => wirePropertyClipboard());
   const { sidePanelContent } = state;
   if (!sidePanelContent) return;
 
@@ -983,46 +984,18 @@ export function refreshSidePanel() {
     }
     (() => {
       let lastCommittedText = tb.text;
-      let undoDebounceTimer = null;
-
-      function wordBoundaryOrFormatting(newText, oldText) {
-        if (newText === oldText) return false;
-        if (typeof oldText === 'string' && typeof newText === 'string') {
-          if (newText.startsWith(oldText)) {
-            const added = newText.slice(oldText.length);
-            if (/[\s\n\r]$/.test(added)) return true;
-          }
-          const plainOld = oldText.replace(/[*_~`#>\-]/g, '').trim();
-          const plainNew = newText.replace(/[*_~`#>\-]/g, '').trim();
-          if (plainOld === plainNew) return true;
-        }
-        return false;
-      }
 
       setupMarkdownEditor('panelTBText', {
         getText: () => tb.text ?? '',
         setText: (v) => {
           if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; } } else { tb.text = v; tb.blocks = null; }
-          if (!isBatch) {
-            clearTimeout(undoDebounceTimer);
-            if (lastCommittedText !== v) {
-              if (wordBoundaryOrFormatting(v, lastCommittedText)) {
-                history.push(createTextBoxPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbId, 'text', lastCommittedText, v));
-                lastCommittedText = v;
-              } else {
-                undoDebounceTimer = setTimeout(() => {
-                  if (lastCommittedText !== tb.text) {
-                    history.push(createTextBoxPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbId, 'text', lastCommittedText, tb.text));
-                    lastCommittedText = tb.text;
-                  }
-                }, 2000);
-              }
-            }
+          if (!isBatch && lastCommittedText !== v && /[\s\n\r]$/.test(v)) {
+            history.push(createTextBoxPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbId, 'text', lastCommittedText, v));
+            lastCommittedText = v;
           }
         },
         onFocus: isBatch ? (() => { _captureTbSnapshot('text', members); }) : (() => { lastCommittedText = tb.text; }),
         onBlur: isBatch ? (() => { _commitTbSnapshot('text'); }) : (() => {
-          clearTimeout(undoDebounceTimer);
           if (lastCommittedText !== tb.text) {
             history.push(createTextBoxPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbId, 'text', lastCommittedText, tb.text));
             lastCommittedText = tb.text;
@@ -1451,4 +1424,159 @@ function attachDragNumber(inputEl, onDelta, onDragStart, onDragEnd) {
   inputEl.addEventListener('pointerdown', down);
   inputEl.addEventListener('pointermove', move);
   inputEl.addEventListener('pointerup', up);
+}
+
+// --- Property clipboard (copy/paste individual fields between entities) ---
+
+const ID_PROP_MAP = {
+  panelShapeColor: { entityType: 'shape', prop: 'color' },
+  panelShapeBorderColor: { entityType: 'shape', prop: 'borderColor' },
+  panelShapeBorderWidth: { entityType: 'shape', prop: 'borderWidth' },
+  panelShapeW: { entityType: 'shape', prop: 'w' },
+  panelShapeH: { entityType: 'shape', prop: 'h' },
+  panelShapeCornerRadius: { entityType: 'shape', prop: 'cornerRadius' },
+  panelTBTitle: { entityType: 'textBox', prop: 'title' },
+  panelTBTitleColor: { entityType: 'textBox', prop: 'titleColor' },
+  panelTBColor: { entityType: 'textBox', prop: 'color' },
+  panelTBBorderColor: { entityType: 'textBox', prop: 'borderColor' },
+  panelTBTextColor: { entityType: 'textBox', prop: 'textColor' },
+  panelTBFontSize: { entityType: 'textBox', prop: 'fontSize' },
+  panelTBW: { entityType: 'textBox', prop: 'w' },
+  panelTBH: { entityType: 'textBox', prop: 'h' },
+};
+
+function parseMixedId(id) {
+  const m = id.match(/^mx(\d+)_(.+)$/);
+  if (!m) return null;
+  const idx = parseInt(m[1]);
+  const prop = m[2];
+  const typeOrder = [];
+  if (state.selectedShapes.size > 0) typeOrder.push('shape');
+  if (state.selectedTextBoxes.size > 0) typeOrder.push('textBox');
+  if (state.selectedArrows.size > 0) typeOrder.push('arrow');
+  if (state.selectedConnection !== null) typeOrder.push('connection');
+  if (idx < typeOrder.length) return { entityType: typeOrder[idx], prop };
+  return null;
+}
+
+function getPropInfoFromId(id) {
+  if (ID_PROP_MAP[id]) return ID_PROP_MAP[id];
+  return parseMixedId(id);
+}
+
+function getEntityArray(entityType) {
+  if (entityType === 'shape') return state.shapes;
+  if (entityType === 'textBox') return state.textBoxes;
+  if (entityType === 'arrow') return state.arrows;
+  if (entityType === 'connection') return state.connections;
+  return null;
+}
+
+function getSelectedIndices(entityType) {
+  if (entityType === 'shape') return Array.from(state.selectedShapes);
+  if (entityType === 'textBox') return Array.from(state.selectedTextBoxes);
+  if (entityType === 'arrow') return Array.from(state.selectedArrows);
+  if (entityType === 'connection') return state.selectedConnection !== null ? [state.selectedConnection] : [];
+  return [];
+}
+
+function getPropertyValue(entityType, propKey) {
+  const entities = getEntityArray(entityType);
+  const indices = getSelectedIndices(entityType);
+  if (!entities || indices.length === 0) return undefined;
+  return entities[indices[0]][propKey];
+}
+
+function setPropertyValue(entityType, propKey, value) {
+  const entities = getEntityArray(entityType);
+  const indices = getSelectedIndices(entityType);
+  if (!entities || indices.length === 0) return;
+  const firstId = entities[indices[0]].id;
+  const oldVal = entities[indices[0]][propKey];
+  if (oldVal === value) return;
+
+  if (entityType === 'shape') {
+    startShapePanelEdit(firstId, propKey, oldVal);
+    for (const idx of indices) entities[idx][propKey] = value;
+  } else if (entityType === 'textBox') {
+    startTextBoxPanelEdit(firstId, propKey, oldVal);
+    for (const idx of indices) entities[idx][propKey] = value;
+  } else if (entityType === 'arrow') {
+    startArrowPanelEdit(firstId, propKey, oldVal);
+    for (const idx of indices) entities[idx][propKey] = value;
+  } else if (entityType === 'connection') {
+    startConnectionPanelEdit(firstId, propKey, oldVal);
+    for (const idx of indices) entities[idx][propKey] = value;
+  }
+  flushPanelEdit();
+  refreshSidePanel();
+}
+
+let _propClipboardMenu = null;
+
+function hidePropClipboardMenu() {
+  if (_propClipboardMenu) _propClipboardMenu.style.display = 'none';
+}
+
+function showPropClipboardMenu(x, y, entityType, propKey) {
+  if (!_propClipboardMenu) {
+    _propClipboardMenu = document.createElement('div');
+    _propClipboardMenu.className = 'prop-clipboard-menu';
+    _propClipboardMenu.innerHTML =
+      '<div class="prop-clipboard-item" data-action="copy">Copy <span class="shortcut">Ctrl+C</span></div>' +
+      '<div class="prop-clipboard-item" data-action="paste">Paste <span class="shortcut">Ctrl+V</span></div>';
+    _propClipboardMenu.addEventListener('pointerdown', (e) => e.stopPropagation());
+    _propClipboardMenu.addEventListener('click', (e) => {
+      const item = e.target.closest('.prop-clipboard-item');
+      if (!item) return;
+      const action = item.dataset.action;
+      const et = _propClipboardMenu.dataset.entityType;
+      const pk = _propClipboardMenu.dataset.propKey;
+      if (action === 'copy') {
+        const val = getPropertyValue(et, pk);
+        if (val !== undefined) state.propertyClipboard = { value: val, entityType: et, propKey: pk };
+      } else if (action === 'paste') {
+        if (state.propertyClipboard) setPropertyValue(et, pk, state.propertyClipboard.value);
+      }
+      hidePropClipboardMenu();
+    });
+    document.body.appendChild(_propClipboardMenu);
+    document.addEventListener('pointerdown', (e) => {
+      if (_propClipboardMenu && _propClipboardMenu.style.display !== 'none' && !_propClipboardMenu.contains(e.target)) {
+        hidePropClipboardMenu();
+      }
+    });
+  }
+  _propClipboardMenu.dataset.entityType = entityType;
+  _propClipboardMenu.dataset.propKey = propKey;
+  _propClipboardMenu.style.left = Math.min(x, window.innerWidth - 180) + 'px';
+  _propClipboardMenu.style.top = Math.min(y, window.innerHeight - 80) + 'px';
+  _propClipboardMenu.style.display = 'block';
+}
+
+function wirePropertyClipboard() {
+  const panel = state.sidePanelContent;
+  if (!panel) return;
+  const rows = panel.querySelectorAll('.panel-row');
+  for (const row of rows) {
+    if (row._propClipboardWired) continue;
+    const childEl = row.querySelector('input, button.panel-color-swatch');
+    if (!childEl) continue;
+    const info = getPropInfoFromId(childEl.id);
+    if (!info) continue;
+    row._propClipboardWired = true;
+    row.addEventListener('mouseenter', () => {
+      state.hoveredPropField = { entityType: info.entityType, propKey: info.prop };
+    });
+    row.addEventListener('mouseleave', () => {
+      if (state.hoveredPropField && state.hoveredPropField.entityType === info.entityType && state.hoveredPropField.propKey === info.prop) {
+        state.hoveredPropField = null;
+      }
+    });
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showPropClipboardMenu(e.clientX, e.clientY, info.entityType, info.prop);
+    });
+  }
 }

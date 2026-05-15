@@ -404,6 +404,12 @@ canvas#gridCanvas {
   background: var(--bg-hover-light);
 }
 
+.menu-separator {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 2px;
+}
+
 .context-menu {
   position: fixed;
   min-width: 150px;
@@ -478,6 +484,47 @@ canvas#gridCanvas {
 
 .context-submenu-trigger:hover > .context-submenu {
   display: flex;
+}
+
+.prop-clipboard-menu {
+  position: fixed;
+  min-width: 140px;
+  background: var(--bg-context-menu);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+  padding: 4px;
+  display: none;
+  flex-direction: column;
+  z-index: 10000;
+  font-size: 13px;
+}
+
+.prop-clipboard-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.prop-clipboard-item:hover {
+  background: rgba(255,255,255,0.07);
+}
+
+.prop-clipboard-item .shortcut {
+  opacity: 0.45;
+  font-size: 11px;
 }
 
 .context-submenu-trigger::after {

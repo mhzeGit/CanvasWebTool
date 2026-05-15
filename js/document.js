@@ -39,6 +39,25 @@ export function addArrowAtCenter() {
   addArrowAt(world.x, world.y);
 }
 
+export function addShapeAtCenter(shapeType) {
+  flushPanelEdit();
+  const rect = state.canvas.getBoundingClientRect();
+  const centerCssX = rect.width / 2;
+  const centerCssY = rect.height / 2;
+  const world = screenToWorld(centerCssX, centerCssY, state.offsetX, state.offsetY, state.scale);
+  addShapeAt(world.x, world.y, shapeType);
+}
+
+export function addConnectorAtCenter() {
+  flushPanelEdit();
+  const rect = state.canvas.getBoundingClientRect();
+  const centerCssX = rect.width / 2;
+  const centerCssY = rect.height / 2;
+  const world = screenToWorld(centerCssX, centerCssY, state.offsetX, state.offsetY, state.scale);
+  const offset = 60;
+  addConnector(world.x - offset, world.y, world.x + offset, world.y);
+}
+
 export function addArrowAt(worldX, worldY, connectTextBoxIdx) {
   flushPanelEdit();
   const offset = 60;

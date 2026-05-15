@@ -105,16 +105,8 @@ export function startEditing(idx, field) {
 
     const originalValue = n.text;
     let lastCommittedValue = originalValue;
-    let undoDebounceTimer = null;
-    let formattingApplied = false;
+    let pendingWordBoundary = false;
     state.editingState = { type: 'node', idx, field, el: body, originalValue, lastCommittedValue, isRichText: true };
-
-    function pushUndoStep(newText) {
-      if (lastCommittedValue !== newText) {
-        history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, n.id, field, lastCommittedValue, newText));
-        lastCommittedValue = newText;
-      }
-    }
 
     const onInput = () => {
       if (!_detectingMarkdown) {
@@ -123,19 +115,10 @@ export function startEditing(idx, field) {
       n.blocks = htmlToBlocks(body);
       n.text = blocksToMarkdown(n.blocks);
 
-      clearTimeout(undoDebounceTimer);
-      const currentText = n.text;
-      if (formattingApplied || _textEndsWithBoundary(currentText, lastCommittedValue)) {
-        pushUndoStep(currentText);
-        formattingApplied = false;
-      } else if (lastCommittedValue !== currentText) {
-        undoDebounceTimer = setTimeout(() => {
-          const latestText = n.text;
-          if (lastCommittedValue !== latestText) {
-            history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, n.id, field, lastCommittedValue, latestText));
-            lastCommittedValue = latestText;
-          }
-        }, 2000);
+      if (pendingWordBoundary && lastCommittedValue !== n.text) {
+        pendingWordBoundary = false;
+        history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, n.id, field, lastCommittedValue, n.text));
+        lastCommittedValue = n.text;
       }
     };
 
@@ -145,18 +128,21 @@ export function startEditing(idx, field) {
       } else if (ev.key === 'Enter') {
         ev.preventDefault();
         if (ev.shiftKey) {
+          pendingWordBoundary = true;
           handleEnter(body, ev);
         } else {
           body.blur();
         }
       } else if (ev.key === 'Backspace') {
         handleBackspace(body, ev);
+      } else if (ev.key === ' ') {
+        pendingWordBoundary = true;
       } else if (ev.ctrlKey || ev.metaKey) {
         const k = ev.key.toLowerCase();
-        if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); formattingApplied = true; body.dispatchEvent(new Event('input', { bubbles: true })); }
-        else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); formattingApplied = true; body.dispatchEvent(new Event('input', { bubbles: true })); }
-        else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); formattingApplied = true; body.dispatchEvent(new Event('input', { bubbles: true })); }
-        else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); formattingApplied = true; body.dispatchEvent(new Event('input', { bubbles: true })); }
+        if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); pendingWordBoundary = true; body.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); pendingWordBoundary = true; body.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); pendingWordBoundary = true; body.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); pendingWordBoundary = true; body.dispatchEvent(new Event('input', { bubbles: true })); }
       }
     };
 
@@ -337,16 +323,8 @@ function startTextBoxEditing(tbIdx) {
 
   const originalValue = tb.text;
   let lastCommittedValue = originalValue;
-  let undoDebounceTimer = null;
-  let formattingApplied = false;
+  let pendingWordBoundary = false;
   state.editingState = { type: 'textBox', idx: tbIdx, el: content, originalValue, lastCommittedValue, isRichText: true };
-
-  function pushUndoStep(newText) {
-    if (lastCommittedValue !== newText) {
-      history.push(createPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tb.id, 'text', lastCommittedValue, newText));
-      lastCommittedValue = newText;
-    }
-  }
 
   const onInput = () => {
     if (!_detectingMarkdown) {
@@ -355,19 +333,10 @@ function startTextBoxEditing(tbIdx) {
     tb.blocks = htmlToBlocks(content);
     tb.text = blocksToMarkdown(tb.blocks);
 
-    clearTimeout(undoDebounceTimer);
-    const currentText = tb.text;
-    if (formattingApplied || _textEndsWithBoundary(currentText, lastCommittedValue)) {
-      pushUndoStep(currentText);
-      formattingApplied = false;
-    } else if (lastCommittedValue !== currentText) {
-      undoDebounceTimer = setTimeout(() => {
-        const latestText = tb.text;
-        if (lastCommittedValue !== latestText) {
-          history.push(createPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tb.id, 'text', lastCommittedValue, latestText));
-          lastCommittedValue = latestText;
-        }
-      }, 2000);
+    if (pendingWordBoundary && lastCommittedValue !== tb.text) {
+      pendingWordBoundary = false;
+      history.push(createPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tb.id, 'text', lastCommittedValue, tb.text));
+      lastCommittedValue = tb.text;
     }
   };
 
@@ -377,18 +346,21 @@ function startTextBoxEditing(tbIdx) {
     } else if (ev.key === 'Enter') {
       ev.preventDefault();
       if (ev.shiftKey) {
+        pendingWordBoundary = true;
         handleEnter(content, ev);
       } else {
         content.blur();
       }
     } else if (ev.key === 'Backspace') {
       handleBackspace(content, ev);
+    } else if (ev.key === ' ') {
+      pendingWordBoundary = true;
     } else if (ev.ctrlKey || ev.metaKey) {
       const k = ev.key.toLowerCase();
-      if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); formattingApplied = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
-      else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); formattingApplied = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
-      else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); formattingApplied = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
-      else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); formattingApplied = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
+      if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); pendingWordBoundary = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); pendingWordBoundary = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); pendingWordBoundary = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); pendingWordBoundary = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
     }
   };
 
@@ -669,15 +641,6 @@ function _detectAndApplyMarkdown(editor) {
   }
 }
 
-function _textEndsWithBoundary(newText, oldText) {
-  if (newText === oldText) return false;
-  if (typeof oldText === 'string' && typeof newText === 'string' && newText.startsWith(oldText)) {
-    const added = newText.slice(oldText.length);
-    return /[\s\n\r]$/.test(added);
-  }
-  return false;
-}
-
 function placeCursorAtEnd(el) {
   const range = document.createRange();
   range.selectNodeContents(el);
@@ -696,10 +659,6 @@ export function commitEditing() {
     el.removeEventListener('keydown', state.editingState._handlers.onKeyDown);
     el.removeEventListener('paste', state.editingState._handlers.onPaste);
     el.removeEventListener('blur', state.editingState._handlers.commit);
-  }
-
-  if (state.editingState.undoDebounceTimer) {
-    clearTimeout(state.editingState.undoDebounceTimer);
   }
 
   if (isRichText) {
@@ -745,10 +704,6 @@ export function commitEditing() {
 export function cancelEditing() {
   if (!state.editingState) return;
   const { type, idx, field, el, originalValue, isRichText } = state.editingState;
-
-  if (state.editingState.undoDebounceTimer) {
-    clearTimeout(state.editingState.undoDebounceTimer);
-  }
 
   if (state.editingState._handlers) {
     el.removeEventListener('input', state.editingState._handlers.onInput);

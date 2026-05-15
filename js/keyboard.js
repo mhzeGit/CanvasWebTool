@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { screenToWorld } from './utils.js';
-import { history, performUndo, performRedo, flushPanelEdit } from './history.js';
+import { history, performUndo, performRedo, flushPanelEdit, startShapePanelEdit, startTextBoxPanelEdit, startArrowPanelEdit, startConnectionPanelEdit } from './history.js';
 import { refreshSidePanel } from './side-panel.js';
 import { cancelEditing } from './inline-editing.js';
 import { closeContextMenu } from './context-menu.js';
@@ -116,10 +116,20 @@ function onKeyDown(e) {
     e.preventDefault();
   }
   if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c')) {
+    if (state.hoveredPropField) {
+      copyHoveredProp();
+      e.preventDefault();
+      return;
+    }
     copySelectedNodes();
     e.preventDefault();
   }
   if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'v')) {
+    if (state.hoveredPropField && state.propertyClipboard) {
+      pasteHoveredProp();
+      e.preventDefault();
+      return;
+    }
     const rect = state.canvas.getBoundingClientRect();
     const mx = window._lastMouseX ?? rect.width / 2;
     const my = window._lastMouseY ?? rect.height / 2;
@@ -159,6 +169,50 @@ function onKeyDown(e) {
       refreshSidePanel();
     }
   }
+}
+
+function copyHoveredProp() {
+  const f = state.hoveredPropField;
+  if (!f) return;
+  const entities = f.entityType === 'shape' ? state.shapes
+    : f.entityType === 'textBox' ? state.textBoxes
+    : f.entityType === 'arrow' ? state.arrows
+    : f.entityType === 'connection' ? state.connections
+    : null;
+  const indices = f.entityType === 'shape' ? Array.from(state.selectedShapes)
+    : f.entityType === 'textBox' ? Array.from(state.selectedTextBoxes)
+    : f.entityType === 'arrow' ? Array.from(state.selectedArrows)
+    : f.entityType === 'connection' ? (state.selectedConnection !== null ? [state.selectedConnection] : [])
+    : [];
+  if (!entities || indices.length === 0) return;
+  state.propertyClipboard = { value: entities[indices[0]][f.propKey], entityType: f.entityType, propKey: f.propKey };
+}
+
+function pasteHoveredProp() {
+  const f = state.hoveredPropField;
+  if (!f || !state.propertyClipboard) return;
+  const entities = f.entityType === 'shape' ? state.shapes
+    : f.entityType === 'textBox' ? state.textBoxes
+    : f.entityType === 'arrow' ? state.arrows
+    : f.entityType === 'connection' ? state.connections
+    : null;
+  const indices = f.entityType === 'shape' ? Array.from(state.selectedShapes)
+    : f.entityType === 'textBox' ? Array.from(state.selectedTextBoxes)
+    : f.entityType === 'arrow' ? Array.from(state.selectedArrows)
+    : f.entityType === 'connection' ? (state.selectedConnection !== null ? [state.selectedConnection] : [])
+    : [];
+  if (!entities || indices.length === 0) return;
+  const oldVal = entities[indices[0]][f.propKey];
+  const newVal = state.propertyClipboard.value;
+  if (oldVal === newVal) return;
+  const firstId = entities[indices[0]].id;
+  if (f.entityType === 'shape') startShapePanelEdit(firstId, f.propKey, oldVal);
+  else if (f.entityType === 'textBox') startTextBoxPanelEdit(firstId, f.propKey, oldVal);
+  else if (f.entityType === 'arrow') startArrowPanelEdit(firstId, f.propKey, oldVal);
+  else if (f.entityType === 'connection') startConnectionPanelEdit(firstId, f.propKey, oldVal);
+  for (const idx of indices) entities[idx][f.propKey] = newVal;
+  flushPanelEdit();
+  refreshSidePanel();
 }
 
 window.addEventListener('keydown', (e) => {
