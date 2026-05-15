@@ -1,34 +1,30 @@
 import { state } from './state.js';
-import { EDGE_MARGIN, NODE_MIN_W, NODE_MIN_H, DEFAULT_NODE_COLOR } from './config.js';
+import { EDGE_MARGIN } from './config.js';
 import { getEdgeAt as getEntityEdgeAt, drawRoundedRect, getDarkerColor, getBorderColor } from './utils.js';
 
 export function hitTestNode(wx, wy) {
-  const drawOrder = state.getDrawOrder();
-  for (let i = drawOrder.length - 1; i >= 0; i--) {
-    const idx = drawOrder[i];
-    const n = state.nodes[idx];
-    if (wx >= n.x && wx <= n.x + n.w && wy >= n.y && wy <= n.y + n.h) return idx;
+  for (let i = state.nodes.length - 1; i >= 0; i--) {
+    const n = state.nodes[i];
+    if (wx >= n.x && wx <= n.x + n.w && wy >= n.y && wy <= n.y + n.h) return i;
   }
   return -1;
 }
 
 export function findNodeAtEdge(wx, wy) {
-  const drawOrder = state.getDrawOrder();
-  const entities = drawOrder.map(i => state.nodes[i]);
-  const hit = getEntityEdgeAt(wx, wy, entities, EDGE_MARGIN);
+  const allOrder = state.getAllDrawOrder();
+  const textBoxEntities = allOrder.filter(item => item.type === 'textBox').map(item => state.textBoxes[item.i]);
+  const hit = getEntityEdgeAt(wx, wy, textBoxEntities, EDGE_MARGIN);
   if (hit) {
-    const nodeIdx = drawOrder[hit.idx];
-    const allOrder = state.getAllDrawOrder();
-    const ourPos = allOrder.findIndex(item => item.type === 'node' && item.i === nodeIdx);
-    if (ourPos === -1) return null;
-    for (let i = allOrder.length - 1; i > ourPos; i--) {
+    const tbIdx = hit.idx;
+    const allPos = allOrder.findIndex(item => item.type === 'textBox' && item.i === tbIdx);
+    if (allPos === -1) return null;
+    for (let i = allOrder.length - 1; i > allPos; i--) {
       const item = allOrder[i];
-      const e = item.type === 'node' ? state.nodes[item.i]
-        : item.type === 'shape' ? state.shapes[item.i]
+      const e = item.type === 'shape' ? state.shapes[item.i]
         : state.textBoxes[item.i];
       if (e && wx >= e.x - EDGE_MARGIN && wx <= e.x + e.w + EDGE_MARGIN && wy >= e.y - EDGE_MARGIN && wy <= e.y + e.h + EDGE_MARGIN) return null;
     }
-    return { idx: nodeIdx, handle: hit.handle, cursor: hit.cursor };
+    return { idx: tbIdx, handle: hit.handle, cursor: hit.cursor };
   }
   return null;
 }
@@ -42,37 +38,25 @@ export function findNodeAtPoint(wx, wy) {
 }
 
 export function drawNodePreview() {
-  if (!state.drawingTool || state.drawingTool !== 'node') return;
+  if (!state.drawingTool || state.drawingTool !== 'text') return;
   const ctx = state.ctx;
   const x = Math.min(state.drawingStartX, state.lastWorldMouse.x);
   const y = Math.min(state.drawingStartY, state.lastWorldMouse.y);
   const w = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
   const h = Math.abs(state.lastWorldMouse.y - state.drawingStartY);
-  const cornerRadius = Math.min(12, Math.min(w, h) * 0.2);
 
   ctx.save();
-  ctx.fillStyle = DEFAULT_NODE_COLOR;
-  drawRoundedRect(ctx, x, y, w, h, cornerRadius);
+  ctx.fillStyle = '#1a1a1a';
+  drawRoundedRect(ctx, x, y, w, h, 6);
   ctx.fill();
-  ctx.strokeStyle = getBorderColor(DEFAULT_NODE_COLOR);
-  ctx.lineWidth = 1;
-  drawRoundedRect(ctx, x, y, w, h, cornerRadius);
-  ctx.stroke();
   ctx.restore();
 
   ctx.save();
-  const titleBarH = Math.min(30, h);
-  ctx.fillStyle = getDarkerColor(DEFAULT_NODE_COLOR, 0.6);
-  ctx.beginPath();
-  ctx.moveTo(x + cornerRadius, y);
-  ctx.lineTo(x + w - cornerRadius, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + cornerRadius);
-  ctx.lineTo(x + w, y + titleBarH);
-  ctx.lineTo(x, y + titleBarH);
-  ctx.lineTo(x, y + cornerRadius);
-  ctx.quadraticCurveTo(x, y, x + cornerRadius, y);
-  ctx.closePath();
-  ctx.fill();
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 1.5;
+  const outlineOffset = ctx.lineWidth / 2;
+  drawRoundedRect(ctx, x - outlineOffset, y - outlineOffset, w + outlineOffset * 2, h + outlineOffset * 2, 6 + outlineOffset);
+  ctx.stroke();
   ctx.restore();
 }
 

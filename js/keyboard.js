@@ -161,7 +161,6 @@ function onKeyDown(e) {
   }
 }
 
-// Ctrl+S shortcut
 window.addEventListener('keydown', (e) => {
   if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
     const active = document.activeElement;

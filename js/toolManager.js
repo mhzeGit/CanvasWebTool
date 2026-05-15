@@ -2,7 +2,6 @@ export const TOOLS = {
   CURSOR: 'cursor',
   ARROW: 'arrow',
   CONNECTION_LINE: 'connectionLine',
-  NODE: 'node',
   TEXT: 'text',
   SHAPES: 'shapes',
 };

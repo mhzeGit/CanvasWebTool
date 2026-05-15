@@ -17,7 +17,7 @@ import { refreshSidePanel } from './side-panel.js';
 import { initPanelResize } from './panel-resize.js';
 import { history, initHistory } from './history.js';
 import {
-  addNodeAtCenter, addNodeAt, addArrowAtCenter, addArrowAt,
+  addNodeAt, addArrowAt,
   deleteSelectedNodes, deleteSelectedShapes, deleteSelectedTextBoxes, deleteSelectedConnectors,
   duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
   newDocument, saveDocument, openDocument,
@@ -58,10 +58,11 @@ function animate() {
 
   drawGrid(ctx, canvas, state.offsetX, state.offsetY, state.scale, dpr);
 
+  // Clean up stale connections (where textBox was deleted)
   for (let ci = state.connections.length - 1; ci >= 0; ci--) {
     const conn = state.connections[ci];
-    const fromNode = state.nodes[conn.from];
-    const toNode = state.nodes[conn.to];
+    const fromNode = state.textBoxes[conn.from];
+    const toNode = state.textBoxes[conn.to];
     if (!fromNode || !toNode) {
       state.connections.splice(ci, 1);
       if (state.selectedConnection === ci) state.selectedConnection = null;
@@ -78,10 +79,10 @@ function animate() {
 
   drawSelectionMarquee();
 
-  drawNodePreview();
   drawConnectorPreview();
   drawArrowPreview();
   drawShapePreview();
+  drawNodePreview();
   drawTextBoxPreview();
 
   const key = state.computeSelectionKey();
@@ -145,8 +146,8 @@ function init() {
     if (target === state.canvas) return;
     if (target && (target.closest && (target.closest('#sidePanel') || target.closest('#contextMenu') || target.closest('.top-bar') || target.closest('#leftToolbar')))) return;
     let didClear = false;
-    if (state.selected.size > 0) {
-      state.selected.clear();
+    if (state.selectedTextBoxes.size > 0) {
+      state.selectedTextBoxes.clear();
       state.selectedConnection = null;
       didClear = true;
     }
@@ -161,10 +162,6 @@ function init() {
     }
     if (state.selectedShapes.size > 0) {
       state.selectedShapes.clear();
-      didClear = true;
-    }
-    if (state.selectedTextBoxes.size > 0) {
-      state.selectedTextBoxes.clear();
       didClear = true;
     }
     if (state.selectedConnectors.size > 0) {

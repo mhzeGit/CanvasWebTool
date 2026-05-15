@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { screenToWorld, computeResizeBounds, getObjectEdgePoint } from './utils.js';
-import { hitTestNode } from './nodes.js';
+import { hitTestNode, getEdgeAt, findNodeAtEdge } from './nodes.js';
 import { hitTestConnection } from './connections.js';
 import { hitTestArrowEnd, hitTestArrowBody, isArrowInBox } from './arrows.js';
 import { getShapeEdgeAt, isShapeInBox } from './shapes.js';
@@ -18,13 +18,11 @@ import {
   addConnection,
 } from './document.js';
 import {
-  createResizeNodeCmd, createMoveNodesCmd, createMoveArrowEndCmd,
   createMoveShapesCmd, createResizeShapeCmd, createMoveTextBoxesCmd,
-  createMoveConnectorsCmd, createResizeTextBoxCmd,
+  createMoveConnectorsCmd, createResizeTextBoxCmd, createMoveArrowEndCmd,
 } from './undo.js';
 import { flushPanelEdit } from './history.js';
-import { DRAG_THRESHOLD_PX, NODE_MIN_W, NODE_MIN_H, SHAPE_MIN_W, SHAPE_MIN_H, TEXTBOX_MIN_W, TEXTBOX_MIN_H } from './config.js';
-import { getEdgeAt, findNodeAtEdge } from './nodes.js';
+import { DRAG_THRESHOLD_PX, TEXTBOX_MIN_W, TEXTBOX_MIN_H, SHAPE_MIN_W, SHAPE_MIN_H } from './config.js';
 
 let _history;
 
@@ -45,17 +43,13 @@ function gatherChildDragStarts() {
   state.dragChildTextBoxStarts = [];
   const parentIds = new Set();
   const parentTypes = new Set();
-  for (const si of state.selected) {
-    parentIds.add(state.nodes[si].id);
-    parentTypes.add('node');
+  for (const ti of state.selectedTextBoxes) {
+    parentIds.add(state.textBoxes[ti].id);
+    parentTypes.add('textBox');
   }
   for (const si of state.selectedShapes) {
     parentIds.add(state.shapes[si].id);
     parentTypes.add('shape');
-  }
-  for (const ti of state.selectedTextBoxes) {
-    parentIds.add(state.textBoxes[ti].id);
-    parentTypes.add('textBox');
   }
   for (let i = 0; i < state.shapes.length; i++) {
     const s = state.shapes[i];
@@ -106,8 +100,8 @@ function findConnectedObjectAtPoint(wx, wy) {
 
 function hasHitOnExistingItem(wx, wy) {
   if (hitTestArrowEnd(wx, wy)) return true;
-  const nodeIdx = hitTestNode(wx, wy);
-  if (nodeIdx !== -1) {
+  const tbIdx = hitTestNode(wx, wy);
+  if (tbIdx !== -1) {
     if (getEdgeAt(wx, wy)) return true;
   } else {
     if (findNodeAtEdge(wx, wy)) return true;
@@ -164,29 +158,14 @@ function onPointerDown(e) {
   if (e.button === 0) {
     const tool = getActiveTool();
 
-    if (tool === TOOLS.NODE || tool === TOOLS.TEXT || tool === TOOLS.SHAPES) {
+    if (tool === TOOLS.TEXT || tool === TOOLS.SHAPES) {
       if (hasHitOnExistingItem(world.x, world.y)) {
         setActiveTool(TOOLS.CURSOR);
-      } else if (tool === TOOLS.NODE) {
-        state.selected.clear();
-        state.selectedConnection = null;
-        state.selectedArrows.clear();
-        state.selectedShapes.clear();
-        state.selectedTextBoxes.clear();
-        state.selectedConnectors.clear();
-        state.arrowDragTarget = null;
-        state.drawingTool = 'node';
-        state.drawingStartX = world.x;
-        state.drawingStartY = world.y;
-        canvas.setPointerCapture(e.pointerId);
-        e.preventDefault();
-        return;
       } else if (tool === TOOLS.TEXT) {
-        state.selected.clear();
+        state.selectedTextBoxes.clear();
         state.selectedConnection = null;
         state.selectedArrows.clear();
         state.selectedShapes.clear();
-        state.selectedTextBoxes.clear();
         state.selectedConnectors.clear();
         state.arrowDragTarget = null;
         state.drawingTool = 'text';
@@ -196,11 +175,10 @@ function onPointerDown(e) {
         e.preventDefault();
         return;
       } else if (tool === TOOLS.SHAPES) {
-        state.selected.clear();
+        state.selectedTextBoxes.clear();
         state.selectedConnection = null;
         state.selectedArrows.clear();
         state.selectedShapes.clear();
-        state.selectedTextBoxes.clear();
         state.selectedConnectors.clear();
         state.arrowDragTarget = null;
         state.drawingTool = 'shape';
@@ -214,11 +192,10 @@ function onPointerDown(e) {
     }
 
     if (tool === TOOLS.ARROW) {
-      state.selected.clear();
+      state.selectedTextBoxes.clear();
       state.selectedConnection = null;
       state.selectedArrows.clear();
       state.selectedShapes.clear();
-      state.selectedTextBoxes.clear();
       state.selectedConnectors.clear();
       state.arrowDragTarget = null;
       state.drawingTool = 'arrow';
@@ -231,11 +208,10 @@ function onPointerDown(e) {
       return;
     }
     if (tool === TOOLS.CONNECTION_LINE) {
-      state.selected.clear();
+      state.selectedTextBoxes.clear();
       state.selectedConnection = null;
       state.selectedArrows.clear();
       state.selectedShapes.clear();
-      state.selectedTextBoxes.clear();
       state.selectedConnectors.clear();
       state.arrowDragTarget = null;
       state.drawingTool = 'connector';
@@ -250,7 +226,7 @@ function onPointerDown(e) {
 
     const arrowEndHit = hitTestArrowEnd(world.x, world.y);
     if (arrowEndHit) {
-      state.selected.clear();
+      state.selectedTextBoxes.clear();
       state.selectedConnection = null;
       state.selectedArrows.clear();
       state.selectedArrows.add(arrowEndHit.arrowIdx);
@@ -286,17 +262,17 @@ function onPointerDown(e) {
     }
     if (edgeHit) {
       flushPanelEdit();
-      if (!state.selected.has(edgeHit.idx)) {
-        state.selected.clear();
-        state.selected.add(edgeHit.idx);
+      if (!state.selectedTextBoxes.has(edgeHit.idx)) {
+        state.selectedTextBoxes.clear();
+        state.selectedTextBoxes.add(edgeHit.idx);
       }
       state.isResizing = true;
       state.resizeNodeIdx = edgeHit.idx;
-      state.resizeNodeId = state.nodes[edgeHit.idx].id;
+      state.resizeNodeId = state.textBoxes[edgeHit.idx].id;
       state.resizeHandle = edgeHit.handle;
       state.resizeStartWorldX = world.x;
       state.resizeStartWorldY = world.y;
-      state.resizeStartNode = { x: state.nodes[edgeHit.idx].x, y: state.nodes[edgeHit.idx].y, w: state.nodes[edgeHit.idx].w, h: state.nodes[edgeHit.idx].h };
+      state.resizeStartNode = { x: state.textBoxes[edgeHit.idx].x, y: state.textBoxes[edgeHit.idx].y, w: state.textBoxes[edgeHit.idx].w, h: state.textBoxes[edgeHit.idx].h };
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
       return;
@@ -306,12 +282,11 @@ function onPointerDown(e) {
       const shapeEdge = getShapeEdgeAt(world.x, world.y);
       if (shapeEdge) {
         flushPanelEdit();
-        state.selected.clear();
+        state.selectedTextBoxes.clear();
         state.selectedConnection = null;
         state.selectedArrows.clear();
-        state.selectedTextBoxes.clear();
-        state.selectedConnectors.clear();
         state.selectedShapes.clear();
+        state.selectedConnectors.clear();
         state.selectedShapes.add(shapeEdge.idx);
         state.isResizingShape = true;
         state.resizeShapeIdx = shapeEdge.idx;
@@ -332,12 +307,11 @@ function onPointerDown(e) {
       const tbEdge = getTextBoxEdgeAt(world.x, world.y);
       if (tbEdge) {
         flushPanelEdit();
-        state.selected.clear();
+        state.selectedTextBoxes.clear();
         state.selectedConnection = null;
         state.selectedArrows.clear();
         state.selectedShapes.clear();
         state.selectedConnectors.clear();
-        state.selectedTextBoxes.clear();
         state.selectedTextBoxes.add(tbEdge.idx);
         state.isResizingTextBox = true;
         state.resizeTextBoxIdx = tbEdge.idx;
@@ -357,14 +331,13 @@ function onPointerDown(e) {
     {
       const topHit = state.getTopHitAt(world.x, world.y);
       if (topHit) {
-        if (topHit.type === 'node') {
+        if (topHit.type === 'textBox') {
           state.selectedConnection = null;
           state.arrowDragTarget = null;
           if (!e.shiftKey && !e.ctrlKey) {
-            state.selected.clear();
+            state.selectedTextBoxes.clear();
             state.selectedArrows.clear();
             state.selectedShapes.clear();
-            state.selectedTextBoxes.clear();
             state.selectedConnectors.clear();
           }
           hit = topHit.i;
@@ -375,17 +348,17 @@ function onPointerDown(e) {
           state.pendingCtrlKey = e.ctrlKey;
           state.didDragSincePointerDown = false;
           if (e.ctrlKey) {
-            if (state.selected.has(hit)) state.selected.delete(hit);
+            if (state.selectedTextBoxes.has(hit)) state.selectedTextBoxes.delete(hit);
             state.pendingClickIndex = -1;
             refreshSidePanel();
             e.preventDefault();
             return;
           }
           if (e.shiftKey) {
-            state.selected.add(hit);
+            state.selectedTextBoxes.add(hit);
           } else {
-            state.selected.clear();
-            state.selected.add(hit);
+            state.selectedTextBoxes.clear();
+            state.selectedTextBoxes.add(hit);
           }
           refreshSidePanel();
           canvas.setPointerCapture(e.pointerId);
@@ -394,11 +367,10 @@ function onPointerDown(e) {
         }
         if (topHit.type === 'shape') {
           if (!e.shiftKey && !e.ctrlKey) {
-            state.selected.clear();
+            state.selectedTextBoxes.clear();
             state.selectedConnection = null;
             state.selectedArrows.clear();
             state.selectedShapes.clear();
-            state.selectedTextBoxes.clear();
             state.selectedConnectors.clear();
             state.arrowDragTarget = null;
           }
@@ -425,50 +397,17 @@ function onPointerDown(e) {
           e.preventDefault();
           return;
         }
-        if (topHit.type === 'textBox') {
-          if (!e.shiftKey && !e.ctrlKey) {
-            state.selected.clear();
-            state.selectedConnection = null;
-            state.selectedArrows.clear();
-            state.selectedShapes.clear();
-            state.selectedTextBoxes.clear();
-            state.selectedConnectors.clear();
-            state.arrowDragTarget = null;
-          }
-          if (e.ctrlKey) {
-            if (state.selectedTextBoxes.has(topHit.i)) state.selectedTextBoxes.delete(topHit.i);
-            refreshSidePanel();
-            e.preventDefault();
-            return;
-          }
-          if (e.shiftKey) {
-            state.selectedTextBoxes.add(topHit.i);
-          } else if (!state.selectedTextBoxes.has(topHit.i)) {
-            state.selectedTextBoxes.clear();
-            state.selectedTextBoxes.add(topHit.i);
-          }
-          state.pendingClickIndex = -4;
-          state.pointerDownScreenX = sx;
-          state.pointerDownScreenY = sy;
-          state.pendingShiftKey = e.shiftKey;
-          state.pendingCtrlKey = e.ctrlKey;
-          state.didDragSincePointerDown = false;
-          refreshSidePanel();
-          canvas.setPointerCapture(e.pointerId);
-          e.preventDefault();
-          return;
-        }
       }
     }
 
     {
       const connHit = hitTestConnector(world.x, world.y);
       if (connHit !== -1) {
-        state.selected.clear();
+        state.selectedTextBoxes.clear();
         state.selectedConnection = null;
         state.selectedArrows.clear();
         state.selectedShapes.clear();
-        state.selectedTextBoxes.clear();
+        state.selectedConnectors.clear();
         if (e.ctrlKey) {
           if (state.selectedConnectors.has(connHit)) state.selectedConnectors.delete(connHit);
           refreshSidePanel();
@@ -497,7 +436,7 @@ function onPointerDown(e) {
     {
       const bodyHit = hitTestArrowBody(world.x, world.y);
       if (bodyHit !== -1) {
-        state.selected.clear();
+        state.selectedTextBoxes.clear();
         state.selectedConnection = null;
         if (e.ctrlKey) {
           if (state.selectedArrows.has(bodyHit)) state.selectedArrows.delete(bodyHit);
@@ -530,7 +469,7 @@ function onPointerDown(e) {
     if (hit === -1 && !e.shiftKey && !e.ctrlKey) {
       const connHit = hitTestConnection(world.x, world.y);
       if (connHit !== null) {
-        state.selected.clear();
+        state.selectedTextBoxes.clear();
         state.selectedArrows.clear();
         state.arrowDragTarget = null;
         state.selectedConnection = connHit;
@@ -552,7 +491,7 @@ function onPointerDown(e) {
     state.boxEndX = world.x;
     state.boxEndY = world.y;
     state.boxMode = e.shiftKey ? 'add' : (e.ctrlKey ? 'remove' : 'replace');
-    state.boxBaseSelection = new Set(state.selected);
+    state.boxBaseSelection = new Set(state.selectedTextBoxes);
     canvas.setPointerCapture(e.pointerId);
     e.preventDefault();
   }
@@ -584,18 +523,17 @@ function onPointerMove(e) {
         arrow.x1 = world.x;
         arrow.y1 = world.y;
         const snapHit = state.getTopHitAt(world.x, world.y);
-        if (snapHit && (snapHit.type !== 'node' || snapHit.i !== arrow.connectedTo)) {
+        if (snapHit) {
           arrow.connectedFrom = snapHit.i;
           arrow.connectedFromType = snapHit.type;
-          const obj = snapHit.type === 'node' ? state.nodes[snapHit.i]
-            : snapHit.type === 'shape' ? state.shapes[snapHit.i]
+          const obj = snapHit.type === 'shape' ? state.shapes[snapHit.i]
             : state.textBoxes[snapHit.i];
           if (obj) {
             const edge = getObjectEdgePoint(obj, arrow.x2, arrow.y2);
             arrow.x1 = edge.x;
             arrow.y1 = edge.y;
           }
-        } else if (!snapHit) {
+        } else {
           arrow.connectedFrom = null;
           arrow.connectedFromType = null;
         }
@@ -603,18 +541,17 @@ function onPointerMove(e) {
         arrow.x2 = world.x;
         arrow.y2 = world.y;
         const snapHit = state.getTopHitAt(world.x, world.y);
-        if (snapHit && (snapHit.type !== 'node' || snapHit.i !== arrow.connectedFrom)) {
+        if (snapHit) {
           arrow.connectedTo = snapHit.i;
           arrow.connectedToType = snapHit.type;
-          const obj = snapHit.type === 'node' ? state.nodes[snapHit.i]
-            : snapHit.type === 'shape' ? state.shapes[snapHit.i]
+          const obj = snapHit.type === 'shape' ? state.shapes[snapHit.i]
             : state.textBoxes[snapHit.i];
           if (obj) {
             const edge = getObjectEdgePoint(obj, arrow.x1, arrow.y1);
             arrow.x2 = edge.x;
             arrow.y2 = edge.y;
           }
-        } else if (!snapHit) {
+        } else {
           arrow.connectedTo = null;
           arrow.connectedToType = null;
         }
@@ -650,7 +587,7 @@ function onPointerMove(e) {
     const dx = world.x - state.resizeStartWorldX;
     const dy = world.y - state.resizeStartWorldY;
     const start = state.resizeStartNode;
-    const n = state.nodes[state.resizeNodeIdx];
+    const tb = state.textBoxes[state.resizeNodeIdx];
     let newX = start.x, newY = start.y, newW = start.w, newH = start.h;
 
     switch (state.resizeHandle) {
@@ -664,16 +601,10 @@ function onPointerMove(e) {
       case 'br':     newW = start.w + dx; newH = start.h + dy; break;
     }
 
-    if (newW < NODE_MIN_W) {
-      if (state.resizeHandle.includes('l')) newX = start.x + start.w - NODE_MIN_W;
-      newW = NODE_MIN_W;
-    }
-    if (newH < NODE_MIN_H) {
-      if (state.resizeHandle[0] === 't') newY = start.y + start.h - NODE_MIN_H;
-      newH = NODE_MIN_H;
-    }
+    newW = Math.max(10, newW);
+    newH = Math.max(10, newH);
 
-    n.x = newX; n.y = newY; n.w = newW; n.h = newH;
+    tb.x = newX; tb.y = newY; tb.w = newW; tb.h = newH;
     e.preventDefault();
     return;
   }
@@ -726,9 +657,9 @@ function onPointerMove(e) {
 
   if (state.isDraggingNode) {
     for (const item of state.dragGroupStarts) {
-      const n = state.nodes[item.i];
-      n.x = item.x + dragDx;
-      n.y = item.y + dragDy;
+      const tb = state.textBoxes[item.i];
+      tb.x = item.x + dragDx;
+      tb.y = item.y + dragDy;
     }
     for (const s of state.dragArrowStarts) {
       const a = state.arrows[s.idx];
@@ -822,15 +753,19 @@ function onPointerMove(e) {
     const moveDx = Math.abs(sx - state.pointerDownScreenX);
     const moveDy = Math.abs(sy - state.pointerDownScreenY);
     if (moveDx >= DRAG_THRESHOLD_PX || moveDy >= DRAG_THRESHOLD_PX) {
-      if (!state.selected.has(state.pendingClickIndex)) {
-        state.selected.clear();
-        state.selected.add(state.pendingClickIndex);
+      if (!state.selectedTextBoxes.has(state.pendingClickIndex)) {
+        state.selectedTextBoxes.clear();
+        state.selectedTextBoxes.add(state.pendingClickIndex);
       }
       state.isDraggingNode = true;
       state.didDragSincePointerDown = true;
       state.dragStartWorldX = world.x;
       state.dragStartWorldY = world.y;
-      state.dragGroupStarts = state.getDragGroup(state.selected).map(it => ({ ...it, id: state.nodes[it.i].id }));
+      state.dragGroupStarts = [];
+      for (const ti of state.selectedTextBoxes) {
+        const tb = state.textBoxes[ti];
+        if (tb) state.dragGroupStarts.push({ i: ti, x: tb.x, y: tb.y, id: tb.id });
+      }
       gatherChildDragStarts();
       state.dragArrowStarts = [];
       for (const ai of state.selectedArrows) {
@@ -979,9 +914,9 @@ function onPointerMove(e) {
   }
   if (!cursorSet) {
     let overSelected = false;
-    for (const i of state.selected) {
-      const n = state.nodes[i];
-      if (world.x >= n.x && world.x <= n.x + n.w && world.y >= n.y && world.y <= n.y + n.h) {
+    for (const ti of state.selectedTextBoxes) {
+      const tb = state.textBoxes[ti];
+      if (world.x >= tb.x && world.x <= tb.x + tb.w && world.y >= tb.y && world.y <= tb.y + tb.h) {
         overSelected = true; break;
       }
     }
@@ -989,14 +924,6 @@ function onPointerMove(e) {
       for (const si of state.selectedShapes) {
         const s = state.shapes[si];
         if (s && world.x >= s.x && world.x <= s.x + s.w && world.y >= s.y && world.y <= s.y + s.h) {
-          overSelected = true; break;
-        }
-      }
-    }
-    if (!overSelected) {
-      for (const ti of state.selectedTextBoxes) {
-        const tb = state.textBoxes[ti];
-        if (tb && world.x >= tb.x && world.x <= tb.x + tb.w && world.y >= tb.y && world.y <= tb.y + tb.h) {
           overSelected = true; break;
         }
       }
@@ -1013,12 +940,12 @@ function onPointerMove(e) {
     const bx2 = Math.max(state.boxStartX, state.boxEndX);
     const by2 = Math.max(state.boxStartY, state.boxEndY);
     const hits = [];
-    for (let i = 0; i < state.nodes.length; i++) {
-      const n = state.nodes[i];
-      const ix1 = Math.max(bx1, n.x);
-      const iy1 = Math.max(by1, n.y);
-      const ix2 = Math.min(bx2, n.x + n.w);
-      const iy2 = Math.min(by2, n.y + n.h);
+    for (let i = 0; i < state.textBoxes.length; i++) {
+      const tb = state.textBoxes[i];
+      const ix1 = Math.max(bx1, tb.x);
+      const iy1 = Math.max(by1, tb.y);
+      const ix2 = Math.min(bx2, tb.x + tb.w);
+      const iy2 = Math.min(by2, tb.y + tb.h);
       if (ix2 >= ix1 && iy2 >= iy1) hits.push(i);
     }
 
@@ -1052,11 +979,10 @@ function onPointerMove(e) {
     }
 
     if (state.boxMode === 'replace') {
-      state.selected.clear();
-      hits.forEach(i => state.selected.add(i));
+      state.selectedTextBoxes.clear();
+      hits.forEach(i => state.selectedTextBoxes.add(i));
       state.selectedArrows.clear();
       state.selectedShapes.clear();
-      state.selectedTextBoxes.clear();
       state.selectedConnectors.clear();
       state.arrowDragTarget = null;
       for (const ai of boxArrowHits) state.selectedArrows.add(ai);
@@ -1064,13 +990,13 @@ function onPointerMove(e) {
       for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
       for (const ci of boxConnHits) state.selectedConnectors.add(ci);
     } else if (state.boxMode === 'add') {
-      for (const i of hits) state.selected.add(i);
+      for (const i of hits) state.selectedTextBoxes.add(i);
       for (const ai of boxArrowHits) state.selectedArrows.add(ai);
       for (const si of boxShapeHits) state.selectedShapes.add(si);
       for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
       for (const ci of boxConnHits) state.selectedConnectors.add(ci);
     } else {
-      for (const i of hits) state.selected.delete(i);
+      for (const i of hits) state.selectedTextBoxes.delete(i);
       for (const ai of boxArrowHits) { state.selectedArrows.delete(ai); state.arrowDragTarget = null; }
       for (const si of boxShapeHits) state.selectedShapes.delete(si);
       for (const ti of boxTBHits) state.selectedTextBoxes.delete(ti);
@@ -1088,11 +1014,11 @@ function onPointerUp(e) {
   const world = screenToWorld(sx, sy, state.offsetX, state.offsetY, state.scale);
 
   if (state.isResizing) {
-    const n = state.nodes[state.resizeNodeIdx];
-    if (n && (n.x !== state.resizeStartNode.x || n.y !== state.resizeStartNode.y || n.w !== state.resizeStartNode.w || n.h !== state.resizeStartNode.h)) {
-      _history.push(createResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, state.resizeNodeId,
+    const tb = state.textBoxes[state.resizeNodeIdx];
+    if (tb && (tb.x !== state.resizeStartNode.x || tb.y !== state.resizeStartNode.y || tb.w !== state.resizeStartNode.w || tb.h !== state.resizeStartNode.h)) {
+      _history.push(createResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, state.resizeNodeId,
         { x: state.resizeStartNode.x, y: state.resizeStartNode.y, w: state.resizeStartNode.w, h: state.resizeStartNode.h },
-        { x: n.x, y: n.y, w: n.w, h: n.h }));
+        { x: tb.x, y: tb.y, w: tb.w, h: tb.h }));
       state.markDrawOrderDirty();
       state.reparentAll();
     }
@@ -1133,16 +1059,14 @@ function onPointerUp(e) {
   }
   if (state.isDraggingNode) {
     const moves = [];
-    const movedIndices = new Set();
     for (const item of state.dragGroupStarts) {
-      const n = state.nodes[item.i];
-      if (n && (n.x !== item.x || n.y !== item.y)) {
-        moves.push({ id: item.id, fromX: item.x, fromY: item.y, toX: n.x, toY: n.y });
-        movedIndices.add(item.i);
+      const tb = state.textBoxes[item.i];
+      if (tb && (tb.x !== item.x || tb.y !== item.y)) {
+        moves.push({ id: item.id, fromX: item.x, fromY: item.y, toX: tb.x, toY: tb.y });
       }
     }
     if (moves.length > 0) {
-      _history.push(createMoveNodesCmd(state.nodes, state.selected, refreshSidePanel, moves));
+      _history.push(createMoveTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, moves));
       state.reparentAll();
     }
     state.isDraggingNode = false;
@@ -1291,12 +1215,11 @@ function onPointerUp(e) {
           let endX = world.x;
           let endY = world.y;
           if (state.drawingStartConnected) {
-            const obj = state.drawingStartConnected.type === 'node' ? state.nodes[state.drawingStartConnected.index]
-              : state.drawingStartConnected.type === 'shape' ? state.shapes[state.drawingStartConnected.index]
+            const obj = state.drawingStartConnected.type === 'shape' ? state.shapes[state.drawingStartConnected.index]
               : state.textBoxes[state.drawingStartConnected.index];
             if (obj) {
               const refPt = endConnected
-                ? { x: (endConnected.type === 'node' ? state.nodes[endConnected.index] : endConnected.type === 'shape' ? state.shapes[endConnected.index] : state.textBoxes[endConnected.index])?.x ?? endX, y: (endConnected.type === 'node' ? state.nodes[endConnected.index] : endConnected.type === 'shape' ? state.shapes[endConnected.index] : state.textBoxes[endConnected.index])?.y ?? endY }
+                ? { x: (endConnected.type === 'shape' ? state.shapes[endConnected.index] : state.textBoxes[endConnected.index])?.x ?? endX, y: (endConnected.type === 'shape' ? state.shapes[endConnected.index] : state.textBoxes[endConnected.index])?.y ?? endY }
                 : { x: endX, y: endY };
               const edge = getObjectEdgePoint(obj, refPt.x, refPt.y);
               startX = edge.x;
@@ -1304,8 +1227,7 @@ function onPointerUp(e) {
             }
           }
           if (endConnected) {
-            const obj = endConnected.type === 'node' ? state.nodes[endConnected.index]
-              : endConnected.type === 'shape' ? state.shapes[endConnected.index]
+            const obj = endConnected.type === 'shape' ? state.shapes[endConnected.index]
               : state.textBoxes[endConnected.index];
             if (obj) {
               const refPt = state.drawingStartConnected
@@ -1333,12 +1255,11 @@ function onPointerUp(e) {
           let endX = world.x;
           let endY = world.y;
           if (state.drawingStartConnected) {
-            const obj = state.drawingStartConnected.type === 'node' ? state.nodes[state.drawingStartConnected.index]
-              : state.drawingStartConnected.type === 'shape' ? state.shapes[state.drawingStartConnected.index]
+            const obj = state.drawingStartConnected.type === 'shape' ? state.shapes[state.drawingStartConnected.index]
               : state.textBoxes[state.drawingStartConnected.index];
             if (obj) {
               const refPt = endConnected
-                ? { x: (endConnected.type === 'node' ? state.nodes[endConnected.index] : endConnected.type === 'shape' ? state.shapes[endConnected.index] : state.textBoxes[endConnected.index])?.x ?? endX, y: (endConnected.type === 'node' ? state.nodes[endConnected.index] : endConnected.type === 'shape' ? state.shapes[endConnected.index] : state.textBoxes[endConnected.index])?.y ?? endY }
+                ? { x: (endConnected.type === 'shape' ? state.shapes[endConnected.index] : state.textBoxes[endConnected.index])?.x ?? endX, y: (endConnected.type === 'shape' ? state.shapes[endConnected.index] : state.textBoxes[endConnected.index])?.y ?? endY }
                 : { x: endX, y: endY };
               const edge = getObjectEdgePoint(obj, refPt.x, refPt.y);
               startX = edge.x;
@@ -1346,8 +1267,7 @@ function onPointerUp(e) {
             }
           }
           if (endConnected) {
-            const obj = endConnected.type === 'node' ? state.nodes[endConnected.index]
-              : endConnected.type === 'shape' ? state.shapes[endConnected.index]
+            const obj = endConnected.type === 'shape' ? state.shapes[endConnected.index]
               : state.textBoxes[endConnected.index];
             if (obj) {
               const refPt = state.drawingStartConnected
@@ -1377,22 +1297,6 @@ function onPointerUp(e) {
           } else {
             addShapeAt(x, y, state.drawingShapeType, w, h);
           }
-        }
-      } else if (state.drawingTool === 'node') {
-        const dx = world.x - state.drawingStartX;
-        const dy = world.y - state.drawingStartY;
-        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-          const x = Math.min(state.drawingStartX, world.x);
-          const y = Math.min(state.drawingStartY, world.y);
-          const w = Math.abs(dx);
-          const h = Math.abs(dy);
-          if (w < NODE_MIN_W || h < NODE_MIN_H) {
-            addNodeAt(state.drawingStartX, state.drawingStartY);
-          } else {
-            addNodeAt(x, y, w, h);
-          }
-        } else {
-          addNodeAt(world.x, world.y);
         }
       } else if (state.drawingTool === 'text') {
         const dx = world.x - state.drawingStartX;
@@ -1489,12 +1393,12 @@ function onPointerUp(e) {
     const by2 = Math.max(state.boxStartY, state.boxEndY);
 
     const hits = [];
-    for (let i = 0; i < state.nodes.length; i++) {
-      const n = state.nodes[i];
-      const ix1 = Math.max(bx1, n.x);
-      const iy1 = Math.max(by1, n.y);
-      const ix2 = Math.min(bx2, n.x + n.w);
-      const iy2 = Math.min(by2, n.y + n.h);
+    for (let i = 0; i < state.textBoxes.length; i++) {
+      const tb = state.textBoxes[i];
+      const ix1 = Math.max(bx1, tb.x);
+      const iy1 = Math.max(by1, tb.y);
+      const ix2 = Math.min(bx2, tb.x + tb.w);
+      const iy2 = Math.min(by2, tb.y + tb.h);
       if (ix2 >= ix1 && iy2 >= iy1) hits.push(i);
     }
 
@@ -1528,11 +1432,10 @@ function onPointerUp(e) {
     }
 
     if (state.boxMode === 'replace') {
-      state.selected.clear();
-      hits.forEach(i => state.selected.add(i));
+      state.selectedTextBoxes.clear();
+      hits.forEach(i => state.selectedTextBoxes.add(i));
       state.selectedArrows.clear();
       state.selectedShapes.clear();
-      state.selectedTextBoxes.clear();
       state.selectedConnectors.clear();
       state.arrowDragTarget = null;
       for (const ai of boxArrowHits) state.selectedArrows.add(ai);
@@ -1540,13 +1443,13 @@ function onPointerUp(e) {
       for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
       for (const ci of boxConnHits) state.selectedConnectors.add(ci);
     } else if (state.boxMode === 'add') {
-      hits.forEach(i => state.selected.add(i));
+      hits.forEach(i => state.selectedTextBoxes.add(i));
       for (const ai of boxArrowHits) state.selectedArrows.add(ai);
       for (const si of boxShapeHits) state.selectedShapes.add(si);
       for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
       for (const ci of boxConnHits) state.selectedConnectors.add(ci);
     } else if (state.boxMode === 'remove') {
-      hits.forEach(i => state.selected.delete(i));
+      hits.forEach(i => state.selectedTextBoxes.delete(i));
       for (const ai of boxArrowHits) { state.selectedArrows.delete(ai); state.arrowDragTarget = null; }
       for (const si of boxShapeHits) state.selectedShapes.delete(si);
       for (const ti of boxTBHits) state.selectedTextBoxes.delete(ti);
@@ -1558,12 +1461,12 @@ function onPointerUp(e) {
   }
 
   if (state.pendingClickIndex !== -1 && state.pendingClickIndex !== -2 && state.pendingClickIndex !== -3 && state.pendingClickIndex !== -4 && state.pendingClickIndex !== -5 && !state.didDragSincePointerDown) {
-    if (state.selected.has(state.pendingClickIndex) && state.selected.size > 1 && !state.pendingShiftKey) {
-      state.selected.clear();
-      state.selected.add(state.pendingClickIndex);
-    } else if (!state.selected.has(state.pendingClickIndex) && !state.pendingShiftKey && !state.pendingCtrlKey) {
-      state.selected.clear();
-      state.selected.add(state.pendingClickIndex);
+    if (state.selectedTextBoxes.has(state.pendingClickIndex) && state.selectedTextBoxes.size > 1 && !state.pendingShiftKey) {
+      state.selectedTextBoxes.clear();
+      state.selectedTextBoxes.add(state.pendingClickIndex);
+    } else if (!state.selectedTextBoxes.has(state.pendingClickIndex) && !state.pendingShiftKey && !state.pendingCtrlKey) {
+      state.selectedTextBoxes.clear();
+      state.selectedTextBoxes.add(state.pendingClickIndex);
     }
   }
   state.pendingClickIndex = -1;

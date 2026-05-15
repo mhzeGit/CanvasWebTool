@@ -8,7 +8,7 @@ import { refreshSidePanel } from './side-panel.js';
 import { history } from './history.js';
 import { blocksToHtml, blocksToEditorHtml, htmlToBlocks, markdownToBlocks, blocksToMarkdown } from './rich-text.js';
 import { parseInlineSpans } from './markdown.js';
-import { TITLE_PLACEHOLDER, DEFAULT_NODE_COLOR } from './config.js';
+import { TITLE_PLACEHOLDER } from './config.js';
 import { getEntityElement } from './dom-entities.js';
 
 export function setupInlineEditing() {
@@ -169,11 +169,7 @@ export function startEditing(idx, field) {
       }
       sel.removeAllRanges();
       sel.addRange(range);
-      n.blocks = htmlToBlocks(body);
-      n.text = blocksToMarkdown(n.blocks);
-      body.innerHTML = blocksToEditorHtml(n.blocks);
-      const lastBlock = body.querySelector('.rt-block:last-of-type');
-      placeCursorAtEnd(lastBlock || body);
+      body.dispatchEvent(new Event('input', { bubbles: true }));
     };
     body.addEventListener('paste', onPaste);
 
@@ -380,11 +376,7 @@ function startTextBoxEditing(tbIdx) {
     }
     sel.removeAllRanges();
     sel.addRange(range);
-    tb.blocks = htmlToBlocks(content);
-    tb.text = blocksToMarkdown(tb.blocks);
-    content.innerHTML = blocksToEditorHtml(tb.blocks);
-    const lastBlock = content.querySelector('.rt-block:last-of-type');
-    placeCursorAtEnd(lastBlock || content);
+    content.dispatchEvent(new Event('input', { bubbles: true }));
   };
   content.addEventListener('paste', onPaste);
 

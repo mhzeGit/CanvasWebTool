@@ -2,8 +2,7 @@ import { state } from './state.js';
 import { history, flushPanelEdit, startPanelEdit, startShapePanelEdit, startTextBoxPanelEdit } from './history.js';
 import { colorSwatchHTML, initColorSwatch } from './color-palette.js';
 import {
-  createResizeNodeCmd, createResizeShapeCmd, createResizeTextBoxCmd,
-  createBatchNodePropertyChangeCmd, createBatchResizeNodeCmd,
+  createResizeShapeCmd, createResizeTextBoxCmd,
   createBatchShapePropertyChangeCmd, createBatchResizeShapeCmd,
   createBatchTextBoxPropertyChangeCmd, createBatchResizeTextBoxCmd
 } from './undo.js';
@@ -75,7 +74,6 @@ function _addBlockMarker(block, type) {
   }
   block.insertBefore(marker, block.firstChild);
   if (block.firstChild === marker && marker.nextSibling && marker.nextSibling.nodeType === Node.TEXT_NODE) {
-    // space after marker already present from blocksToHtml
   } else if (block.firstChild === marker) {
     marker.after(document.createTextNode(' '));
   }
@@ -247,15 +245,7 @@ function setupMarkdownEditor(editorId, opts) {
     }
     sel.removeAllRanges();
     sel.addRange(range);
-    rtDiv.innerHTML = blocksToHtml(htmlToBlocks(rtDiv));
-    const lastBlock = rtDiv.querySelector('.rt-block:last-of-type');
-    if (lastBlock) {
-      const cr = document.createRange();
-      cr.selectNodeContents(lastBlock);
-      cr.collapse(false);
-      sel.removeAllRanges();
-      sel.addRange(cr);
-    }
+    rtDiv.dispatchEvent(new Event('input', { bubbles: true }));
     scheduleSync(10);
   });
 
@@ -378,85 +368,7 @@ function setupMarkdownEditor(editorId, opts) {
   };
 }
 
-const _nodeBatchSnapshots = new Map();
-const _shapeBatchSnapshots = new Map();
 const _tbBatchSnapshots = new Map();
-
-function _captureNodeSnapshot(property, members) {
-  _nodeBatchSnapshots.set(property, members.map(m => ({
-    nodeId: m.id,
-    oldValue: m[property],
-    oldBounds: (property === 'w' || property === 'h')
-      ? { x: m.x, y: m.y, w: m.w, h: m.h } : null
-  })));
-}
-
-function _commitNodeSnapshot(property) {
-  const snapshots = _nodeBatchSnapshots.get(property);
-  if (!snapshots) return;
-  _nodeBatchSnapshots.delete(property);
-  const changes = [];
-  for (const snap of snapshots) {
-    const found = state.findNodeById(state.nodes, snap.nodeId);
-    if (!found) continue;
-    const newValue = found.node[property];
-    if (snap.oldValue !== newValue) {
-      if (property === 'w' || property === 'h') {
-        changes.push({
-          nodeId: snap.nodeId,
-          fromBounds: snap.oldBounds,
-          toBounds: { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h }
-        });
-      } else {
-        changes.push({ nodeId: snap.nodeId, property, oldValue: snap.oldValue, newValue });
-      }
-    }
-  }
-  if (changes.length === 0) return;
-  if (property === 'w' || property === 'h') {
-    history.push(createBatchResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, changes));
-  } else {
-    history.push(createBatchNodePropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, changes));
-  }
-}
-
-function _captureShapeSnapshot(property, members) {
-  _shapeBatchSnapshots.set(property, members.map(m => ({
-    shapeId: m.id,
-    oldValue: m[property],
-    oldBounds: (property === 'w' || property === 'h')
-      ? { x: m.x, y: m.y, w: m.w, h: m.h } : null
-  })));
-}
-
-function _commitShapeSnapshot(property) {
-  const snapshots = _shapeBatchSnapshots.get(property);
-  if (!snapshots) return;
-  _shapeBatchSnapshots.delete(property);
-  const changes = [];
-  for (const snap of snapshots) {
-    const found = state.shapes.find(s => s.id === snap.shapeId);
-    if (!found) continue;
-    const newValue = found[property];
-    if (snap.oldValue !== newValue) {
-      if (property === 'w' || property === 'h') {
-        changes.push({
-          shapeId: snap.shapeId,
-          fromBounds: snap.oldBounds,
-          toBounds: { x: found.x, y: found.y, w: found.w, h: found.h }
-        });
-      } else {
-        changes.push({ shapeId: snap.shapeId, property, oldValue: snap.oldValue, newValue });
-      }
-    }
-  }
-  if (changes.length === 0) return;
-  if (property === 'w' || property === 'h') {
-    history.push(createBatchResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, changes));
-  } else {
-    history.push(createBatchShapePropertyChangeCmd(state.shapes, state.selectedShapes, refreshSidePanel, changes));
-  }
-}
 
 function _captureTbSnapshot(property, members) {
   _tbBatchSnapshots.set(property, members.map(m => ({
@@ -496,6 +408,46 @@ function _commitTbSnapshot(property) {
   }
 }
 
+const _shapeBatchSnapshots = new Map();
+
+function _captureShapeSnapshot(property, members) {
+  _shapeBatchSnapshots.set(property, members.map(m => ({
+    shapeId: m.id,
+    oldValue: m[property],
+    oldBounds: (property === 'w' || property === 'h')
+      ? { x: m.x, y: m.y, w: m.w, h: m.h } : null
+  })));
+}
+
+function _commitShapeSnapshot(property) {
+  const snapshots = _shapeBatchSnapshots.get(property);
+  if (!snapshots) return;
+  _shapeBatchSnapshots.delete(property);
+  const changes = [];
+  for (const snap of snapshots) {
+    const found = state.shapes.find(s => s.id === snap.shapeId);
+    if (!found) continue;
+    const newValue = found[property];
+    if (snap.oldValue !== newValue) {
+      if (property === 'w' || property === 'h') {
+        changes.push({
+          shapeId: snap.shapeId,
+          fromBounds: snap.oldBounds,
+          toBounds: { x: found.x, y: found.y, w: found.w, h: found.h }
+        });
+      } else {
+        changes.push({ shapeId: snap.shapeId, property, oldValue: snap.oldValue, newValue });
+      }
+    }
+  }
+  if (changes.length === 0) return;
+  if (property === 'w' || property === 'h') {
+    history.push(createBatchResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, changes));
+  } else {
+    history.push(createBatchShapePropertyChangeCmd(state.shapes, state.selectedShapes, refreshSidePanel, changes));
+  }
+}
+
 export function refreshSidePanel() {
   const { sidePanelContent } = state;
   if (!sidePanelContent) return;
@@ -504,9 +456,9 @@ export function refreshSidePanel() {
     flushPanelEdit();
     const arrow = state.arrows[state.arrowDragTarget.arrowIdx];
     const endLabel = state.arrowDragTarget.end === 'start' ? 'Start (Tail)' : 'End (Tip)';
-    const connNodeIdx = state.arrowDragTarget.end === 'start' ? arrow.connectedFrom : arrow.connectedTo;
-    const connLabel = connNodeIdx !== null && state.nodes[connNodeIdx]
-      ? (state.nodes[connNodeIdx].title || `Node ${connNodeIdx}`) : 'None';
+    const connTextBoxIdx = state.arrowDragTarget.end === 'start' ? arrow.connectedFrom : arrow.connectedTo;
+    const connLabel = connTextBoxIdx !== null && state.textBoxes[connTextBoxIdx]
+      ? (state.textBoxes[connTextBoxIdx].title || `Text Box ${connTextBoxIdx}`) : 'None';
     const pt = getArrowEndpoint(arrow, state.arrowDragTarget.end);
     _sp( [
       '<div class="panel-section-title">Arrow Point (' + state.escAttr(endLabel) + ')</div>',
@@ -520,7 +472,6 @@ export function refreshSidePanel() {
   // --- Mixed-type selection (check before single-type handlers) ---
   {
     let typeCount = 0;
-    if (state.selected.size > 0) typeCount++;
     if (state.selectedShapes.size > 0) typeCount++;
     if (state.selectedTextBoxes.size > 0) typeCount++;
     if (state.selectedArrows.size > 0) typeCount++;
@@ -536,10 +487,10 @@ export function refreshSidePanel() {
   if (state.selectedArrows.size === 1) {
     flushPanelEdit();
     const arrow = state.arrows[Array.from(state.selectedArrows)[0]];
-    const fromLabel = arrow.connectedFrom !== null && state.nodes[arrow.connectedFrom]
-      ? (state.nodes[arrow.connectedFrom].title || `Node ${arrow.connectedFrom}`) : 'Free';
-    const toLabel = arrow.connectedTo !== null && state.nodes[arrow.connectedTo]
-      ? (state.nodes[arrow.connectedTo].title || `Node ${arrow.connectedTo}`) : 'Free';
+    const fromLabel = arrow.connectedFrom !== null && state.textBoxes[arrow.connectedFrom]
+      ? (state.textBoxes[arrow.connectedFrom].title || `Text Box ${arrow.connectedFrom}`) : 'Free';
+    const toLabel = arrow.connectedTo !== null && state.textBoxes[arrow.connectedTo]
+      ? (state.textBoxes[arrow.connectedTo].title || `Text Box ${arrow.connectedTo}`) : 'Free';
     _sp( [
       '<div class="panel-section-title">Arrow</div>',
       '<div class="panel-row"><label>From</label><span class="panel-static">' + state.escAttr(fromLabel) + '</span></div>',
@@ -562,10 +513,10 @@ export function refreshSidePanel() {
   if (state.selectedConnection !== null && state.connections[state.selectedConnection]) {
     flushPanelEdit();
     const conn = state.connections[state.selectedConnection];
-    const fromNode = state.nodes[conn.from];
-    const toNode = state.nodes[conn.to];
-    const fromLabel = fromNode ? (fromNode.title || `Node ${conn.from}`) : '?';
-    const toLabel = toNode ? (toNode.title || `Node ${conn.to}`) : '?';
+    const fromNode = state.textBoxes[conn.from];
+    const toNode = state.textBoxes[conn.to];
+    const fromLabel = fromNode ? (fromNode.title || `Text Box ${conn.from}`) : '?';
+    const toLabel = toNode ? (toNode.title || `Text Box ${conn.to}`) : '?';
     _sp( [
       '<div class="panel-section-title">Connection</div>',
       '<div class="panel-row"><label>From</label><span class="panel-static">' + state.escAttr(fromLabel) + '</span></div>',
@@ -667,6 +618,7 @@ export function refreshSidePanel() {
           () => { flushPanelEdit(); }, () => {});
       }
     }
+    // w/h/radius input wiring remains same as before for shapes...
     if (wInput) {
       wInput.setAttribute('data-drag-number', 'true');
       wInput.addEventListener('input', (ev) => {
@@ -799,6 +751,8 @@ export function refreshSidePanel() {
     const tbId = tb.id;
     const members = indices.map(i => state.textBoxes[i]);
 
+    const titleMixed = isBatch && members.some(m => m.title !== tb.title);
+    const titleColorMixed = isBatch && members.some(m => m.titleColor !== tb.titleColor);
     const colorMixed = isBatch && members.some(m => m.color !== tb.color);
     const borderColorMixed = isBatch && members.some(m => m.borderColor !== tb.borderColor);
     const textColorMixed = isBatch && members.some(m => m.textColor !== tb.textColor);
@@ -807,36 +761,67 @@ export function refreshSidePanel() {
     const hMixed = isBatch && members.some(m => m.h !== tb.h);
     const textMixed = isBatch && members.some(m => m.text !== tb.text);
 
-    const title = isBatch ? indices.length + ' text boxes selected' : 'Text Box';
+    const parentInfo = tb.parentId !== null && tb.parentId !== undefined
+      ? (() => { const found = state.textBoxes.find(t => t.id === tb.parentId); return found ? (found.title || `Text Box ${found.id}`) : '?'; })()
+      : null;
+    const parentHtml = parentInfo ? '<div class="panel-row"><label>Parent</label><span class="panel-static">' + state.escAttr(parentInfo) + '</span></div>' : '';
+
+    const sectionTitle = isBatch ? indices.length + ' text boxes selected' : 'Text Box';
 
     _sp( [
-      '<div class="panel-section-title">' + title + '</div>',
+      '<div class="panel-section-title">' + sectionTitle + '</div>',
+      '<div class="panel-row"><label>Title</label><input id="panelTBTitle" class="panel-input" type="text" value="' + (titleMixed ? '' : state.escAttr(tb.title ?? '')) + '" placeholder="' + (titleMixed ? '(mixed)' : state.escAttr(TITLE_PLACEHOLDER)) + '" /></div>',
+      '<div class="panel-row"><label>Title Color</label>' + colorSwatchHTML('panelTBTitleColor', tb.titleColor ?? '#e7e7e7') + '</div>',
       '<div class="panel-row"><label>Color</label>' + colorSwatchHTML('panelTBColor', tb.color ?? '#1a1a1a') + '</div>',
       '<div class="panel-row"><label>Border</label>' + colorSwatchHTML('panelTBBorderColor', tb.borderColor ?? '#444444') + '</div>',
       '<div class="panel-row"><label>Text Color</label>' + colorSwatchHTML('panelTBTextColor', tb.textColor ?? '#dddddd') + '</div>',
       '<div class="panel-row"><label>Font Size</label><input id="panelTBFontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (tb.fontSize ?? 14)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
       '<div class="panel-row"><label>Width</label><input id="panelTBW" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : tb.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
       '<div class="panel-row"><label>Height</label><input id="panelTBH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : tb.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
+      parentHtml,
       '<div class="panel-md-editor" id="panelTBTextEditor">' +
         buildMarkdownToolbar() +
         '<div class="panel-md-editor-body">' +
           '<div id="panelTBTextRT" class="panel-md-richtext" contenteditable="true">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(tb))) + '</div>' +
-          '<textarea id="panelTBTextRaw" class="panel-input panel-textarea panel-md-raw" style="display:none" placeholder="' + (textMixed ? '(mixed)' : 'Enter text...') + '">' + (textMixed ? '' : state.escAttr(tb.text ?? '')) + '</textarea>' +
+          '<textarea id="panelTBTextRaw" class="panel-input panel-textarea panel-md-raw" style="display:none" placeholder="' + (textMixed ? '(mixed)' : state.escAttr(TEXT_PLACEHOLDER)) + '">' + (textMixed ? '' : state.escAttr(tb.text ?? '')) + '</textarea>' +
         '</div>' +
       '</div>',
     ].join(''));
 
+    const titleInput = document.getElementById('panelTBTitle');
+    const titleColorSwatch = document.getElementById('panelTBTitleColor');
     const colorSwatch = document.getElementById('panelTBColor');
     const borderColorSwatch = document.getElementById('panelTBBorderColor');
     const textColorSwatch = document.getElementById('panelTBTextColor');
     const fontSizeInput = document.getElementById('panelTBFontSize');
     const wInput = document.getElementById('panelTBW');
     const hInput = document.getElementById('panelTBH');
+
+    if (titleInput) {
+      titleInput.addEventListener('input', (ev) => {
+        const v = ev.target.value;
+        if (isBatch) { for (const m of members) m.title = v; } else { tb.title = v; }
+      });
+      if (isBatch) {
+        titleInput.addEventListener('focus', () => _captureTbSnapshot('title', members));
+        titleInput.addEventListener('blur', () => _commitTbSnapshot('title'));
+      } else {
+        titleInput.addEventListener('focus', () => { startTextBoxPanelEdit(tbId, 'title', tb.title); });
+        titleInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
+      }
+    }
+    if (titleColorSwatch) {
+      initColorSwatch(titleColorSwatch, {
+        onSelect: (v) => { if (isBatch) { for (const m of members) m.titleColor = v; } else { tb.titleColor = v; } },
+        onOpen: isBatch ? (() => _captureTbSnapshot('titleColor', members)) : (() => { startTextBoxPanelEdit(tbId, 'titleColor', tb.titleColor); }),
+        onClose: isBatch ? (() => _commitTbSnapshot('titleColor')) : (() => { flushPanelEdit(refreshSidePanel); }),
+      });
+    }
     if (colorSwatch) {
       initColorSwatch(colorSwatch, {
         onSelect: (v) => { if (isBatch) { for (const m of members) m.color = v; } else { tb.color = v; } },
-        onOpen: isBatch ? (() => _captureTbSnapshot('color', members)) : undefined,
-        onClose: isBatch ? (() => _commitTbSnapshot('color')) : undefined,
+        onOpen: isBatch ? (() => _captureTbSnapshot('color', members)) : (() => { startTextBoxPanelEdit(tbId, 'color', tb.color); }),
+        onClose: isBatch ? (() => _commitTbSnapshot('color')) : (() => { flushPanelEdit(refreshSidePanel); }),
       });
     }
     if (borderColorSwatch) {
@@ -849,8 +834,8 @@ export function refreshSidePanel() {
     if (textColorSwatch) {
       initColorSwatch(textColorSwatch, {
         onSelect: (v) => { if (isBatch) { for (const m of members) m.textColor = v; } else { tb.textColor = v; } },
-        onOpen: isBatch ? (() => _captureTbSnapshot('textColor', members)) : undefined,
-        onClose: isBatch ? (() => _commitTbSnapshot('textColor')) : undefined,
+        onOpen: isBatch ? (() => _captureTbSnapshot('textColor', members)) : (() => { startTextBoxPanelEdit(tbId, 'textColor', tb.textColor); }),
+        onClose: isBatch ? (() => _commitTbSnapshot('textColor')) : (() => { flushPanelEdit(refreshSidePanel); }),
       });
     }
     if (fontSizeInput) {
@@ -999,255 +984,16 @@ export function refreshSidePanel() {
     return;
   }
 
-  if (state.selected.size === 0 && state.selectedShapes.size === 0 && state.selectedTextBoxes.size === 0 && state.selectedConnectors.size === 0) {
+  if (state.selectedTextBoxes.size === 0 && state.selectedShapes.size === 0 && state.selectedConnectors.size === 0) {
     flushPanelEdit();
     _sp( '<div class="panel-empty">Nothing selected</div>');
     return;
   }
-
-  // --- Nodes (single or multi, same UI) ---
-  flushPanelEdit(refreshSidePanel);
-  const indices = Array.from(state.selected);
-  const isBatch = indices.length > 1;
-  const firstIdx = indices[0];
-  const n = state.nodes[firstIdx];
-  const nodeId = n.id;
-  const members = indices.map(i => state.nodes[i]);
-
-  const parentInfo = n.parentId !== null && n.parentId !== undefined
-    ? (() => { const p = state.findNodeById(state.nodes, n.parentId); return p ? (p.node.title || `Node ${p.index}`) : '?'; })()
-    : null;
-  const parentHtml = parentInfo ? '<div class="panel-row"><label>Parent</label><span class="panel-static">' + state.escAttr(parentInfo) + '</span></div>' : '';
-
-  const titleMixed = isBatch && members.some(m => m.title !== n.title);
-  const titleColorMixed = isBatch && members.some(m => m.titleColor !== n.titleColor);
-  const colorMixed = isBatch && members.some(m => m.color !== n.color);
-  const textColorMixed = isBatch && members.some(m => m.textColor !== n.textColor);
-  const fontSizeMixed = isBatch && members.some(m => m.fontSize !== n.fontSize);
-  const wMixed = isBatch && members.some(m => m.w !== n.w);
-  const hMixed = isBatch && members.some(m => m.h !== n.h);
-  const textMixed = isBatch && members.some(m => m.text !== n.text);
-
-  const sectionTitle = isBatch ? indices.length + ' nodes selected' : 'Node';
-
-  _sp( [
-    '<div class="panel-section-title">' + sectionTitle + '</div>',
-    '<div class="panel-row"><label>Title</label><input id="panelTitle" class="panel-input" type="text" value="' + (titleMixed ? '' : state.escAttr(n.title ?? '')) + '" placeholder="' + (titleMixed ? '(mixed)' : state.escAttr(TITLE_PLACEHOLDER)) + '" /></div>',
-    '<div class="panel-row"><label>Title Color</label>' + colorSwatchHTML('panelTitleColor', n.titleColor ?? '#e7e7e7') + '</div>',
-    '<div class="panel-row"><label>Color</label>' + colorSwatchHTML('panelColor', n.color ?? '#1a1a1a') + '</div>',
-    '<div class="panel-row"><label>Text Color</label>' + colorSwatchHTML('panelTextColor', n.textColor ?? '#dddddd') + '</div>',
-    '<div class="panel-row"><label>Font Size</label><input id="panelFontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (n.fontSize ?? 12)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
-    '<div class="panel-row"><label>Width</label><input id="panelW" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : n.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
-    '<div class="panel-row"><label>Height</label><input id="panelH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : n.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
-    parentHtml,
-    '<div class="panel-md-editor" id="panelTextEditor">' +
-      buildMarkdownToolbar() +
-      '<div class="panel-md-editor-body">' +
-        '<div id="panelTextRT" class="panel-md-richtext" contenteditable="true">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(n))) + '</div>' +
-        '<textarea id="panelTextRaw" class="panel-input panel-textarea panel-md-raw" style="display:none" placeholder="' + (textMixed ? '(mixed)' : state.escAttr(TEXT_PLACEHOLDER)) + '">' + (textMixed ? '' : state.escAttr(n.text ?? '')) + '</textarea>' +
-      '</div>' +
-    '</div>',
-  ].join(''));
-
-  const titleInput = document.getElementById('panelTitle');
-  const titleColorSwatch = document.getElementById('panelTitleColor');
-  const colorSwatch = document.getElementById('panelColor');
-  const textColorSwatch = document.getElementById('panelTextColor');
-  const fontSizeInput = document.getElementById('panelFontSize');
-  const wInput = document.getElementById('panelW');
-  const hInput = document.getElementById('panelH');
-
-  if (titleInput) {
-    titleInput.addEventListener('input', (ev) => {
-      const v = ev.target.value;
-      if (isBatch) { for (const m of members) m.title = v; } else { n.title = v; }
-    });
-    if (isBatch) {
-      titleInput.addEventListener('focus', () => _captureNodeSnapshot('title', members));
-      titleInput.addEventListener('blur', () => _commitNodeSnapshot('title'));
-    } else {
-      titleInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'title', n.title); });
-      titleInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
-    }
-  }
-  if (titleColorSwatch) {
-    initColorSwatch(titleColorSwatch, {
-      onSelect: (v) => { if (isBatch) { for (const m of members) m.titleColor = v; } else { n.titleColor = v; } },
-      onOpen: isBatch ? (() => _captureNodeSnapshot('titleColor', members)) : (() => { startPanelEdit(nodeId, 'titleColor', n.titleColor); }),
-      onClose: isBatch ? (() => _commitNodeSnapshot('titleColor')) : (() => { flushPanelEdit(refreshSidePanel); }),
-    });
-  }
-  if (colorSwatch) {
-    initColorSwatch(colorSwatch, {
-      onSelect: (v) => { if (isBatch) { for (const m of members) m.color = v; } else { n.color = v; } },
-      onOpen: isBatch ? (() => _captureNodeSnapshot('color', members)) : (() => { startPanelEdit(nodeId, 'color', n.color); }),
-      onClose: isBatch ? (() => _commitNodeSnapshot('color')) : (() => { flushPanelEdit(refreshSidePanel); }),
-    });
-  }
-  if (textColorSwatch) {
-    initColorSwatch(textColorSwatch, {
-      onSelect: (v) => { if (isBatch) { for (const m of members) m.textColor = v; } else { n.textColor = v; } },
-      onOpen: isBatch ? (() => _captureNodeSnapshot('textColor', members)) : (() => { startPanelEdit(nodeId, 'textColor', n.textColor); }),
-      onClose: isBatch ? (() => _commitNodeSnapshot('textColor')) : (() => { flushPanelEdit(refreshSidePanel); }),
-    });
-  }
-  if (fontSizeInput) {
-    fontSizeInput.setAttribute('data-drag-number', 'true');
-    fontSizeInput.addEventListener('input', (ev) => {
-      const v = parseFloat(ev.target.value);
-      if (!Number.isNaN(v) && v >= 8) {
-        if (isBatch) { for (const m of members) m.fontSize = v; } else { n.fontSize = v; }
-      }
-    });
-    if (isBatch) {
-      fontSizeInput.addEventListener('focus', () => _captureNodeSnapshot('fontSize', members));
-      fontSizeInput.addEventListener('blur', () => _commitNodeSnapshot('fontSize'));
-      attachDragNumber(fontSizeInput,
-        (delta) => {
-          const v = Math.max(8, Math.min(72, (members[0].fontSize ?? 12) + delta));
-          for (const m of members) m.fontSize = v;
-          fontSizeInput.value = String(Math.round(members[0].fontSize));
-        }, () => {}, () => {});
-    } else {
-      fontSizeInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'fontSize', n.fontSize); });
-      fontSizeInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
-      attachDragNumber(fontSizeInput,
-        (delta) => {
-          n.fontSize = Math.max(8, Math.min(72, (n.fontSize ?? 12) + delta));
-          fontSizeInput.value = String(Math.round(n.fontSize));
-        },
-        () => { flushPanelEdit(refreshSidePanel); }, () => {});
-    }
-  }
-  if (wInput) {
-    wInput.setAttribute('data-drag-number', 'true');
-    wInput.addEventListener('input', (ev) => {
-      const v = parseFloat(ev.target.value);
-      if (!Number.isNaN(v)) {
-        if (isBatch) { for (const m of members) updateNodeWidth(m, v); } else { updateNodeWidth(n, v); }
-      }
-    });
-    if (isBatch) {
-      wInput.addEventListener('focus', () => _captureNodeSnapshot('w', members));
-      wInput.addEventListener('blur', () => _commitNodeSnapshot('w'));
-      let dragStartBoundsPerMember = null;
-      attachDragNumber(wInput,
-        (delta) => {
-          for (const m of members) { updateNodeWidth(m, Math.max(10, m.w + delta)); }
-          wInput.value = String(Math.round(members[0].w));
-        },
-        () => {
-          _commitNodeSnapshot('w');
-          dragStartBoundsPerMember = members.map(m => ({ nodeId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } }));
-        },
-        () => {
-          if (!dragStartBoundsPerMember) return;
-          const changes = [];
-          for (let i = 0; i < members.length; i++) {
-            const fromB = dragStartBoundsPerMember[i].bounds;
-            const toB = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
-            if (fromB.w !== toB.w || fromB.x !== toB.x) changes.push({ nodeId: members[i].id, fromBounds: fromB, toBounds: toB });
-          }
-          if (changes.length > 0) history.push(createBatchResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, changes));
-        });
-    } else {
-      wInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'w', n.w, { x: n.x, y: n.y, w: n.w, h: n.h }); });
-      wInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
-      let wDragStartBounds = { x: n.x, y: n.y, w: n.w, h: n.h };
-      attachDragNumber(wInput,
-        (delta) => { updateNodeWidth(n, n.w + delta); wInput.value = String(Math.round(n.w)); },
-        () => {
-          flushPanelEdit();
-          const found = state.findNodeById(state.nodes, nodeId);
-          if (found) wDragStartBounds = { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h };
-        },
-        () => {
-          const found = state.findNodeById(state.nodes, nodeId);
-          if (found && (found.node.w !== wDragStartBounds.w || found.node.x !== wDragStartBounds.x)) {
-            history.push(createResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, nodeId,
-              { x: wDragStartBounds.x, y: wDragStartBounds.y, w: wDragStartBounds.w, h: wDragStartBounds.h },
-              { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h }));
-          }
-        });
-    }
-  }
-  if (hInput) {
-    hInput.setAttribute('data-drag-number', 'true');
-    hInput.addEventListener('input', (ev) => {
-      const v = parseFloat(ev.target.value);
-      if (!Number.isNaN(v)) {
-        if (isBatch) { for (const m of members) updateNodeHeight(m, v); } else { updateNodeHeight(n, v); }
-      }
-    });
-    if (isBatch) {
-      hInput.addEventListener('focus', () => _captureNodeSnapshot('h', members));
-      hInput.addEventListener('blur', () => _commitNodeSnapshot('h'));
-      let dragStartBoundsPerMember = null;
-      attachDragNumber(hInput,
-        (delta) => {
-          for (const m of members) { updateNodeHeight(m, Math.max(10, m.h + delta)); }
-          hInput.value = String(Math.round(members[0].h));
-        },
-        () => {
-          _commitNodeSnapshot('h');
-          dragStartBoundsPerMember = members.map(m => ({ nodeId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } }));
-        },
-        () => {
-          if (!dragStartBoundsPerMember) return;
-          const changes = [];
-          for (let i = 0; i < members.length; i++) {
-            const fromB = dragStartBoundsPerMember[i].bounds;
-            const toB = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
-            if (fromB.h !== toB.h || fromB.y !== toB.y) changes.push({ nodeId: members[i].id, fromBounds: fromB, toBounds: toB });
-          }
-          if (changes.length > 0) history.push(createBatchResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, changes));
-        });
-    } else {
-      hInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'h', n.h, { x: n.x, y: n.y, w: n.w, h: n.h }); });
-      hInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
-      let hDragStartBounds = { x: n.x, y: n.y, w: n.w, h: n.h };
-      attachDragNumber(hInput,
-        (delta) => { updateNodeHeight(n, n.h + delta); hInput.value = String(Math.round(n.h)); },
-        () => {
-          flushPanelEdit();
-          const found = state.findNodeById(state.nodes, nodeId);
-          if (found) hDragStartBounds = { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h };
-        },
-        () => {
-          const found = state.findNodeById(state.nodes, nodeId);
-          if (found && (found.node.h !== hDragStartBounds.h || found.node.y !== hDragStartBounds.y)) {
-            history.push(createResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, nodeId,
-              { x: hDragStartBounds.x, y: hDragStartBounds.y, w: hDragStartBounds.w, h: hDragStartBounds.h },
-              { x: found.node.x, y: found.node.y, w: found.node.w, h: found.node.h }));
-          }
-        });
-    }
-  }
-  setupMarkdownEditor('panelText', {
-    getText: () => n.text ?? '',
-    setText: (v) => {
-      if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; } } else { n.text = v; n.blocks = null; }
-    },
-    onFocus: isBatch ? (() => _captureNodeSnapshot('text', members)) : (() => { startPanelEdit(nodeId, 'text', n.text); }),
-    onBlur: isBatch ? (() => _commitNodeSnapshot('text')) : (() => { flushPanelEdit(refreshSidePanel); }),
-    onChange: () => {},
-  });
 }
 
 function renderMixedEditor() {
   const parts = [];
   let prefixCounter = 0;
-
-  if (state.selected.size > 0) {
-    const indices = Array.from(state.selected);
-    const members = indices.map(i => state.nodes[i]);
-    const first = members[0];
-    const prefix = 'mx' + (prefixCounter++);
-
-    if (parts.length > 0) parts.push('<hr class="panel-group-divider" />');
-    parts.push('<div class="panel-section-title">' + members.length + ' node' + (members.length > 1 ? 's' : '') + '</div>');
-    appendNodeEditorHTML(parts, prefix, members, first);
-  }
 
   if (state.selectedShapes.size > 0) {
     const indices = Array.from(state.selectedShapes);
@@ -1289,10 +1035,10 @@ function renderMixedEditor() {
 
     if (parts.length > 0) parts.push('<hr class="panel-group-divider" />');
     parts.push('<div class="panel-section-title">Connection</div>');
-    const fromNode = state.nodes[conn.from];
-    const toNode = state.nodes[conn.to];
-    const fromLabel = fromNode ? (fromNode.title || 'Node ' + conn.from) : '?';
-    const toLabel = toNode ? (toNode.title || 'Node ' + conn.to) : '?';
+    const fromNode = state.textBoxes[conn.from];
+    const toNode = state.textBoxes[conn.to];
+    const fromLabel = fromNode ? (fromNode.title || 'Text Box ' + conn.from) : '?';
+    const toLabel = toNode ? (toNode.title || 'Text Box ' + conn.to) : '?';
     parts.push(
       '<div class="panel-row"><label>From</label><span class="panel-static">' + state.escAttr(fromLabel) + '</span></div>',
       '<div class="panel-row"><label>To</label><span class="panel-static">' + state.escAttr(toLabel) + '</span></div>',
@@ -1309,10 +1055,6 @@ function renderMixedEditor() {
   _sp(parts.join(''));
 
   prefixCounter = 0;
-  if (state.selected.size > 0) {
-    const members = Array.from(state.selected).map(i => state.nodes[i]);
-    wireBatchNodeGroup('mx' + (prefixCounter++), members);
-  }
   if (state.selectedShapes.size > 0) {
     const members = Array.from(state.selectedShapes).map(i => state.shapes[i]);
     wireMixedShapeGroup('mx' + (prefixCounter++), members);
@@ -1345,31 +1087,6 @@ function renderMixedEditor() {
   }
 }
 
-function appendNodeEditorHTML(parts, prefix, members, first) {
-  const titleMixed = members.some(m => m.title !== first.title);
-  const textMixed = members.some(m => m.text !== first.text);
-  const fontSizeMixed = members.some(m => m.fontSize !== first.fontSize);
-  const wMixed = members.some(m => m.w !== first.w);
-  const hMixed = members.some(m => m.h !== first.h);
-
-  parts.push(
-    '<div class="panel-row"><label>Title</label><input id="' + prefix + '_title" class="panel-input" type="text" value="' + (titleMixed ? '' : state.escAttr(first.title ?? '')) + '" placeholder="' + (titleMixed ? '(mixed)' : state.escAttr(TITLE_PLACEHOLDER)) + '" /></div>',
-    '<div class="panel-row"><label>Title Color</label>' + colorSwatchHTML(prefix + '_titleColor', first.titleColor ?? '#e7e7e7') + '</div>',
-    '<div class="panel-row"><label>Color</label>' + colorSwatchHTML(prefix + '_color', first.color ?? '#1a1a1a') + '</div>',
-    '<div class="panel-row"><label>Text Color</label>' + colorSwatchHTML(prefix + '_textColor', first.textColor ?? '#dddddd') + '</div>',
-    '<div class="panel-row"><label>Font Size</label><input id="' + prefix + '_fontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (first.fontSize ?? 12)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
-    '<div class="panel-row"><label>Width</label><input id="' + prefix + '_w" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : first.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
-    '<div class="panel-row"><label>Height</label><input id="' + prefix + '_h" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : first.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
-    '<div class="panel-md-editor" id="' + prefix + '_textEditor">' +
-      buildMarkdownToolbar() +
-      '<div class="panel-md-editor-body">' +
-        '<div id="' + prefix + '_textRT" class="panel-md-richtext" contenteditable="true">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(first))) + '</div>' +
-        '<textarea id="' + prefix + '_textRaw" class="panel-input panel-textarea panel-md-raw" style="display:none" placeholder="' + (textMixed ? '(mixed)' : state.escAttr(TEXT_PLACEHOLDER)) + '">' + (textMixed ? '' : state.escAttr(first.text ?? '')) + '</textarea>' +
-      '</div>' +
-    '</div>'
-  );
-}
-
 function appendShapeEditorHTML(parts, prefix, members, first) {
   const isRect = first.shapeType === 'rectangle';
   const wMixed = members.some(m => m.w !== first.w);
@@ -1388,12 +1105,15 @@ function appendShapeEditorHTML(parts, prefix, members, first) {
 }
 
 function appendTextBoxEditorHTML(parts, prefix, members, first) {
+  const titleMixed = members.some(m => m.title !== first.title);
   const textMixed = members.some(m => m.text !== first.text);
   const fontSizeMixed = members.some(m => m.fontSize !== first.fontSize);
   const wMixed = members.some(m => m.w !== first.w);
   const hMixed = members.some(m => m.h !== first.h);
 
   parts.push(
+    '<div class="panel-row"><label>Title</label><input id="' + prefix + '_title" class="panel-input" type="text" value="' + (titleMixed ? '' : state.escAttr(first.title ?? '')) + '" placeholder="' + (titleMixed ? '(mixed)' : state.escAttr(TITLE_PLACEHOLDER)) + '" /></div>',
+    '<div class="panel-row"><label>Title Color</label>' + colorSwatchHTML(prefix + '_titleColor', first.titleColor ?? '#e7e7e7') + '</div>',
     '<div class="panel-row"><label>Color</label>' + colorSwatchHTML(prefix + '_color', first.color ?? '#1a1a1a') + '</div>',
     '<div class="panel-row"><label>Border</label>' + colorSwatchHTML(prefix + '_borderColor', first.borderColor ?? '#444444') + '</div>',
     '<div class="panel-row"><label>Text Color</label>' + colorSwatchHTML(prefix + '_textColor', first.textColor ?? '#dddddd') + '</div>',
@@ -1404,113 +1124,10 @@ function appendTextBoxEditorHTML(parts, prefix, members, first) {
       buildMarkdownToolbar() +
       '<div class="panel-md-editor-body">' +
         '<div id="' + prefix + '_textRT" class="panel-md-richtext" contenteditable="true">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(first))) + '</div>' +
-        '<textarea id="' + prefix + '_textRaw" class="panel-input panel-textarea panel-md-raw" style="display:none" placeholder="' + (textMixed ? '(mixed)' : 'Enter text...') + '">' + (textMixed ? '' : state.escAttr(first.text ?? '')) + '</textarea>' +
+        '<textarea id="' + prefix + '_textRaw" class="panel-input panel-textarea panel-md-raw" style="display:none" placeholder="' + (textMixed ? '(mixed)' : state.escAttr(TEXT_PLACEHOLDER)) + '">' + (textMixed ? '' : state.escAttr(first.text ?? '')) + '</textarea>' +
       '</div>' +
     '</div>'
   );
-}
-
-function wireBatchNodeGroup(prefix, members) {
-  const titleInput = document.getElementById(prefix + '_title');
-  const titleColorSwatch = document.getElementById(prefix + '_titleColor');
-  const colorSwatch = document.getElementById(prefix + '_color');
-  const textColorSwatch = document.getElementById(prefix + '_textColor');
-  const fontSizeInput = document.getElementById(prefix + '_fontSize');
-  const wInput = document.getElementById(prefix + '_w');
-  const hInput = document.getElementById(prefix + '_h');
-
-  if (titleInput) {
-    titleInput.addEventListener('input', (ev) => { for (const m of members) m.title = ev.target.value; });
-    titleInput.addEventListener('focus', () => _captureNodeSnapshot('title', members));
-    titleInput.addEventListener('blur', () => _commitNodeSnapshot('title'));
-  }
-  if (titleColorSwatch) {
-    initColorSwatch(titleColorSwatch, {
-      onSelect: (v) => { for (const m of members) m.titleColor = v; },
-      onOpen: () => _captureNodeSnapshot('titleColor', members),
-      onClose: () => _commitNodeSnapshot('titleColor'),
-    });
-  }
-  if (colorSwatch) {
-    initColorSwatch(colorSwatch, {
-      onSelect: (v) => { for (const m of members) m.color = v; },
-      onOpen: () => _captureNodeSnapshot('color', members),
-      onClose: () => _commitNodeSnapshot('color'),
-    });
-  }
-  if (textColorSwatch) {
-    initColorSwatch(textColorSwatch, {
-      onSelect: (v) => { for (const m of members) m.textColor = v; },
-      onOpen: () => _captureNodeSnapshot('textColor', members),
-      onClose: () => _commitNodeSnapshot('textColor'),
-    });
-  }
-  if (fontSizeInput) {
-    fontSizeInput.setAttribute('data-drag-number', 'true');
-    fontSizeInput.addEventListener('input', (ev) => {
-      const v = parseFloat(ev.target.value);
-      if (!Number.isNaN(v) && v >= 8) for (const m of members) m.fontSize = v;
-    });
-    fontSizeInput.addEventListener('focus', () => _captureNodeSnapshot('fontSize', members));
-    fontSizeInput.addEventListener('blur', () => _commitNodeSnapshot('fontSize'));
-    attachDragNumber(fontSizeInput,
-      (delta) => {
-        const v = Math.max(8, Math.min(72, (members[0].fontSize ?? 12) + delta));
-        for (const m of members) m.fontSize = v;
-        fontSizeInput.value = String(Math.round(members[0].fontSize));
-      }, () => {}, () => {});
-  }
-  if (wInput) {
-    wInput.setAttribute('data-drag-number', 'true');
-    wInput.addEventListener('input', (ev) => {
-      const v = parseFloat(ev.target.value);
-      if (!Number.isNaN(v)) for (const m of members) updateNodeWidth(m, v);
-    });
-    wInput.addEventListener('focus', () => _captureNodeSnapshot('w', members));
-    wInput.addEventListener('blur', () => _commitNodeSnapshot('w'));
-    let ds = null;
-    attachDragNumber(wInput,
-      (delta) => { for (const m of members) { updateNodeWidth(m, Math.max(10, m.w + delta)); } wInput.value = String(Math.round(members[0].w)); },
-      () => { _commitNodeSnapshot('w'); ds = members.map(m => ({ nodeId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } })); },
-      () => {
-        if (!ds) return;
-        const ch = [];
-        for (let i = 0; i < members.length; i++) {
-          const fb = ds[i].bounds, tb = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
-          if (fb.w !== tb.w || fb.x !== tb.x) ch.push({ nodeId: members[i].id, fromBounds: fb, toBounds: tb });
-        }
-        if (ch.length > 0) history.push(createBatchResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, ch));
-      });
-  }
-  if (hInput) {
-    hInput.setAttribute('data-drag-number', 'true');
-    hInput.addEventListener('input', (ev) => {
-      const v = parseFloat(ev.target.value);
-      if (!Number.isNaN(v)) for (const m of members) updateNodeHeight(m, v);
-    });
-    hInput.addEventListener('focus', () => _captureNodeSnapshot('h', members));
-    hInput.addEventListener('blur', () => _commitNodeSnapshot('h'));
-    let ds = null;
-    attachDragNumber(hInput,
-      (delta) => { for (const m of members) { updateNodeHeight(m, Math.max(10, m.h + delta)); } hInput.value = String(Math.round(members[0].h)); },
-      () => { _commitNodeSnapshot('h'); ds = members.map(m => ({ nodeId: m.id, bounds: { x: m.x, y: m.y, w: m.w, h: m.h } })); },
-      () => {
-        if (!ds) return;
-        const ch = [];
-        for (let i = 0; i < members.length; i++) {
-          const fb = ds[i].bounds, tb = { x: members[i].x, y: members[i].y, w: members[i].w, h: members[i].h };
-          if (fb.h !== tb.h || fb.y !== tb.y) ch.push({ nodeId: members[i].id, fromBounds: fb, toBounds: tb });
-        }
-        if (ch.length > 0) history.push(createBatchResizeNodeCmd(state.nodes, state.selected, refreshSidePanel, ch));
-      });
-  }
-  setupMarkdownEditor(prefix + '_text', {
-    getText: () => members[0]?.text ?? '',
-    setText: (v) => { for (const m of members) { m.text = v; m.blocks = null; } },
-    onFocus: () => _captureNodeSnapshot('text', members),
-    onBlur: () => _commitNodeSnapshot('text'),
-    onChange: () => {},
-  });
 }
 
 function wireMixedShapeGroup(prefix, members) {
@@ -1611,6 +1228,8 @@ function wireMixedShapeGroup(prefix, members) {
 }
 
 function wireMixedTBGroup(prefix, members) {
+  const titleInput = document.getElementById(prefix + '_title');
+  const titleColorSwatch = document.getElementById(prefix + '_titleColor');
   const colorSwatch = document.getElementById(prefix + '_color');
   const borderColorSwatch = document.getElementById(prefix + '_borderColor');
   const textColorSwatch = document.getElementById(prefix + '_textColor');
@@ -1618,6 +1237,18 @@ function wireMixedTBGroup(prefix, members) {
   const wInput = document.getElementById(prefix + '_w');
   const hInput = document.getElementById(prefix + '_h');
 
+  if (titleInput) {
+    titleInput.addEventListener('input', (ev) => { for (const m of members) m.title = ev.target.value; });
+    titleInput.addEventListener('focus', () => _captureTbSnapshot('title', members));
+    titleInput.addEventListener('blur', () => _commitTbSnapshot('title'));
+  }
+  if (titleColorSwatch) {
+    initColorSwatch(titleColorSwatch, {
+      onSelect: (v) => { for (const m of members) m.titleColor = v; },
+      onOpen: () => _captureTbSnapshot('titleColor', members),
+      onClose: () => _commitTbSnapshot('titleColor'),
+    });
+  }
   if (colorSwatch) {
     initColorSwatch(colorSwatch, {
       onSelect: (v) => { for (const m of members) m.color = v; },
@@ -1703,26 +1334,6 @@ function wireMixedTBGroup(prefix, members) {
     onBlur: () => _commitTbSnapshot('text'),
     onChange: () => {},
   });
-}
-
-function updateNodeWidth(n, newWidth) {
-  const minW = 100;
-  const targetW = Math.max(minW, newWidth);
-  const delta = targetW - n.w;
-  if (delta === 0) return;
-  n.x -= delta / 2;
-  n.w = targetW;
-  state.markDrawOrderDirty();
-}
-
-function updateNodeHeight(n, newHeight) {
-  const minH = 60;
-  const targetH = Math.max(minH, newHeight);
-  const delta = targetH - n.h;
-  if (delta === 0) return;
-  n.y -= delta / 2;
-  n.h = targetH;
-  state.markDrawOrderDirty();
 }
 
 function attachDragNumber(inputEl, onDelta, onDragStart, onDragEnd) {

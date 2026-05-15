@@ -9,10 +9,10 @@ function getConnectedObject(conn, which) {
   const idx = which === 'start' ? conn.connectedFrom : conn.connectedTo;
   const type = which === 'start' ? conn.connectedFromType : conn.connectedToType;
   if (idx === null || idx === undefined) return null;
-  const resolvedType = type || 'node';
-  if (resolvedType === 'node' && state.nodes[idx]) return state.nodes[idx];
-  if (resolvedType === 'shape' && state.shapes[idx]) return state.shapes[idx];
+  const resolvedType = type || 'textBox';
   if (resolvedType === 'textBox' && state.textBoxes[idx]) return state.textBoxes[idx];
+  if (resolvedType === 'shape' && state.shapes[idx]) return state.shapes[idx];
+  return null;
   return null;
 }
 
@@ -92,9 +92,8 @@ export function drawConnectorPreview() {
   if (state.drawingStartConnected) {
     const { type, index } = state.drawingStartConnected;
     let obj = null;
-    if (type === 'node' && state.nodes[index]) obj = state.nodes[index];
+    if (type === 'textBox' && state.textBoxes[index]) obj = state.textBoxes[index];
     else if (type === 'shape' && state.shapes[index]) obj = state.shapes[index];
-    else if (type === 'textBox' && state.textBoxes[index]) obj = state.textBoxes[index];
     if (obj) {
       const edge = getObjectEdgePoint(obj, state.lastWorldMouse.x, state.lastWorldMouse.y);
       x1 = edge.x;
@@ -131,9 +130,8 @@ export function drawArrowPreview() {
   if (state.drawingStartConnected) {
     const { type, index } = state.drawingStartConnected;
     let obj = null;
-    if (type === 'node' && state.nodes[index]) obj = state.nodes[index];
+    if (type === 'textBox' && state.textBoxes[index]) obj = state.textBoxes[index];
     else if (type === 'shape' && state.shapes[index]) obj = state.shapes[index];
-    else if (type === 'textBox' && state.textBoxes[index]) obj = state.textBoxes[index];
     if (obj) {
       const edge = getObjectEdgePoint(obj, state.lastWorldMouse.x, state.lastWorldMouse.y);
       x1 = edge.x;

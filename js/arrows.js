@@ -9,10 +9,10 @@ function getConnectedObject(arrow, which) {
   const idx = which === 'start' ? arrow.connectedFrom : arrow.connectedTo;
   const type = which === 'start' ? arrow.connectedFromType : arrow.connectedToType;
   if (idx === null || idx === undefined) return null;
-  const resolvedType = type || 'node';
-  if (resolvedType === 'node' && state.nodes[idx]) return state.nodes[idx];
-  if (resolvedType === 'shape' && state.shapes[idx]) return state.shapes[idx];
+  const resolvedType = type || 'textBox';
   if (resolvedType === 'textBox' && state.textBoxes[idx]) return state.textBoxes[idx];
+  if (resolvedType === 'shape' && state.shapes[idx]) return state.shapes[idx];
+  return null;
   return null;
 }
 

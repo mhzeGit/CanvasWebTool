@@ -19,7 +19,6 @@ const svgIcons = {
   cursor: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>',
   arrow: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 19L19 5"/><path d="M12 5h7v7"/></svg>',
   connectionLine: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="4" y1="20" x2="20" y2="4"/><circle cx="4" cy="20" r="1.5" fill="currentColor"/><circle cx="20" cy="4" r="1.5" fill="currentColor"/></svg>',
-  node: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="4" width="16" height="16" rx="3"/><line x1="4" y1="9" x2="20" y2="9"/></svg>',
   text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
 };
 
@@ -38,8 +37,7 @@ function createToolbar() {
     { id: TOOLS.CURSOR, icon: svgIcons.cursor, label: 'Cursor (V)' },
     { id: TOOLS.ARROW, icon: svgIcons.arrow, label: 'Arrow' },
     { id: TOOLS.CONNECTION_LINE, icon: svgIcons.connectionLine, label: 'Connection Line' },
-    { id: TOOLS.NODE, icon: svgIcons.node, label: 'Node' },
-    { id: TOOLS.TEXT, icon: svgIcons.text, label: 'Text' },
+    { id: TOOLS.TEXT, icon: svgIcons.text, label: 'Text Box' },
   ];
 
   for (const tool of tools) {

@@ -18,8 +18,7 @@ export function getTextBoxEdgeAt(wx, wy) {
     if (ourPos === -1) return null;
     for (let i = allOrder.length - 1; i > ourPos; i--) {
       const item = allOrder[i];
-      const e = item.type === 'node' ? state.nodes[item.i]
-        : item.type === 'shape' ? state.shapes[item.i]
+      const e = item.type === 'shape' ? state.shapes[item.i]
         : state.textBoxes[item.i];
       if (e && wx >= e.x - EDGE_MARGIN && wx <= e.x + e.w + EDGE_MARGIN && wy >= e.y - EDGE_MARGIN && wy <= e.y + e.h + EDGE_MARGIN) return null;
     }

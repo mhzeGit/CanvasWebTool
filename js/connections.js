@@ -7,8 +7,8 @@ export function hitTestConnection(wx, wy) {
   let bestDist = CONN_HIT_THRESHOLD;
   for (let ci = 0; ci < state.connections.length; ci++) {
     const conn = state.connections[ci];
-    const fromNode = state.nodes[conn.from];
-    const toNode = state.nodes[conn.to];
+    const fromNode = state.textBoxes[conn.from];
+    const toNode = state.textBoxes[conn.to];
     if (!fromNode || !toNode) continue;
 
     const toCenterX = toNode.x + toNode.w / 2;

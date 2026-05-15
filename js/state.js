@@ -1,4 +1,4 @@
-import { EDGE_MARGIN, NODE_MIN_W, NODE_MIN_H } from './config.js';
+import { EDGE_MARGIN } from './config.js';
 
 const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
@@ -9,58 +9,8 @@ const entityLayer = document.getElementById('entityLayer');
 let drawOrderCache = [];
 let drawOrderCacheDirty = true;
 
-function getDrawOrder() {
-  if (drawOrderCacheDirty) {
-    drawOrderCache = Array.from({ length: state.nodes.length }, (_, i) => i);
-    drawOrderCache.sort((a, b) => {
-      const areaA = state.nodes[a].w * state.nodes[a].h;
-      const areaB = state.nodes[b].w * state.nodes[b].h;
-      if (areaB !== areaA) return areaB - areaA;
-      return a - b;
-    });
-    drawOrderCacheDirty = false;
-  }
-  return drawOrderCache;
-}
-
 function markDrawOrderDirty() {
   drawOrderCacheDirty = true;
-}
-
-function isFullyContained(container, child) {
-  return child.x >= container.x &&
-         child.y >= container.y &&
-         child.x + child.w <= container.x + container.w &&
-         child.y + child.h <= container.y + container.h;
-}
-
-function findSmallestContainer(nodeIndex) {
-  const node = state.nodes[nodeIndex];
-  let bestContainerIndex = -1;
-  let bestArea = Infinity;
-  for (let i = 0; i < state.nodes.length; i++) {
-    if (i === nodeIndex) continue;
-    if (isFullyContained(state.nodes[i], node)) {
-      const area = state.nodes[i].w * state.nodes[i].h;
-      if (area < bestArea) {
-        bestArea = area;
-        bestContainerIndex = i;
-      }
-    }
-  }
-  return bestContainerIndex;
-}
-
-function checkAndUpdateParenting(nodeIndex) {
-  const node = state.nodes[nodeIndex];
-  const containerIdx = findSmallestContainer(nodeIndex);
-  if (containerIdx !== -1) {
-    node.parentId = state.nodes[containerIdx].id;
-    node.parentType = 'node';
-  } else {
-    node.parentId = null;
-    node.parentType = null;
-  }
 }
 
 function containerArea(entity) {
@@ -75,14 +25,6 @@ function findParentForRect(rx, ry, rw, rh, excludeId, excludeType) {
   let bestId = null;
   let bestType = null;
   let bestArea = Infinity;
-  for (let i = 0; i < state.nodes.length; i++) {
-    const n = state.nodes[i];
-    if (n.id === excludeId && excludeType === 'node') continue;
-    const area = containerArea(n);
-    if (area < bestArea && rectInRect(n.x, n.y, n.w, n.h, rx, ry, rw, rh)) {
-      bestId = n.id; bestType = 'node'; bestArea = area;
-    }
-  }
   for (let i = 0; i < state.shapes.length; i++) {
     const s = state.shapes[i];
     if (s.id === excludeId && excludeType === 'shape') continue;
@@ -103,12 +45,6 @@ function findParentForRect(rx, ry, rw, rh, excludeId, excludeType) {
 }
 
 function reparentAll() {
-  for (let i = 0; i < state.nodes.length; i++) {
-    const n = state.nodes[i];
-    const p = findParentForRect(n.x, n.y, n.w, n.h, n.id, 'node');
-    if (p) { n.parentId = p.parentId; n.parentType = p.parentType; }
-    else { n.parentId = null; n.parentType = null; }
-  }
   for (let i = 0; i < state.shapes.length; i++) {
     const s = state.shapes[i];
     const p = findParentForRect(s.x, s.y, s.w, s.h, s.id, 'shape');
@@ -125,10 +61,6 @@ function reparentAll() {
 
 function getChildrenByParentId(parentId, parentType) {
   const children = [];
-  for (let i = 0; i < state.nodes.length; i++) {
-    const n = state.nodes[i];
-    if (n.parentId === parentId && n.parentType === parentType) children.push({ type: 'node', index: i });
-  }
   for (let i = 0; i < state.shapes.length; i++) {
     const s = state.shapes[i];
     if (s.parentId === parentId && s.parentType === parentType) children.push({ type: 'shape', index: i });
@@ -140,43 +72,15 @@ function getChildrenByParentId(parentId, parentType) {
   return children;
 }
 
-function getDragGroup(selectedIndices) {
-  const group = new Set(selectedIndices);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (let i = 0; i < state.nodes.length; i++) {
-      if (group.has(i)) continue;
-      const n = state.nodes[i];
-      if (n.parentId !== null && n.parentId !== undefined) {
-        const parentEntry = findNodeById(state.nodes, n.parentId);
-        if (parentEntry && group.has(parentEntry.index)) {
-          group.add(i);
-          changed = true;
-        }
-      }
-    }
-  }
-  return Array.from(group).map(i => ({ i, x: state.nodes[i].x, y: state.nodes[i].y }));
-}
-
-function findNodeById(nodesArr, id) {
-  for (let i = 0; i < nodesArr.length; i++) {
-    if (nodesArr[i].id === id) return { node: nodesArr[i], index: i };
-  }
-  return null;
-}
-
 function computeSelectionKey() {
   if (state.arrowDragTarget) return `arrowEnd:${state.arrowDragTarget.arrowIdx}:${state.arrowDragTarget.end}`;
-  const mn = state.selected.size > 0 ? 1 : 0;
   const ms = state.selectedShapes.size > 0 ? 1 : 0;
   const mt = state.selectedTextBoxes.size > 0 ? 1 : 0;
   const ma = state.selectedArrows.size > 0 ? 1 : 0;
   const mc = state.selectedConnection !== null ? 1 : 0;
   const mx = state.selectedConnectors.size > 0 ? 1 : 0;
-  if (mn + ms + mt + ma + mc + mx > 1) {
-    return `mixed:${state.selected.size}|${state.selectedShapes.size}|${state.selectedTextBoxes.size}|${state.selectedArrows.size}|${state.selectedConnection !== null ? 1 : 0}|${state.selectedConnectors.size}`;
+  if (ms + mt + ma + mc + mx > 1) {
+    return `mixed:${state.selectedShapes.size}|${state.selectedTextBoxes.size}|${state.selectedArrows.size}|${state.selectedConnection !== null ? 1 : 0}|${state.selectedConnectors.size}`;
   }
   if (state.selectedArrows.size === 1) return `arrow:${Array.from(state.selectedArrows)[0]}`;
   if (state.selectedArrows.size > 1) return `arrows:${state.selectedArrows.size}`;
@@ -187,10 +91,7 @@ function computeSelectionKey() {
   if (state.selectedTextBoxes.size > 1) return `tbs:${state.selectedTextBoxes.size}`;
   if (state.selectedConnectors.size === 1) return `connector:${Array.from(state.selectedConnectors)[0]}`;
   if (state.selectedConnectors.size > 1) return `connectors:${state.selectedConnectors.size}`;
-  if (state.selected.size === 0) return 'none';
-  if (state.selected.size > 1) return `nodes:${state.selected.size}`;
-  const idx = Array.from(state.selected)[0];
-  return `single:${idx}`;
+  return 'none';
 }
 
 function escAttr(s) {
@@ -216,12 +117,6 @@ export const state = {
   lastPanX: 0,
   lastPanY: 0,
 
-  nodes: [],
-  selected: new Set(),
-  isDraggingNode: false,
-  dragStartWorldX: 0,
-  dragStartWorldY: 0,
-  dragGroupStarts: [],
   clipboard: [],
 
   panelPendingEdit: null,
@@ -274,6 +169,10 @@ export const state = {
   resizeShapeStartWorldY: 0,
   resizeShapeStartBounds: null,
 
+  nodes: [],
+  nextNodeId: 1,
+  selected: new Set(),
+
   textBoxes: [],
   nextTextBoxId: 1,
   selectedTextBoxes: new Set(),
@@ -321,14 +220,12 @@ export const state = {
   editingState: null,
   hoveredHandleInfo: null,
 
-  getDrawOrder,
   getTopHitAt(wx, wy) {
     const order = state.getAllDrawOrder();
     for (let i = order.length - 1; i >= 0; i--) {
       const item = order[i];
       let e;
-      if (item.type === 'node') e = state.nodes[item.i];
-      else if (item.type === 'shape') e = state.shapes[item.i];
+      if (item.type === 'shape') e = state.shapes[item.i];
       else e = state.textBoxes[item.i];
       if (e && wx >= e.x && wx <= e.x + e.w && wy >= e.y && wy <= e.y + e.h) return item;
     }
@@ -342,20 +239,12 @@ export const state = {
     for (let i = 0; i < state.textBoxes.length; i++) {
       items.push({ type: 'textBox', i, area: state.textBoxes[i].w * state.textBoxes[i].h });
     }
-    for (let i = 0; i < state.nodes.length; i++) {
-      items.push({ type: 'node', i, area: state.nodes[i].w * state.nodes[i].h });
-    }
     items.sort((a, b) => b.area - a.area);
     return items;
   },
   markDrawOrderDirty,
-  isFullyContained,
-  findSmallestContainer,
-  checkAndUpdateParenting,
   reparentAll,
   getChildrenByParentId,
-  getDragGroup,
-  findNodeById,
   computeSelectionKey,
   escAttr,
 };

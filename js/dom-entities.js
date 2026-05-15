@@ -14,7 +14,6 @@ function isEditingEntity(type, idx, field) {
 
 let entityLayer;
 const domByTypeIdx = {
-  node: {},
   shape: {},
   textBox: {},
 };
@@ -27,16 +26,12 @@ export function initEntityLayer() {
 }
 
 export function destroyAllEntities() {
-  for (const key in domByTypeIdx.node) {
-    domByTypeIdx.node[key].remove();
-  }
   for (const key in domByTypeIdx.shape) {
     domByTypeIdx.shape[key].remove();
   }
   for (const key in domByTypeIdx.textBox) {
     domByTypeIdx.textBox[key].remove();
   }
-  domByTypeIdx.node = {};
   domByTypeIdx.shape = {};
   domByTypeIdx.textBox = {};
   prevDrawOrderKey = '';
@@ -70,7 +65,6 @@ function titleToHtml(title) {
 }
 
 export function getEntityElement(type, idx) {
-  if (type === 'node') return domByTypeIdx.node['n' + idx] || null;
   if (type === 'textBox') return domByTypeIdx.textBox['t' + idx] || null;
   if (type === 'shape') return domByTypeIdx.shape['s' + idx] || null;
   return null;
@@ -101,66 +95,6 @@ function placeEntity(el, wx, wy, ww, wh) {
   el.style.top = (tl.y + canvasRect.top) + 'px';
   el.style.width = Math.max(1, screenW) + 'px';
   el.style.height = Math.max(1, screenH) + 'px';
-}
-
-function ensureNodeElement(idx) {
-  const n = state.nodes[idx];
-  if (!n) return null;
-  const key = 'n' + idx;
-  let el = domByTypeIdx.node[key];
-  if (!el) {
-    el = document.createElement('div');
-    el.className = 'entity entity-node';
-    el.dataset.entityType = 'node';
-    el.dataset.entityIdx = idx;
-    el.innerHTML = [
-      '<div class="entity-node-titlebar"></div>',
-      '<div class="entity-node-body"></div>',
-      makeHandlesHtml(),
-    ].join('');
-    document.body.appendChild(el);
-    domByTypeIdx.node[key] = el;
-  }
-
-  const baseColor = n.color || 'rgb(43, 43, 43)';
-  const nodeRadius = Math.min(12, Math.min(n.w, n.h) * 0.2);
-
-  placeEntity(el, n.x, n.y, n.w, n.h);
-
-  el.style.background = baseColor;
-  el.style.borderRadius = (nodeRadius * state.scale) + 'px';
-  el.style.borderColor = getBorderColor(baseColor);
-  el.style.zIndex = ''; // set by applyDrawOrder
-  el.style.setProperty('--node-divider-color', getDividerColor(baseColor));
-
-  const titlebar = el.querySelector('.entity-node-titlebar');
-  titlebar.style.background = getDarkerColor(baseColor, 0.6);
-  titlebar.style.borderRadius = (nodeRadius * state.scale) + 'px ' + (nodeRadius * state.scale) + 'px 0 0';
-  titlebar.style.color = n.titleColor || DEFAULT_TITLE_COLOR;
-  titlebar.style.fontSize = (15 * state.scale) + 'px';
-  titlebar.style.padding = (4 * state.scale) + 'px ' + (8 * state.scale) + 'px';
-  titlebar.style.lineHeight = 1.2;
-  titlebar.style.minHeight = ((15 * 1.2 * state.scale) + (4 * state.scale) + (4 * state.scale)) + 'px';
-  if (!isEditingEntity('node', idx, 'title')) {
-    titlebar.innerHTML = titleToHtml(n.title);
-  }
-
-  const body = el.querySelector('.entity-node-body');
-  body.style.color = n.textColor || DEFAULT_TEXT_COLOR;
-  body.style.fontSize = ((n.fontSize || 12) * state.scale) + 'px';
-  body.style.padding = (8 * state.scale) + 'px';
-  body.style.lineHeight = 1.25;
-
-  if (!isEditingEntity('node', idx, 'text')) {
-    if (n.text && n.text.length > 0) {
-      const blocks = getOrCreateBlocks(n);
-      body.innerHTML = blocksToHtml(blocks);
-    } else {
-      body.innerHTML = `<span class="entity-node-placeholder" style="font-size:${(n.fontSize || 12) * state.scale}px">${escapeHtml(TEXT_PLACEHOLDER)}</span>`;
-    }
-  }
-
-  return el;
 }
 
 function ensureShapeElement(idx) {
@@ -233,13 +167,14 @@ function ensureTextBoxElement(idx) {
     el.className = 'entity entity-textbox';
     el.dataset.entityType = 'textBox';
     el.dataset.entityIdx = idx;
-    el.innerHTML = '<div class="entity-textbox-content"></div>' + makeHandlesHtml();
+    el.innerHTML = '<div class="entity-textbox-titlebar"></div><div class="entity-textbox-content"></div>' + makeHandlesHtml();
     document.body.appendChild(el);
     domByTypeIdx.textBox[key] = el;
   }
 
   const baseColor = tb.color || '#1a1a1a';
   const borderColor = tb.borderColor || '#444';
+  const hasTitle = tb.title && tb.title.length > 0;
 
   placeEntity(el, tb.x, tb.y, tb.w, tb.h);
 
@@ -249,10 +184,33 @@ function ensureTextBoxElement(idx) {
   el.style.borderRadius = (6 * state.scale) + 'px';
   el.style.setProperty('--node-divider-color', getDividerColor(baseColor));
 
+  const titlebar = el.querySelector('.entity-textbox-titlebar');
   const content = el.querySelector('.entity-textbox-content');
-  content.style.color = tb.textColor || '#ddd';
+
+  if (hasTitle) {
+    titlebar.style.display = '';
+    const tbRadius = 6 * state.scale;
+    titlebar.style.background = getDarkerColor(baseColor, 0.6);
+    titlebar.style.borderRadius = tbRadius + 'px ' + tbRadius + 'px 0 0';
+    titlebar.style.color = tb.titleColor || DEFAULT_TITLE_COLOR;
+    titlebar.style.fontSize = (15 * state.scale) + 'px';
+    titlebar.style.padding = (4 * state.scale) + 'px ' + (8 * state.scale) + 'px';
+    titlebar.style.lineHeight = 1.2;
+    titlebar.style.minHeight = ((15 * 1.2 * state.scale) + (4 * state.scale) + (4 * state.scale)) + 'px';
+    if (!isEditingEntity('textBox', idx, 'title')) {
+      titlebar.innerHTML = titleToHtml(tb.title);
+    }
+    content.style.paddingTop = (4 * state.scale) + 'px';
+  } else {
+    titlebar.style.display = 'none';
+    content.style.paddingTop = (8 * state.scale) + 'px';
+  }
+
+  content.style.color = tb.textColor || DEFAULT_TEXT_COLOR;
   content.style.fontSize = ((tb.fontSize || 14) * state.scale) + 'px';
-  content.style.padding = (8 * state.scale) + 'px';
+  content.style.paddingLeft = (8 * state.scale) + 'px';
+  content.style.paddingRight = (8 * state.scale) + 'px';
+  content.style.paddingBottom = (8 * state.scale) + 'px';
   content.style.lineHeight = 1.25;
 
   if (!isEditingEntity('textBox', idx)) {
@@ -264,7 +222,7 @@ function ensureTextBoxElement(idx) {
       content.innerHTML = '';
       const placeholder = document.createElement('span');
       placeholder.className = 'entity-textbox-placeholder';
-      placeholder.textContent = 'Double-click to edit';
+      placeholder.textContent = hasTitle ? 'Double-click to edit' : 'Double-click to edit';
       placeholder.style.fontSize = ((tb.fontSize || 14) * state.scale) + 'px';
       content.appendChild(placeholder);
     }
@@ -278,9 +236,7 @@ function applyDrawOrder() {
   for (let i = 0; i < order.length; i++) {
     const item = order[i];
     let el = null;
-    if (item.type === 'node') {
-      el = domByTypeIdx.node['n' + item.i];
-    } else if (item.type === 'shape') {
+    if (item.type === 'shape') {
       el = domByTypeIdx.shape['s' + item.i];
     } else if (item.type === 'textBox') {
       el = domByTypeIdx.textBox['t' + item.i];
@@ -292,11 +248,6 @@ function applyDrawOrder() {
 }
 
 function applySelectionClasses() {
-  for (const key in domByTypeIdx.node) {
-    const el = domByTypeIdx.node[key];
-    const idx = parseInt(el.dataset.entityIdx);
-    el.classList.toggle('selected', state.selected.has(idx));
-  }
   for (const key in domByTypeIdx.shape) {
     const el = domByTypeIdx.shape[key];
     const idx = parseInt(el.dataset.entityIdx);
@@ -310,14 +261,6 @@ function applySelectionClasses() {
 }
 
 function cleanupStaleElements() {
-  const aliveNodeKeys = new Set();
-  for (let i = 0; i < state.nodes.length; i++) aliveNodeKeys.add('n' + i);
-  for (const key in domByTypeIdx.node) {
-    if (!aliveNodeKeys.has(key)) {
-      domByTypeIdx.node[key].remove();
-      delete domByTypeIdx.node[key];
-    }
-  }
   const aliveShapeKeys = new Set();
   for (let i = 0; i < state.shapes.length; i++) aliveShapeKeys.add('s' + i);
   for (const key in domByTypeIdx.shape) {
@@ -339,13 +282,10 @@ function cleanupStaleElements() {
 export function syncAllEntities() {
   const order = state.getAllDrawOrder();
   const drawOrderKey = order.map(item => item.type[0] + item.i).join(',');
-  const selKey = [...state.selected].sort((a,b)=>a-b).join(',') + '|' + [...state.selectedShapes].sort((a,b)=>a-b).join(',') + '|' + [...state.selectedTextBoxes].sort((a,b)=>a-b).join(',');
+  const selKey = [...state.selectedShapes].sort((a,b)=>a-b).join(',') + '|' + [...state.selectedTextBoxes].sort((a,b)=>a-b).join(',');
 
   cleanupStaleElements();
 
-  for (let i = 0; i < state.nodes.length; i++) {
-    ensureNodeElement(i);
-  }
   for (let i = 0; i < state.shapes.length; i++) {
     ensureShapeElement(i);
   }

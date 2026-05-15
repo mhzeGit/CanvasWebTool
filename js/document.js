@@ -1,49 +1,32 @@
 import { state } from './state.js';
 import { history, flushPanelEdit } from './history.js';
 import {
-  createAddNodeCmd, createDeleteNodesCmd, createMoveNodesCmd,
-  createResizeNodeCmd, createPropertyChangeCmd, createPasteNodesCmd,
-  createDuplicateNodesCmd,
-  nextNodeId, initNodeId,
   createAddShapeCmd, createDeleteShapesCmd, createMoveShapesCmd,
   createResizeShapeCmd, createAddTextBoxCmd, createDeleteTextBoxesCmd,
   createMoveTextBoxesCmd, createAddConnectorCmd, createDeleteConnectorsCmd,
   createMoveConnectorsCmd,
   createAddArrowCmd, createDeleteArrowsCmd,
   createAddConnectionCmd, createDeleteConnectionCmd,
+  createResizeTextBoxCmd, createTextBoxPropertyChangeCmd,
+  createBatchTextBoxPropertyChangeCmd, createBatchResizeTextBoxCmd,
+  createDuplicateTextBoxesCmd, createPasteTextBoxesCmd,
 } from './undo.js';
 import { serializeDocument, deserializeDocument, FILE_EXTENSION } from './format.js';
 import { saveToFile, loadFromFile } from './file-io.js';
-import { screenToWorld, getNodeEdgePoint, getObjectEdgePoint } from './utils.js';
+import { screenToWorld, getObjectEdgePoint } from './utils.js';
 import { refreshSidePanel } from './side-panel.js';
-import { DEFAULT_NODE_COLOR } from './config.js';
+import { DEFAULT_TEXTBOX_COLOR } from './config.js';
 import { destroyAllEntities } from './dom-entities.js';
 import { showConfirmDialog } from './dialog.js';
 
-export function addNodeAtCenter() {
+export function addTextBoxAtCenter() {
   flushPanelEdit();
   const canvas = state.canvas;
   const rect = canvas.getBoundingClientRect();
   const centerCssX = rect.width / 2;
   const centerCssY = rect.height / 2;
   const world = screenToWorld(centerCssX, centerCssY, state.offsetX, state.offsetY, state.scale);
-  addNodeAt(world.x, world.y);
-}
-
-export function addNodeAt(worldX, worldY, optW, optH) {
-  flushPanelEdit();
-  const isDrag = optW !== undefined && optH !== undefined;
-  const w = isDrag ? optW : 240;
-  const h = isDrag ? optH : 160;
-  const node = { id: nextNodeId(), x: isDrag ? worldX : worldX - w / 2, y: isDrag ? worldY : worldY - h / 2, w, h, color: DEFAULT_NODE_COLOR, title: '', titleColor: '#e7e7e7', text: '', textColor: '#ddd', fontSize: 12, blocks: null, parentId: null, parentType: null };
-  const idx = state.nodes.length;
-  state.nodes.push(node);
-  state.selected.clear();
-  state.selected.add(idx);
-  state.markDrawOrderDirty();
-  state.reparentAll();
-  refreshSidePanel();
-  history.push(createAddNodeCmd(state.nodes, state.selected, refreshSidePanel, node, idx));
+  addTextBoxAt(world.x, world.y);
 }
 
 export function addArrowAtCenter() {
@@ -56,7 +39,7 @@ export function addArrowAtCenter() {
   addArrowAt(world.x, world.y);
 }
 
-export function addArrowAt(worldX, worldY, connectNodeIdx) {
+export function addArrowAt(worldX, worldY, connectTextBoxIdx) {
   flushPanelEdit();
   const offset = 60;
   let x1 = worldX - offset;
@@ -66,11 +49,11 @@ export function addArrowAt(worldX, worldY, connectNodeIdx) {
   let connectedFrom = null;
   let connectedTo = null;
 
-  if (connectNodeIdx !== undefined && connectNodeIdx !== null && state.nodes[connectNodeIdx]) {
-    const edge = getNodeEdgePoint(state.nodes[connectNodeIdx], worldX, worldY);
+  if (connectTextBoxIdx !== undefined && connectTextBoxIdx !== null && state.textBoxes[connectTextBoxIdx]) {
+    const edge = getObjectEdgePoint(state.textBoxes[connectTextBoxIdx], worldX, worldY);
     x1 = edge.x;
     y1 = edge.y;
-    connectedFrom = connectNodeIdx;
+    connectedFrom = connectTextBoxIdx;
     x2 = worldX;
     y2 = worldY;
   }
@@ -80,14 +63,14 @@ export function addArrowAt(worldX, worldY, connectNodeIdx) {
     x1, y1, x2, y2,
     connectedFrom,
     connectedTo,
-    connectedFromType: connectedFrom !== null ? 'node' : null,
+    connectedFromType: connectedFrom !== null ? 'textBox' : null,
     connectedToType: null,
     color: '#6bb5ff'
   };
 
   const idx = state.arrows.length;
   state.arrows.push(arrow);
-  state.selected.clear();
+  state.selectedTextBoxes.clear();
   state.selectedConnection = null;
   state.selectedArrows.clear();
   state.arrowDragTarget = { arrowIdx: idx, end: 'end' };
@@ -129,8 +112,8 @@ export function addShapeAt(worldX, worldY, shapeType, optW, optH) {
 export function addTextBoxAt(worldX, worldY, optW, optH) {
   flushPanelEdit();
   const isDrag = optW !== undefined && optH !== undefined;
-  const w = isDrag ? optW : 200;
-  const h = isDrag ? optH : 80;
+  const w = isDrag ? optW : 240;
+  const h = isDrag ? optH : 160;
   const textBox = {
     id: state.nextTextBoxId++,
     x: isDrag ? worldX : worldX - w / 2,
@@ -139,10 +122,12 @@ export function addTextBoxAt(worldX, worldY, optW, optH) {
     h,
     text: '',
     blocks: null,
-    color: '#1a1a1a',
+    color: DEFAULT_TEXTBOX_COLOR,
     borderColor: '#444',
     textColor: '#ddd',
     fontSize: 14,
+    title: '',
+    titleColor: '#e7e7e7',
     parentId: null,
     parentType: null,
   };
@@ -190,11 +175,10 @@ export function addArrowFromPoints(x1, y1, x2, y2, connectedFrom, connectedTo, c
   };
   const idx = state.arrows.length;
   state.arrows.push(arrow);
-  state.selected.clear();
+  state.selectedTextBoxes.clear();
   state.selectedConnection = null;
   state.selectedArrows.clear();
   state.selectedShapes.clear();
-  state.selectedTextBoxes.clear();
   state.selectedConnectors.clear();
   state.selectedArrows.add(idx);
   refreshSidePanel();
@@ -240,6 +224,7 @@ export function deleteSelectedTextBoxes() {
   const sortedIndices = Array.from(state.selectedTextBoxes).sort((a, b) => a - b);
   const deletedSet = new Set(sortedIndices);
   const deletedEntries = sortedIndices.map(i => ({ textBox: state.textBoxes[i], index: i }));
+  const deletedIds = new Set(deletedEntries.map(e => e.textBox.id));
 
   for (const arrow of state.arrows) {
     if (arrow.connectedFrom !== null && arrow.connectedFromType === 'textBox' && deletedSet.has(arrow.connectedFrom)) {
@@ -314,175 +299,150 @@ export function deleteConnection(idx) {
   history.push(createDeleteConnectionCmd(state.connections, state.selectedConnection, refreshSidePanel, deleted, idx));
 }
 
-export function deleteSelectedNodes() {
-  if (state.selected.size === 0) return;
+export function deleteSelectedTextBoxesWithConnections() {
+  if (state.selectedTextBoxes.size === 0) return;
   flushPanelEdit();
-  const sortedIndices = Array.from(state.selected).sort((a, b) => a - b);
-  const deletedEntries = sortedIndices.map(i => ({ node: state.nodes[i], index: i }));
+  const sortedIndices = Array.from(state.selectedTextBoxes).sort((a, b) => a - b);
+  const deletedEntries = sortedIndices.map(i => ({ textBox: state.textBoxes[i], index: i }));
 
-  const toDelete = new Set(state.selected);
-  const deletedIds = new Set(deletedEntries.map(e => e.node.id));
-
-  const remain = [];
-  const indexMap = [];
-  for (let i = 0; i < state.nodes.length; i++) {
-    if (!toDelete.has(i)) {
-      if (state.nodes[i].parentId !== null && state.nodes[i].parentId !== undefined && deletedIds.has(state.nodes[i].parentId)) {
-        state.nodes[i].parentId = null;
-      }
-      indexMap[i] = remain.length;
-      remain.push(state.nodes[i]);
-    }
-  }
-  state.nodes.length = 0;
-  for (const n of remain) state.nodes.push(n);
-
-  const newConnections = [];
-  for (let ci = 0; ci < state.connections.length; ci++) {
-    const conn = state.connections[ci];
-    const newFrom = indexMap[conn.from];
-    const newTo = indexMap[conn.to];
-    if (newFrom !== undefined && newTo !== undefined) {
-      conn.from = newFrom;
-      conn.to = newTo;
-      newConnections.push(conn);
-    } else {
-      if (ci === state.selectedConnection) state.selectedConnection = null;
-    }
-  }
-  state.connections.length = 0;
-  for (const c of newConnections) state.connections.push(c);
+  const toDelete = new Set(state.selectedTextBoxes);
+  const deletedIds = new Set(deletedEntries.map(e => e.textBox.id));
 
   for (const arrow of state.arrows) {
     if (arrow.connectedFrom !== null) {
-      const fromType = arrow.connectedFromType || 'node';
-      if (fromType === 'node') {
-        const newIdx = indexMap[arrow.connectedFrom];
-        arrow.connectedFrom = newIdx !== undefined ? newIdx : null;
-        if (arrow.connectedFrom === null) arrow.connectedFromType = null;
+      const fromType = arrow.connectedFromType || 'textBox';
+      if (fromType === 'textBox' && toDelete.has(arrow.connectedFrom)) {
+        arrow.connectedFrom = null; arrow.connectedFromType = null;
       }
     }
     if (arrow.connectedTo !== null) {
-      const toType = arrow.connectedToType || 'node';
-      if (toType === 'node') {
-        const newIdx = indexMap[arrow.connectedTo];
-        arrow.connectedTo = newIdx !== undefined ? newIdx : null;
-        if (arrow.connectedTo === null) arrow.connectedToType = null;
+      const toType = arrow.connectedToType || 'textBox';
+      if (toType === 'textBox' && toDelete.has(arrow.connectedTo)) {
+        arrow.connectedTo = null; arrow.connectedToType = null;
       }
     }
   }
 
   for (const conn of state.connectors) {
     if (conn.connectedFrom !== null) {
-      const fromType = conn.connectedFromType || 'node';
-      if (fromType === 'node') {
-        const newIdx = indexMap[conn.connectedFrom];
-        conn.connectedFrom = newIdx !== undefined ? newIdx : null;
-        if (conn.connectedFrom === null) conn.connectedFromType = null;
+      const fromType = conn.connectedFromType || 'textBox';
+      if (fromType === 'textBox' && toDelete.has(conn.connectedFrom)) {
+        conn.connectedFrom = null; conn.connectedFromType = null;
       }
     }
     if (conn.connectedTo !== null) {
-      const toType = conn.connectedToType || 'node';
-      if (toType === 'node') {
-        const newIdx = indexMap[conn.connectedTo];
-        conn.connectedTo = newIdx !== undefined ? newIdx : null;
-        if (conn.connectedTo === null) conn.connectedToType = null;
+      const toType = conn.connectedToType || 'textBox';
+      if (toType === 'textBox' && toDelete.has(conn.connectedTo)) {
+        conn.connectedTo = null; conn.connectedToType = null;
       }
     }
   }
 
-  if (state.connectingFrom !== null && toDelete.has(state.connectingFrom)) {
-    state.connectingFrom = null;
+  const newConnections = [];
+  for (let ci = 0; ci < state.connections.length; ci++) {
+    const conn = state.connections[ci];
+    const newFrom = toDelete.has(conn.from) ? -1 : conn.from;
+    const newTo = toDelete.has(conn.to) ? -1 : conn.to;
+    if (newFrom === -1 || newTo === -1) {
+      if (ci === state.selectedConnection) state.selectedConnection = null;
+    } else {
+      newConnections.push(conn);
+    }
   }
+  state.connections.length = 0;
+  for (const c of newConnections) state.connections.push(c);
 
-  state.selected.clear();
+  for (let i = sortedIndices.length - 1; i >= 0; i--) {
+    state.textBoxes.splice(sortedIndices[i], 1);
+  }
+  state.selectedTextBoxes.clear();
   state.markDrawOrderDirty();
   state.reparentAll();
   refreshSidePanel();
-  history.push(createDeleteNodesCmd(state.nodes, state.selected, refreshSidePanel, deletedEntries));
+  history.push(createDeleteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, deletedEntries));
 }
 
-export function duplicateSelectedNodes() {
-  if (state.selected.size === 0) return;
+export function duplicateSelectedTextBoxes() {
+  if (state.selectedTextBoxes.size === 0) return;
   flushPanelEdit();
   const dupes = [];
-  for (const i of state.selected) {
-    const n = state.nodes[i];
+  for (const i of state.selectedTextBoxes) {
+    const tb = state.textBoxes[i];
     dupes.push({
-      id: nextNodeId(),
-      x: n.x + 20,
-      y: n.y + 20,
-      w: n.w,
-      h: n.h,
-      color: n.color,
-      title: n.title,
-      titleColor: n.titleColor,
-      text: n.text,
-      blocks: n.blocks ? JSON.parse(JSON.stringify(n.blocks)) : null,
+      id: state.nextTextBoxId++,
+      x: tb.x + 20,
+      y: tb.y + 20,
+      w: tb.w,
+      h: tb.h,
+      color: tb.color,
+      textColor: tb.textColor,
+      fontSize: tb.fontSize,
+      borderColor: tb.borderColor,
+      title: tb.title,
+      titleColor: tb.titleColor,
+      text: tb.text,
+      blocks: tb.blocks ? JSON.parse(JSON.stringify(tb.blocks)) : null,
       parentId: null,
       parentType: null
     });
   }
-  const startIdx = state.nodes.length;
+  const startIdx = state.textBoxes.length;
   const entries = [];
   for (let i = 0; i < dupes.length; i++) {
-    state.nodes.push(dupes[i]);
-    entries.push({ node: dupes[i], index: startIdx + i });
+    state.textBoxes.push(dupes[i]);
+    entries.push({ textBox: dupes[i], index: startIdx + i });
   }
-  state.selected.clear();
-  for (let i = 0; i < dupes.length; i++) state.selected.add(startIdx + i);
+  state.selectedTextBoxes.clear();
+  for (let i = 0; i < dupes.length; i++) state.selectedTextBoxes.add(startIdx + i);
   state.markDrawOrderDirty();
   state.reparentAll();
   refreshSidePanel();
-  history.push(createDuplicateNodesCmd(state.nodes, state.selected, refreshSidePanel, entries));
+  history.push(createDuplicateTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, entries));
 }
 
-export function copySelectedNodes() {
+export function copySelectedTextBoxes() {
   state.clipboard = [];
-  if (state.selected.size === 0) return;
+  if (state.selectedTextBoxes.size === 0) return;
   const rect = state.canvas.getBoundingClientRect();
   const mx = window._lastMouseX ?? rect.width / 2;
   const my = window._lastMouseY ?? rect.height / 2;
   const mouseWorld = screenToWorld(mx, my, state.offsetX, state.offsetY, state.scale);
 
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  const selectedArray = Array.from(state.selected);
+  const selectedArray = Array.from(state.selectedTextBoxes);
   for (const i of selectedArray) {
-    const n = state.nodes[i];
-    minX = Math.min(minX, n.x);
-    minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x + n.w);
-    maxY = Math.max(maxY, n.y + n.h);
-  }
-
-  for (const i of selectedArray) {
-    const n = state.nodes[i];
+    const tb = state.textBoxes[i];
     state.clipboard.push({
-      dx: n.x - mouseWorld.x,
-      dy: n.y - mouseWorld.y,
-      w: n.w,
-      h: n.h,
-      color: n.color,
-      title: n.title,
-      titleColor: n.titleColor,
-      text: n.text,
-      blocks: n.blocks ? JSON.parse(JSON.stringify(n.blocks)) : null
+      dx: tb.x - mouseWorld.x,
+      dy: tb.y - mouseWorld.y,
+      w: tb.w,
+      h: tb.h,
+      color: tb.color,
+      textColor: tb.textColor,
+      fontSize: tb.fontSize,
+      borderColor: tb.borderColor,
+      title: tb.title,
+      titleColor: tb.titleColor,
+      text: tb.text,
+      blocks: tb.blocks ? JSON.parse(JSON.stringify(tb.blocks)) : null
     });
   }
 }
 
-export function pasteNodesAt(worldX, worldY) {
+export function pasteTextBoxesAt(worldX, worldY) {
   if (state.clipboard.length === 0) return;
   flushPanelEdit();
   const pastedEntries = [];
   for (const c of state.clipboard) {
-    const node = {
-      id: nextNodeId(),
+    const textBox = {
+      id: state.nextTextBoxId++,
       x: worldX + c.dx,
       y: worldY + c.dy,
       w: c.w,
       h: c.h,
       color: c.color,
+      textColor: c.textColor,
+      fontSize: c.fontSize,
+      borderColor: c.borderColor,
       title: c.title,
       titleColor: c.titleColor,
       text: c.text,
@@ -490,21 +450,20 @@ export function pasteNodesAt(worldX, worldY) {
       parentId: null,
       parentType: null
     };
-    const idx = state.nodes.length;
-    state.nodes.push(node);
-    pastedEntries.push({ node, index: idx });
+    const idx = state.textBoxes.length;
+    state.textBoxes.push(textBox);
+    pastedEntries.push({ textBox, index: idx });
   }
-  state.selected.clear();
-  for (let i = 0; i < pastedEntries.length; i++) state.selected.add(pastedEntries[i].index);
+  state.selectedTextBoxes.clear();
+  for (let i = 0; i < pastedEntries.length; i++) state.selectedTextBoxes.add(pastedEntries[i].index);
   state.markDrawOrderDirty();
   state.reparentAll();
   refreshSidePanel();
-  history.push(createPasteNodesCmd(state.nodes, state.selected, refreshSidePanel, pastedEntries));
+  history.push(createPasteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, pastedEntries));
 }
 
 export function getDocumentState() {
   return {
-    nodes: state.nodes,
     connections: state.connections,
     arrows: state.arrows,
     shapes: state.shapes,
@@ -520,17 +479,15 @@ export function getDocumentState() {
 }
 
 export function restoreDocumentState(docState) {
-  state.nodes.length = 0;
   state.connections.length = 0;
   state.arrows.length = 0;
   state.shapes.length = 0;
   state.textBoxes.length = 0;
   state.connectors.length = 0;
-  state.selected.clear();
+  state.selectedTextBoxes.clear();
   state.selectedConnection = null;
   state.selectedArrows.clear();
   state.selectedShapes.clear();
-  state.selectedTextBoxes.clear();
   state.selectedConnectors.clear();
   state.arrowDragTarget = null;
   state.clipboard = [];
@@ -540,12 +497,42 @@ export function restoreDocumentState(docState) {
 
   destroyAllEntities();
 
-  for (const n of (docState.nodes || [])) {
-    state.nodes.push(n);
+  // Migrate old nodes to textBoxes
+  if (docState.nodes && docState.nodes.length > 0) {
+    for (const n of docState.nodes) {
+      state.textBoxes.push({
+        id: state.nextTextBoxId++,
+        x: n.x,
+        y: n.y,
+        w: n.w,
+        h: n.h,
+        color: n.color || '#1a1a1a',
+        borderColor: '#444',
+        textColor: n.textColor || '#ddd',
+        fontSize: n.fontSize || 14,
+        title: n.title || '',
+        titleColor: n.titleColor || '#e7e7e7',
+        text: n.text || '',
+        blocks: n.blocks || null,
+        parentId: n.parentId || null,
+        parentType: n.parentType || null,
+      });
+    }
   }
+
+  // Migrate old connection indices - old connections pointed to node indices
+  // but nodes are now textBoxes. The indices into the (now combined) textBoxes
+  // array are the same as the old node indices for nodes that existed.
+  // Since nodes are migrated first (above), their indices match.
+  const connOffset = docState.nodes ? docState.nodes.length : 0;
   for (const c of (docState.connections || [])) {
-    state.connections.push(c);
+    const newFrom = c.from;
+    const newTo = c.to;
+    if (newFrom < state.textBoxes.length && newTo < state.textBoxes.length) {
+      state.connections.push({ id: c.id, from: newFrom, to: newTo, color: c.color || '#6bb5ff', text: c.text || '' });
+    }
   }
+
   for (const a of (docState.arrows || [])) {
     state.arrows.push(a);
   }
@@ -559,11 +546,11 @@ export function restoreDocumentState(docState) {
     state.connectors.push(cn);
   }
 
-  let maxNodeId = 0;
-  for (const n of state.nodes) {
-    if (typeof n.id === 'number' && n.id > maxNodeId) maxNodeId = n.id;
+  let maxTextBoxId = 0;
+  for (const tb of state.textBoxes) {
+    if (typeof tb.id === 'number' && tb.id > maxTextBoxId) maxTextBoxId = tb.id;
   }
-  initNodeId(maxNodeId + 1);
+  state.nextTextBoxId = maxTextBoxId + 1;
 
   let maxConnId = 0;
   for (const c of state.connections) {
@@ -582,12 +569,6 @@ export function restoreDocumentState(docState) {
     if (s.id > maxShapeId) maxShapeId = s.id;
   }
   state.nextShapeId = maxShapeId + 1;
-
-  let maxTextBoxId = 0;
-  for (const tb of state.textBoxes) {
-    if (tb.id > maxTextBoxId) maxTextBoxId = tb.id;
-  }
-  state.nextTextBoxId = maxTextBoxId + 1;
 
   let maxConnectorId = 0;
   for (const cn of state.connectors) {
@@ -639,4 +620,25 @@ export async function openDocument() {
   const docState = deserializeDocument(result.data);
   restoreDocumentState(docState);
   state.currentFileName = result.name;
+}
+
+// Helper node cmd functions for backward compat - these are placeholders
+// that redirect to textBox commands
+export function addNodeAt(worldX, worldY, optW, optH) {
+  return addTextBoxAt(worldX, worldY, optW, optH);
+}
+export function deleteSelectedNodes() {
+  return deleteSelectedTextBoxesWithConnections();
+}
+export function duplicateSelectedNodes() {
+  return duplicateSelectedTextBoxes();
+}
+export function copySelectedNodes() {
+  return copySelectedTextBoxes();
+}
+export function pasteNodesAt(worldX, worldY) {
+  return pasteTextBoxesAt(worldX, worldY);
+}
+export function addNodeAtCenter() {
+  return addTextBoxAtCenter();
 }

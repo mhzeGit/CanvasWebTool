@@ -23,9 +23,9 @@ export function openContextMenu(e) {
 
   const items = [];
   if (hit !== -1) {
-    if (!state.selected.has(hit)) {
-      state.selected.clear();
-      state.selected.add(hit);
+    if (!state.selectedTextBoxes.has(hit)) {
+      state.selectedTextBoxes.clear();
+      state.selectedTextBoxes.add(hit);
     }
     const addWrap = document.createElement('div');
     addWrap.className = 'context-submenu-trigger';
@@ -36,7 +36,7 @@ export function openContextMenu(e) {
     sub.className = 'context-submenu';
     const addNode = document.createElement('button');
     addNode.className = 'context-item';
-    addNode.textContent = 'Add Node';
+    addNode.textContent = 'Add Text Box';
     addNode.addEventListener('click', () => {
       _addNodeAt(world.x, world.y);
       closeContextMenu();
@@ -101,7 +101,7 @@ export function openContextMenu(e) {
     }
 
   } else if (arrowBodyHit !== -1) {
-    state.selected.clear();
+    state.selectedTextBoxes.clear();
     state.selectedConnection = null;
     state.selectedArrows.clear();
     state.arrowDragTarget = null;
@@ -117,7 +117,7 @@ export function openContextMenu(e) {
 
   } else if (connHit !== null) {
     state.selectedConnection = connHit;
-    state.selected.clear();
+    state.selectedTextBoxes.clear();
     const delConn = document.createElement('button');
     delConn.className = 'context-item';
     delConn.textContent = 'Delete Connection';
@@ -139,7 +139,7 @@ export function openContextMenu(e) {
     sub.className = 'context-submenu';
     const addNode = document.createElement('button');
     addNode.className = 'context-item';
-    addNode.textContent = 'Add Node';
+    addNode.textContent = 'Add Text Box';
     addNode.addEventListener('click', () => {
       _addNodeAt(world.x, world.y);
       closeContextMenu();
@@ -196,7 +196,6 @@ export function closeContextMenu() {
   if (menu) menu.style.display = 'none';
 }
 
-// These functions are set by main.js during initialization to avoid circular deps
 let _addNodeAt, _addArrowAt, _deleteSelectedNodes, _duplicateSelectedNodes;
 let _copySelectedNodes, _pasteNodesAt, _refreshSidePanel;
 

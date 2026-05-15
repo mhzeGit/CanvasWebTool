@@ -26,8 +26,6 @@ export const DRAG_THRESHOLD_PX = 3;
 export const RMB_MENU_THRESHOLD_MS = 250;
 
 export const EDGE_MARGIN = 12;
-export const NODE_MIN_W = 100;
-export const NODE_MIN_H = 70;
 export const SHAPE_MIN_W = 20;
 export const SHAPE_MIN_H = 20;
 export const TEXTBOX_MIN_W = 10;
@@ -35,11 +33,12 @@ export const TEXTBOX_MIN_H = 10;
 
 export const CONN_HIT_THRESHOLD = 8;
 
-export const DEFAULT_NODE_COLOR = '#2b2b2b';
 export const DEFAULT_TITLE_COLOR = '#e7e7e7';
 export const DEFAULT_TEXT_COLOR = '#ddd';
 export const DEFAULT_CONN_COLOR = '#6bb5ff';
 export const DEFAULT_ARROW_COLOR = '#6bb5ff';
+export const DEFAULT_TEXTBOX_COLOR = '#1a1a1a';
+export const DEFAULT_TEXTBOX_BORDER_COLOR = '#444';
 
 export const MAX_HISTORY_SIZE = 200;
 
