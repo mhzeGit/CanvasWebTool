@@ -4,7 +4,6 @@ import { colorSwatchHTML, initColorSwatch } from './color-palette.js';
 import {
   createResizeShapeCmd, createResizeTextBoxCmd,
   createBatchShapePropertyChangeCmd, createBatchResizeShapeCmd,
-  createTextBoxPropertyChangeCmd,
   createBatchTextBoxPropertyChangeCmd, createBatchResizeTextBoxCmd
 } from './undo.js';
 import { getArrowEndpoint } from './arrows.js';
@@ -982,28 +981,15 @@ export function refreshSidePanel() {
           });
       }
     }
-    (() => {
-      let lastCommittedText = tb.text;
-
-      setupMarkdownEditor('panelTBText', {
-        getText: () => tb.text ?? '',
-        setText: (v) => {
-          if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; } } else { tb.text = v; tb.blocks = null; }
-          if (!isBatch && lastCommittedText !== v && /[\s\n\r]$/.test(v)) {
-            history.push(createTextBoxPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbId, 'text', lastCommittedText, v));
-            lastCommittedText = v;
-          }
-        },
-        onFocus: isBatch ? (() => { _captureTbSnapshot('text', members); }) : (() => { lastCommittedText = tb.text; }),
-        onBlur: isBatch ? (() => { _commitTbSnapshot('text'); }) : (() => {
-          if (lastCommittedText !== tb.text) {
-            history.push(createTextBoxPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbId, 'text', lastCommittedText, tb.text));
-            lastCommittedText = tb.text;
-          }
-        }),
-        onChange: () => {},
-      });
-    })();
+    setupMarkdownEditor('panelTBText', {
+      getText: () => tb.text ?? '',
+      setText: (v) => {
+        if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; } } else { tb.text = v; tb.blocks = null; }
+      },
+      onFocus: isBatch ? (() => _captureTbSnapshot('text', members)) : (() => { startTextBoxPanelEdit(tbId, 'text', tb.text); }),
+      onBlur: isBatch ? (() => _commitTbSnapshot('text')) : (() => { flushPanelEdit(); }),
+      onChange: () => {},
+    });
     return;
   }
 
@@ -1512,46 +1498,40 @@ function setPropertyValue(entityType, propKey, value) {
   refreshSidePanel();
 }
 
-let _propClipboardMenu = null;
-
-function hidePropClipboardMenu() {
-  if (_propClipboardMenu) _propClipboardMenu.style.display = 'none';
-}
-
 function showPropClipboardMenu(x, y, entityType, propKey) {
-  if (!_propClipboardMenu) {
-    _propClipboardMenu = document.createElement('div');
-    _propClipboardMenu.className = 'prop-clipboard-menu';
-    _propClipboardMenu.innerHTML =
-      '<div class="prop-clipboard-item" data-action="copy">Copy <span class="shortcut">Ctrl+C</span></div>' +
-      '<div class="prop-clipboard-item" data-action="paste">Paste <span class="shortcut">Ctrl+V</span></div>';
-    _propClipboardMenu.addEventListener('pointerdown', (e) => e.stopPropagation());
-    _propClipboardMenu.addEventListener('click', (e) => {
-      const item = e.target.closest('.prop-clipboard-item');
-      if (!item) return;
-      const action = item.dataset.action;
-      const et = _propClipboardMenu.dataset.entityType;
-      const pk = _propClipboardMenu.dataset.propKey;
-      if (action === 'copy') {
-        const val = getPropertyValue(et, pk);
-        if (val !== undefined) state.propertyClipboard = { value: val, entityType: et, propKey: pk };
-      } else if (action === 'paste') {
-        if (state.propertyClipboard) setPropertyValue(et, pk, state.propertyClipboard.value);
-      }
-      hidePropClipboardMenu();
-    });
-    document.body.appendChild(_propClipboardMenu);
-    document.addEventListener('pointerdown', (e) => {
-      if (_propClipboardMenu && _propClipboardMenu.style.display !== 'none' && !_propClipboardMenu.contains(e.target)) {
-        hidePropClipboardMenu();
-      }
-    });
-  }
-  _propClipboardMenu.dataset.entityType = entityType;
-  _propClipboardMenu.dataset.propKey = propKey;
-  _propClipboardMenu.style.left = Math.min(x, window.innerWidth - 180) + 'px';
-  _propClipboardMenu.style.top = Math.min(y, window.innerHeight - 80) + 'px';
-  _propClipboardMenu.style.display = 'block';
+  const existing = document.getElementById('propClipboardMenu');
+  if (existing) existing.remove();
+  const menu = document.createElement('div');
+  menu.id = 'propClipboardMenu';
+  menu.className = 'context-menu';
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+  menu.innerHTML =
+    '<button class="context-item" data-action="copy">Copy <span style="opacity:0.45;font-size:11px;margin-left:16px">Ctrl+C</span></button>' +
+    '<button class="context-item" data-action="paste">Paste <span style="opacity:0.45;font-size:11px;margin-left:16px">Ctrl+V</span></button>';
+  menu.addEventListener('click', (e) => {
+    const btn = e.target.closest('.context-item');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const et = menu.dataset.entityType;
+    const pk = menu.dataset.propKey;
+    if (action === 'copy') {
+      const val = getPropertyValue(et, pk);
+      if (val !== undefined) state.propertyClipboard = { value: val, entityType: et, propKey: pk };
+    } else if (action === 'paste') {
+      if (state.propertyClipboard) setPropertyValue(et, pk, state.propertyClipboard.value);
+    }
+    menu.remove();
+  });
+  menu.dataset.entityType = entityType;
+  menu.dataset.propKey = propKey;
+  document.body.appendChild(menu);
+  const offClick = (ev) => { if (!menu.contains(ev.target)) menu.remove(); };
+  const onEsc = (ev) => { if (ev.key === 'Escape') menu.remove(); };
+  setTimeout(() => {
+    document.addEventListener('pointerdown', offClick, { once: true });
+    document.addEventListener('keydown', onEsc, { once: true });
+  }, 0);
 }
 
 function wirePropertyClipboard() {

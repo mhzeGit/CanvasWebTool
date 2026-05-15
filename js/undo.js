@@ -615,6 +615,70 @@ export function createDuplicateTextBoxesCmd(textBoxes, selectedTextBoxes, refres
   };
 }
 
+export function createDuplicateShapesCmd(shapes, selectedShapes, refreshPanelFn, entries) {
+  return {
+    undo() {
+      const ids = new Set(entries.map(e => e.shape.id));
+      for (let i = shapes.length - 1; i >= 0; i--) {
+        if (ids.has(shapes[i].id)) shapes.splice(i, 1);
+      }
+      selectedShapes.clear();
+      state.markDrawOrderDirty();
+      state.reparentAll();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (let i = 0; i < entries.length; i++) {
+        shapes.splice(entries[i].index, 0, entries[i].shape);
+      }
+      selectedShapes.clear();
+      for (const entry of entries) selectedShapes.add(entry.index);
+      state.markDrawOrderDirty();
+      state.reparentAll();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: entries.length === 1 ? 'Duplicate Shape' : `Duplicate ${entries.length} Shapes`
+  };
+}
+
+export function createPasteShapesCmd(shapes, selectedShapes, refreshPanelFn, pastedShapes) {
+  return {
+    undo() {
+      const ids = new Set(pastedShapes.map(e => e.shape.id));
+      for (let i = shapes.length - 1; i >= 0; i--) {
+        if (ids.has(shapes[i].id)) shapes.splice(i, 1);
+      }
+      selectedShapes.clear();
+      state.markDrawOrderDirty();
+      state.reparentAll();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (let i = 0; i < pastedShapes.length; i++) {
+        shapes.splice(pastedShapes[i].index, 0, pastedShapes[i].shape);
+      }
+      selectedShapes.clear();
+      for (const entry of pastedShapes) selectedShapes.add(entry.index);
+      state.markDrawOrderDirty();
+      state.reparentAll();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: pastedShapes.length === 1 ? 'Paste Shape' : `Paste ${pastedShapes.length} Shapes`
+  };
+}
+
+export function createBatchCmd(commands, description) {
+  return {
+    undo() {
+      for (let i = commands.length - 1; i >= 0; i--) commands[i].undo();
+    },
+    redo() {
+      for (const cmd of commands) cmd.redo();
+    },
+    description: description || 'Batch Action'
+  };
+}
+
 export function createPasteTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPanelFn, pastedTextBoxes) {
   return {
     undo() {

@@ -10,6 +10,8 @@ import {
   createResizeTextBoxCmd, createTextBoxPropertyChangeCmd,
   createBatchTextBoxPropertyChangeCmd, createBatchResizeTextBoxCmd,
   createDuplicateTextBoxesCmd, createPasteTextBoxesCmd,
+  createDuplicateShapesCmd, createPasteShapesCmd,
+  createBatchCmd,
 } from './undo.js';
 import { serializeDocument, deserializeDocument, FILE_EXTENSION } from './format.js';
 import { saveToFile, loadFromFile } from './file-io.js';
@@ -485,6 +487,209 @@ export function pasteTextBoxesAt(worldX, worldY) {
   history.push(createPasteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, pastedEntries));
 }
 
+export function copySelectedShapes() {
+  state.clipboard = [];
+  if (state.selectedShapes.size === 0) return;
+  const rect = state.canvas.getBoundingClientRect();
+  const mx = window._lastMouseX ?? rect.width / 2;
+  const my = window._lastMouseY ?? rect.height / 2;
+  const mouseWorld = screenToWorld(mx, my, state.offsetX, state.offsetY, state.scale);
+
+  for (const i of state.selectedShapes) {
+    const s = state.shapes[i];
+    state.clipboard.push({
+      _type: 'shape',
+      dx: s.x - mouseWorld.x,
+      dy: s.y - mouseWorld.y,
+      w: s.w, h: s.h,
+      shapeType: s.shapeType,
+      color: s.color,
+      borderColor: s.borderColor,
+      borderWidth: s.borderWidth,
+      cornerRadius: s.cornerRadius,
+    });
+  }
+}
+
+export function pasteShapesAt(worldX, worldY) {
+  const entries = state.clipboard.filter(c => (c._type || 'textBox') !== 'textBox');
+  if (entries.length === 0) return;
+  flushPanelEdit();
+  const pastedShapes = [];
+  for (const c of entries) {
+    const shape = {
+      id: state.nextShapeId++,
+      x: worldX + c.dx,
+      y: worldY + c.dy,
+      w: c.w, h: c.h,
+      shapeType: c.shapeType || 'rectangle',
+      color: c.color || '#2b2b2b',
+      borderColor: c.borderColor || '#6bb5ff',
+      borderWidth: c.borderWidth ?? 2,
+      cornerRadius: c.cornerRadius ?? (c.shapeType === 'rectangle' ? 4 : 0),
+      parentId: null,
+      parentType: null,
+    };
+    const idx = state.shapes.length;
+    state.shapes.push(shape);
+    pastedShapes.push({ shape, index: idx });
+  }
+  state.selectedShapes.clear();
+  state.selectedTextBoxes.clear();
+  state.selectedConnectors.clear();
+  for (let i = 0; i < pastedShapes.length; i++) state.selectedShapes.add(pastedShapes[i].index);
+  state.markDrawOrderDirty();
+  state.reparentAll();
+  refreshSidePanel();
+  history.push(createPasteShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, pastedShapes));
+}
+
+export function duplicateSelectedShapes() {
+  if (state.selectedShapes.size === 0) return;
+  flushPanelEdit();
+  const dupes = [];
+  for (const i of state.selectedShapes) {
+    const s = state.shapes[i];
+    dupes.push({
+      id: state.nextShapeId++,
+      x: s.x + 20,
+      y: s.y + 20,
+      w: s.w, h: s.h,
+      shapeType: s.shapeType,
+      color: s.color,
+      borderColor: s.borderColor,
+      borderWidth: s.borderWidth,
+      cornerRadius: s.cornerRadius,
+      parentId: null,
+      parentType: null,
+    });
+  }
+  const startIdx = state.shapes.length;
+  const entries = [];
+  for (let i = 0; i < dupes.length; i++) {
+    state.shapes.push(dupes[i]);
+    entries.push({ shape: dupes[i], index: startIdx + i });
+  }
+  state.selectedTextBoxes.clear();
+  state.selectedShapes.clear();
+  state.selectedConnectors.clear();
+  for (let i = 0; i < dupes.length; i++) state.selectedShapes.add(startIdx + i);
+  state.markDrawOrderDirty();
+  state.reparentAll();
+  refreshSidePanel();
+  history.push(createDuplicateShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, entries));
+}
+
+export function copySelection() {
+  state.clipboard = [];
+  const rect = state.canvas.getBoundingClientRect();
+  const mx = window._lastMouseX ?? rect.width / 2;
+  const my = window._lastMouseY ?? rect.height / 2;
+  const mouseWorld = screenToWorld(mx, my, state.offsetX, state.offsetY, state.scale);
+
+  for (const i of state.selectedTextBoxes) {
+    const tb = state.textBoxes[i];
+    state.clipboard.push({
+      _type: 'textBox',
+      dx: tb.x - mouseWorld.x,
+      dy: tb.y - mouseWorld.y,
+      w: tb.w, h: tb.h,
+      color: tb.color,
+      textColor: tb.textColor,
+      fontSize: tb.fontSize,
+      borderColor: tb.borderColor,
+      title: tb.title,
+      titleColor: tb.titleColor,
+      text: tb.text,
+      blocks: tb.blocks ? JSON.parse(JSON.stringify(tb.blocks)) : null,
+    });
+  }
+  for (const i of state.selectedShapes) {
+    const s = state.shapes[i];
+    state.clipboard.push({
+      _type: 'shape',
+      dx: s.x - mouseWorld.x,
+      dy: s.y - mouseWorld.y,
+      w: s.w, h: s.h,
+      shapeType: s.shapeType,
+      color: s.color,
+      borderColor: s.borderColor,
+      borderWidth: s.borderWidth,
+      cornerRadius: s.cornerRadius,
+    });
+  }
+}
+
+export function pasteAt(worldX, worldY) {
+  if (state.clipboard.length === 0) return;
+  flushPanelEdit();
+  const pastedTextBoxes = [];
+  const pastedShapes = [];
+  for (const c of state.clipboard) {
+    const type = c._type || 'textBox';
+    if (type === 'textBox') {
+      const tb = {
+        id: state.nextTextBoxId++,
+        x: worldX + c.dx, y: worldY + c.dy,
+        w: c.w, h: c.h,
+        color: c.color,
+        textColor: c.textColor,
+        fontSize: c.fontSize,
+        borderColor: c.borderColor,
+        title: c.title || '',
+        titleColor: c.titleColor || '#e7e7e7',
+        text: c.text || '',
+        blocks: c.blocks ? JSON.parse(JSON.stringify(c.blocks)) : null,
+        parentId: null, parentType: null,
+      };
+      const idx = state.textBoxes.length;
+      state.textBoxes.push(tb);
+      pastedTextBoxes.push({ textBox: tb, index: idx });
+    } else if (type === 'shape') {
+      const shape = {
+        id: state.nextShapeId++,
+        x: worldX + c.dx, y: worldY + c.dy,
+        w: c.w, h: c.h,
+        shapeType: c.shapeType || 'rectangle',
+        color: c.color || '#2b2b2b',
+        borderColor: c.borderColor || '#6bb5ff',
+        borderWidth: c.borderWidth ?? 2,
+        cornerRadius: c.cornerRadius ?? (c.shapeType === 'rectangle' ? 4 : 0),
+        parentId: null, parentType: null,
+      };
+      const idx = state.shapes.length;
+      state.shapes.push(shape);
+      pastedShapes.push({ shape, index: idx });
+    }
+  }
+  state.selectedTextBoxes.clear();
+  state.selectedShapes.clear();
+  state.selectedConnectors.clear();
+  for (const entry of pastedTextBoxes) state.selectedTextBoxes.add(entry.index);
+  for (const entry of pastedShapes) state.selectedShapes.add(entry.index);
+  state.markDrawOrderDirty();
+  state.reparentAll();
+  refreshSidePanel();
+  const commands = [];
+  if (pastedTextBoxes.length > 0) {
+    commands.push(createPasteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, pastedTextBoxes));
+  }
+  if (pastedShapes.length > 0) {
+    commands.push(createPasteShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, pastedShapes));
+  }
+  if (commands.length > 0) {
+    history.push(commands.length === 1 ? commands[0] : createBatchCmd(commands, 'Paste'));
+  }
+}
+
+export function duplicateSelection() {
+  const hasTextBoxes = state.selectedTextBoxes.size > 0;
+  const hasShapes = state.selectedShapes.size > 0;
+  if (!hasTextBoxes && !hasShapes) return;
+  if (hasTextBoxes) duplicateSelectedTextBoxes();
+  if (hasShapes) duplicateSelectedShapes();
+}
+
 export function getDocumentState() {
   return {
     connections: state.connections,
@@ -654,13 +859,13 @@ export function deleteSelectedNodes() {
   return deleteSelectedTextBoxesWithConnections();
 }
 export function duplicateSelectedNodes() {
-  return duplicateSelectedTextBoxes();
+  return duplicateSelection();
 }
 export function copySelectedNodes() {
-  return copySelectedTextBoxes();
+  return copySelection();
 }
 export function pasteNodesAt(worldX, worldY) {
-  return pasteTextBoxesAt(worldX, worldY);
+  return pasteAt(worldX, worldY);
 }
 export function addNodeAtCenter() {
   return addTextBoxAtCenter();

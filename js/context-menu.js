@@ -7,8 +7,12 @@ import { commitEditing } from './inline-editing.js';
 
 const ADD_ITEM_TYPES = [];
 
-export function registerAddItem(label, createFn) {
-  ADD_ITEM_TYPES.push({ label, create: createFn });
+export function registerAddItem(entry) {
+  ADD_ITEM_TYPES.push(entry);
+}
+
+export function registerAddGroup(label, children) {
+  ADD_ITEM_TYPES.push({ label, children });
 }
 
 let _addNodeAt, _addArrowAt, _deleteSelectedNodes, _duplicateSelectedNodes;
@@ -16,6 +20,34 @@ let _copySelectedNodes, _pasteNodesAt, _refreshSidePanel;
 let _addShapeAt, _addConnectorAt;
 let _deleteSelectedShapes, _deleteSelectedConnectors;
 let _deleteSelectedArrows, _deleteConnection;
+let _copySelectedShapes, _duplicateSelectedShapes, _pasteShapesAt;
+
+function renderAddItem(sub, item, worldX, worldY, hitType, hitIndex) {
+  if (item.children) {
+    const groupWrap = document.createElement('div');
+    groupWrap.className = 'context-submenu-trigger';
+    const groupBtn = document.createElement('button');
+    groupBtn.className = 'context-item has-submenu';
+    groupBtn.innerHTML = `<span>${item.label}</span><span class="submenu-arrow">\u25b8</span>`;
+    const groupSub = document.createElement('div');
+    groupSub.className = 'context-submenu';
+    for (const child of item.children) {
+      renderAddItem(groupSub, child, worldX, worldY, hitType, hitIndex);
+    }
+    groupWrap.appendChild(groupBtn);
+    groupWrap.appendChild(groupSub);
+    sub.appendChild(groupWrap);
+  } else {
+    const el = document.createElement('button');
+    el.className = 'context-item';
+    el.textContent = item.label;
+    el.addEventListener('click', () => {
+      item.create(worldX, worldY, hitType, hitIndex);
+      closeContextMenu();
+    });
+    sub.appendChild(el);
+  }
+}
 
 function buildAddSubmenu(worldX, worldY, hitType, hitIndex) {
   const wrap = document.createElement('div');
@@ -27,14 +59,7 @@ function buildAddSubmenu(worldX, worldY, hitType, hitIndex) {
   sub.className = 'context-submenu';
 
   for (const item of ADD_ITEM_TYPES) {
-    const el = document.createElement('button');
-    el.className = 'context-item';
-    el.textContent = item.label;
-    el.addEventListener('click', () => {
-      item.create(worldX, worldY, hitType, hitIndex);
-      closeContextMenu();
-    });
-    sub.appendChild(el);
+    renderAddItem(sub, item, worldX, worldY, hitType, hitIndex);
   }
 
   wrap.appendChild(btn);
@@ -64,7 +89,7 @@ function detectHit(worldX, worldY) {
   if (connLineHit !== null) return { type: 'connection', i: connLineHit };
 
   const arrowEndHit = hitTestArrowEnd(worldX, worldY);
-  if (arrowEndHit) return { type: 'arrow', i: arrowEndHit };
+  if (arrowEndHit) return { type: 'arrow', i: arrowEndHit.arrowIdx };
 
   const arrowBodyHit = hitTestArrowBody(worldX, worldY);
   if (arrowBodyHit !== -1) return { type: 'arrow', i: arrowBodyHit };
@@ -139,6 +164,10 @@ export function openContextMenu(e) {
     }
   } else if (hitType === 'shape') {
     items.push(makeMenuItem('Delete', _deleteSelectedShapes));
+    if (state.selectedShapes.size > 0) {
+      items.push(makeMenuItem('Duplicate', _duplicateSelectedNodes));
+      items.push(makeMenuItem('Copy', _copySelectedNodes));
+    }
     if (state.clipboard.length > 0) {
       items.push(makeMenuItem('Paste', () => _pasteNodesAt(world.x, world.y)));
     }
@@ -180,19 +209,21 @@ export function closeContextMenu() {
 }
 
 function registerDefaultAddItems() {
-  registerAddItem('Add Text Box', (wx, wy) => _addNodeAt(wx, wy));
-  registerAddItem('Add Arrow', (wx, wy, hitType, hitIndex) => {
+  registerAddItem({ label: 'Text Box', create: (wx, wy) => _addNodeAt(wx, wy) });
+  registerAddItem({ label: 'Arrow', create: (wx, wy, hitType, hitIndex) => {
     if (hitType === 'textBox') {
       _addArrowAt(wx, wy, hitIndex);
     } else {
       _addArrowAt(wx, wy);
     }
-  });
-  registerAddItem('Add Rectangle', (wx, wy) => _addShapeAt(wx, wy, 'rectangle'));
-  registerAddItem('Add Circle', (wx, wy) => _addShapeAt(wx, wy, 'circle'));
-  registerAddItem('Add Triangle', (wx, wy) => _addShapeAt(wx, wy, 'triangle'));
-  registerAddItem('Add Diamond', (wx, wy) => _addShapeAt(wx, wy, 'diamond'));
-  registerAddItem('Add Connector', (wx, wy) => _addConnectorAt(wx, wy));
+  }});
+  registerAddGroup('Shapes', [
+    { label: 'Rectangle', create: (wx, wy) => _addShapeAt(wx, wy, 'rectangle') },
+    { label: 'Circle', create: (wx, wy) => _addShapeAt(wx, wy, 'circle') },
+    { label: 'Triangle', create: (wx, wy) => _addShapeAt(wx, wy, 'triangle') },
+    { label: 'Diamond', create: (wx, wy) => _addShapeAt(wx, wy, 'diamond') },
+  ]);
+  registerAddItem({ label: 'Connector', create: (wx, wy) => _addConnectorAt(wx, wy) });
 }
 
 export function initContextMenu(deps) {
