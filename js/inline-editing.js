@@ -118,13 +118,11 @@ export function startEditing(idx, field) {
       if (ev.key === 'Escape') {
         cancelEditing();
       } else if (ev.key === 'Enter') {
+        ev.preventDefault();
         if (ev.shiftKey) {
-          document.execCommand('insertLineBreak', false, null);
-          body.dispatchEvent(new Event('input', { bubbles: true }));
-          ev.preventDefault();
-        } else {
-          ev.preventDefault();
           handleEnter(body, ev);
+        } else {
+          body.blur();
         }
       } else if (ev.key === 'Backspace') {
         handleBackspace(body, ev);
@@ -319,13 +317,11 @@ function startTextBoxEditing(tbIdx) {
       if (ev.key === 'Escape') {
         cancelEditing();
       } else if (ev.key === 'Enter') {
+        ev.preventDefault();
         if (ev.shiftKey) {
-          document.execCommand('insertLineBreak', false, null);
-          content.dispatchEvent(new Event('input', { bubbles: true }));
-          ev.preventDefault();
-        } else {
-          ev.preventDefault();
           handleEnter(content, ev);
+        } else {
+          content.blur();
         }
       } else if (ev.key === 'Backspace') {
         handleBackspace(content, ev);
