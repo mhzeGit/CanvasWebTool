@@ -6,6 +6,23 @@ export function worldToScreen(wx, wy, offsetX, offsetY, scale) {
   return { x: wx * scale + offsetX, y: wy * scale + offsetY };
 }
 
+export function getDividerColor(color) {
+  let r, g, b;
+  if (typeof color === 'string' && color.startsWith('#') && color.length === 7) {
+    r = parseInt(color.slice(1,3), 16);
+    g = parseInt(color.slice(3,5), 16);
+    b = parseInt(color.slice(5,7), 16);
+  } else if (typeof color === 'string' && color.startsWith('rgb')) {
+    const m = color.match(/\d+/g);
+    if (m && m.length >= 3) {
+      r = parseInt(m[0], 10); g = parseInt(m[1], 10); b = parseInt(m[2], 10);
+    }
+  }
+  if (r === undefined) return 'rgba(255,255,255,0.15)';
+  const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+  return luminance < 128 ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)';
+}
+
 export function getBorderColor(color) {
   let r, g, b;
   if (typeof color === 'string' && color.startsWith('#') && color.length === 7) {

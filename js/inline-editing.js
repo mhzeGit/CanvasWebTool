@@ -74,7 +74,7 @@ function ensureBlocks(entity) {
   if (entity.blocks && Array.isArray(entity.blocks) && entity.blocks.length > 0) {
     return entity.blocks;
   }
-  if (typeof entity.text === 'string' && entity.text.trim()) {
+  if (typeof entity.text === 'string' && entity.text) {
     entity.blocks = markdownToBlocks(entity.text);
     return entity.blocks;
   }
@@ -106,8 +106,9 @@ export function startEditing(idx, field) {
     state.editingState = { type: 'node', idx, field, el: body, originalValue, isRichText: true };
 
     const onInput = () => {
-      if (_detectingMarkdown) return;
-      _detectAndApplyMarkdown(body);
+      if (!_detectingMarkdown) {
+        _detectAndApplyMarkdown(body);
+      }
       n.blocks = htmlToBlocks(body);
       n.text = blocksToMarkdown(n.blocks);
     };
@@ -120,6 +121,9 @@ export function startEditing(idx, field) {
           document.execCommand('insertLineBreak', false, null);
           body.dispatchEvent(new Event('input', { bubbles: true }));
           ev.preventDefault();
+        } else {
+          ev.preventDefault();
+          handleEnter(body, ev);
         }
       } else if (ev.key === 'Backspace') {
         handleBackspace(body, ev);
@@ -303,31 +307,35 @@ function startTextBoxEditing(tbIdx) {
   state.editingState = { type: 'textBox', idx: tbIdx, el: content, originalValue, isRichText: true };
 
   const onInput = () => {
-    if (_detectingMarkdown) return;
-    _detectAndApplyMarkdown(content);
+    if (!_detectingMarkdown) {
+      _detectAndApplyMarkdown(content);
+    }
     tb.blocks = htmlToBlocks(content);
     tb.text = blocksToMarkdown(tb.blocks);
   };
 
-  const onKeyDown = (ev) => {
-    if (ev.key === 'Escape') {
-      cancelEditing();
-    } else if (ev.key === 'Enter') {
-      if (ev.shiftKey) {
-        document.execCommand('insertLineBreak', false, null);
-        content.dispatchEvent(new Event('input', { bubbles: true }));
-        ev.preventDefault();
+    const onKeyDown = (ev) => {
+      if (ev.key === 'Escape') {
+        cancelEditing();
+      } else if (ev.key === 'Enter') {
+        if (ev.shiftKey) {
+          document.execCommand('insertLineBreak', false, null);
+          content.dispatchEvent(new Event('input', { bubbles: true }));
+          ev.preventDefault();
+        } else {
+          ev.preventDefault();
+          handleEnter(content, ev);
+        }
+      } else if (ev.key === 'Backspace') {
+        handleBackspace(content, ev);
+      } else if (ev.ctrlKey || ev.metaKey) {
+        const k = ev.key.toLowerCase();
+        if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
       }
-    } else if (ev.key === 'Backspace') {
-      handleBackspace(content, ev);
-    } else if (ev.ctrlKey || ev.metaKey) {
-      const k = ev.key.toLowerCase();
-      if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
-      else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
-      else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
-      else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
-    }
-  };
+    };
 
   content.addEventListener('input', onInput);
   content.addEventListener('keydown', onKeyDown);
@@ -387,7 +395,7 @@ function handleEnter(editor, ev) {
     const marker = block.querySelector('.rt-marker');
     if (marker) marker.remove();
     block.innerHTML = '<br>';
-    block.focus();
+    placeCursorAtEnd(block);
     editor.dispatchEvent(new Event('input', { bubbles: true }));
     return;
   }
@@ -405,7 +413,7 @@ function handleEnter(editor, ev) {
   }
 
   block.insertAdjacentElement('afterend', newBlock);
-  newBlock.focus();
+  placeCursorAtEnd(newBlock);
   editor.dispatchEvent(new Event('input', { bubbles: true }));
 }
 

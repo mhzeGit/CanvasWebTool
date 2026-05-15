@@ -10,7 +10,7 @@ const defaultSettings = {
     background: '#e8e8e8',
     gridLine: '#c8c8c8',
   },
-  palette: [],
+  palette: ['#c0392b', '#d35400', '#27ae60', '#2980b9', '#8e44ad', '#16a085', '#e67e22', '#1abc9c', '#34495e', '#7f8c8d'],
 };
 
 let currentSettings = null;
@@ -29,6 +29,7 @@ function loadSettings() {
         theme: parsed.theme || defaultSettings.theme,
         dark: { ...defaultSettings.dark, ...(parsed.dark || {}) },
         light: { ...defaultSettings.light, ...(parsed.light || {}) },
+        palette: Array.isArray(parsed.palette) ? parsed.palette : [...defaultSettings.palette],
       };
     }
   } catch (e) {}

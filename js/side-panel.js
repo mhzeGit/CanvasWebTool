@@ -265,6 +265,59 @@ function setupMarkdownEditor(editorId, opts) {
     scheduleSync(50);
   });
 
+  rtDiv.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return;
+      let block = sel.anchorNode;
+      while (block && block !== rtDiv && !(block.classList && block.classList.contains('rt-block'))) {
+        block = block.parentNode;
+      }
+      if (!block || block === rtDiv) return;
+
+      const isHeading = block.classList.contains('rt-h1') || block.classList.contains('rt-h2') || block.classList.contains('rt-h3');
+      const isQuote = block.classList.contains('rt-quote');
+      const isList = block.classList.contains('rt-bullet') || block.classList.contains('rt-numbered') || block.classList.contains('rt-checkbox');
+      const isSpecial = isHeading || isQuote || isList;
+
+      const trimmed = block.textContent.replace(/[\u2022\[\]xX\d.]/g, '').trim();
+      if (!trimmed && isSpecial) {
+        block.className = 'rt-block rt-paragraph';
+        const marker = block.querySelector('.rt-marker');
+        if (marker) marker.remove();
+        block.innerHTML = '<br>';
+        const r2 = document.createRange();
+        r2.selectNodeContents(block);
+        r2.collapse(false);
+        const s2 = window.getSelection();
+        s2.removeAllRanges();
+        s2.addRange(r2);
+      } else {
+        const newBlock = document.createElement('div');
+        if (isList || isQuote) {
+          newBlock.className = block.className;
+          if (block.classList.contains('rt-bullet')) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span> <br>';
+          else if (block.classList.contains('rt-numbered')) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">1.</span> <br>';
+          else if (block.classList.contains('rt-checkbox')) newBlock.innerHTML = '<span class="rt-marker" data-checked="0" contenteditable="false"></span> <br>';
+          else newBlock.innerHTML = '<br>';
+        } else {
+          newBlock.className = 'rt-block rt-paragraph';
+          newBlock.innerHTML = '<br>';
+        }
+        block.insertAdjacentElement('afterend', newBlock);
+        newBlock.focus();
+        const cr = document.createRange();
+        cr.selectNodeContents(newBlock);
+        cr.collapse(false);
+        const cs = window.getSelection();
+        cs.removeAllRanges();
+        cs.addRange(cr);
+      }
+      rtDiv.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
+
   rtDiv.addEventListener('input', () => {
     scheduleSync(50);
   });

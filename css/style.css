@@ -213,23 +213,78 @@ canvas#gridCanvas {
   background: var(--border-color);
   margin: 4px 0;
 }
-.color-popover-footer {
-  margin-top: 6px;
-  text-align: center;
+.color-popover-wheel-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 4px;
 }
-.color-popover-custom {
-  background: none;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  color: var(--text-color);
-  font: inherit;
+.color-popover-wheel {
+  border-radius: 50%;
+  cursor: crosshair;
+  display: block;
+  width: 140px;
+  height: 140px;
+}
+.color-popover-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 6px;
+}
+.color-popover-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.color-popover-slider-label {
   font-size: 11px;
-  padding: 3px 12px;
-  cursor: pointer;
-  width: 100%;
+  font-family: monospace;
+  font-weight: 700;
+  color: var(--text-color);
+  width: 12px;
+  text-align: right;
+  flex-shrink: 0;
 }
-.color-popover-custom:hover {
-  background: var(--bg-hover);
+.color-popover-slider {
+  position: relative;
+  flex: 1;
+  height: 10px;
+  cursor: pointer;
+}
+.color-popover-slider-track {
+  width: 100%;
+  height: 100%;
+  border-radius: 5px;
+  border: 1px solid var(--border-color);
+  position: relative;
+}
+.color-popover-slider-thumb {
+  position: absolute;
+  top: -4px;
+  width: 10px;
+  height: 16px;
+  margin-left: -5px;
+  background: var(--bg-panel);
+  border: 1px solid var(--text-muted);
+  border-radius: 3px;
+  cursor: ew-resize;
+  pointer-events: none;
+}
+.color-popover-slider-value {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-muted);
+  width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.color-popover-preview {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text-color);
+  text-align: center;
+  padding: 4px 0 0 0;
 }
 
 .panel-static {
@@ -1080,9 +1135,8 @@ canvas#gridCanvas {
 }
 .entity-node-body .rt-divider hr {
   border: none;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--node-divider-color, rgba(255,255,255,0.15));
   margin: 0.3em 0;
-  opacity: 0.6;
 }
 .entity-node-body strong { color: var(--text-heading); font-weight: 700; }
 .entity-node-body em { color: var(--text-color); }
@@ -1203,9 +1257,8 @@ canvas#gridCanvas {
 }
 .entity-textbox-content .rt-divider hr {
   border: none;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--node-divider-color, rgba(255,255,255,0.15));
   margin: 0.3em 0;
-  opacity: 0.6;
 }
 .entity-textbox-content .rt-bullet, .entity-textbox-content .rt-numbered, .entity-textbox-content .rt-checkbox { margin: 0.05em 0; }
 

@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { getDarkerColor, getBorderColor, worldToScreen } from './utils.js';
+import { getDarkerColor, getBorderColor, getDividerColor, worldToScreen } from './utils.js';
 import { blocksToHtml, getOrCreateBlocks } from './rich-text.js';
 import { parseInlineSpans } from './markdown.js';
 import {
@@ -131,6 +131,7 @@ function ensureNodeElement(idx) {
   el.style.borderRadius = (nodeRadius * state.scale) + 'px';
   el.style.borderColor = getBorderColor(baseColor);
   el.style.zIndex = ''; // set by applyDrawOrder
+  el.style.setProperty('--node-divider-color', getDividerColor(baseColor));
 
   const titlebar = el.querySelector('.entity-node-titlebar');
   titlebar.style.background = getDarkerColor(baseColor, 0.6);
@@ -246,6 +247,7 @@ function ensureTextBoxElement(idx) {
   el.style.borderColor = borderColor;
   el.style.borderWidth = (1.5 * state.scale) + 'px';
   el.style.borderRadius = (6 * state.scale) + 'px';
+  el.style.setProperty('--node-divider-color', getDividerColor(baseColor));
 
   const content = el.querySelector('.entity-textbox-content');
   content.style.color = tb.textColor || '#ddd';

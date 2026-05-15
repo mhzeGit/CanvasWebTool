@@ -5,7 +5,7 @@ export function markdownToBlocks(text) {
   const ml = parseMarkdownLines(text);
   const blocks = [];
   for (const line of ml) {
-    if (line.type === 'blank') continue;
+    if (line.type === 'blank') { blocks.push({ t: 'p', s: [{ t: '' }] }); continue; }
     if (line.type === 'hr') { blocks.push({ t: 'hr' }); continue; }
     const typeMap = { h1: 'h1', h2: 'h2', h3: 'h3', blockquote: 'qt', bullet: 'bul', numbered: 'num', checkbox: 'chk', paragraph: 'p' };
     const bt = typeMap[line.type] || 'p';
@@ -90,7 +90,7 @@ export function getOrCreateBlocks(entity) {
     }
     return entity.blocks;
   }
-  if (typeof entity.text === 'string' && entity.text.trim()) {
+  if (typeof entity.text === 'string' && entity.text) {
     entity.blocks = markdownToBlocks(entity.text);
     return entity.blocks;
   }
@@ -334,8 +334,10 @@ export function htmlToBlocks(container) {
         current.s.push(span);
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         if (node.tagName === 'BR') {
-          subBlocks.push(current);
-          current = { ...baseProps, s: [] };
+          if (current.s.length > 0) {
+            subBlocks.push(current);
+            current = { ...baseProps, s: [] };
+          }
         } else if (!isMarkerNode(node)) {
           for (const child of node.childNodes) {
             processNode(child);
