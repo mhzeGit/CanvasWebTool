@@ -4,9 +4,30 @@ const MIME_TYPE = 'application/json';
 const FILE_DESCRIPTION = 'Canvas Web Document';
 const ACCEPT_MIME = { [MIME_TYPE]: [FILE_EXTENSION] };
 
+let cachedFileHandle = null;
+
+export function hasCachedFileHandle() {
+  return cachedFileHandle !== null;
+}
+
+export function clearCachedFileHandle() {
+  cachedFileHandle = null;
+}
+
 export async function saveToFile(jsonData, suggestedName) {
   const jsonString = JSON.stringify(jsonData, null, 2);
   const blob = new Blob([jsonString], { type: MIME_TYPE });
+
+  if (cachedFileHandle && typeof window !== 'undefined' && window.showSaveFilePicker) {
+    try {
+      const writable = await cachedFileHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return { name: cachedFileHandle.name, handle: cachedFileHandle };
+    } catch (e) {
+      cachedFileHandle = null;
+    }
+  }
 
   if (typeof window !== 'undefined' && window.showSaveFilePicker) {
     try {
@@ -14,6 +35,7 @@ export async function saveToFile(jsonData, suggestedName) {
         suggestedName: suggestedName || `document${FILE_EXTENSION}`,
         types: [{ description: FILE_DESCRIPTION, accept: ACCEPT_MIME }]
       });
+      cachedFileHandle = handle;
       const writable = await handle.createWritable();
       await writable.write(blob);
       await writable.close();
@@ -25,6 +47,16 @@ export async function saveToFile(jsonData, suggestedName) {
   }
 
   return saveViaDownload(blob, suggestedName);
+}
+
+export async function saveToFileAs(jsonData, suggestedName) {
+  const oldHandle = cachedFileHandle;
+  cachedFileHandle = null;
+  const result = await saveToFile(jsonData, suggestedName);
+  if (!result) {
+    cachedFileHandle = oldHandle;
+  }
+  return result;
 }
 
 function saveViaDownload(blob, suggestedName) {
@@ -45,6 +77,7 @@ export async function loadFromFile() {
       const [handle] = await window.showOpenFilePicker({
         types: [{ description: FILE_DESCRIPTION, accept: ACCEPT_MIME }]
       });
+      cachedFileHandle = handle;
       const file = await handle.getFile();
       const text = await file.text();
       return { data: JSON.parse(text), name: file.name, handle };

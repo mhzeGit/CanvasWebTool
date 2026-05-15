@@ -27,6 +27,7 @@ import {
 import { performUndo, performRedo } from './history.js';
 import { initToolbar } from './toolbar.js';
 import { initEntityLayer, syncAllEntities } from './dom-entities.js';
+import { hasCachedFileHandle } from './file-io.js';
 
 function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
@@ -141,6 +142,26 @@ function initTopBar() {
   if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); openSettings(); });
 }
 
+function setupAutoSave() {
+  let timer = null;
+  const AUTO_SAVE_DELAY = 10000;
+
+  setInterval(() => {
+    if (state.isDirty && state.currentFileName && hasCachedFileHandle()) {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        timer = null;
+        if (state.isDirty) {
+          await saveDocument();
+        }
+      }, AUTO_SAVE_DELAY);
+    } else {
+      clearTimeout(timer);
+      timer = null;
+    }
+  }, 2000);
+}
+
 function init() {
   initSettings();
   resizeCanvas();
@@ -157,6 +178,8 @@ function init() {
   initTopBar();
 
   initPanelResize();
+
+  setupAutoSave();
 
   function addConnectorAt(worldX, worldY) {
     const offset = 60;

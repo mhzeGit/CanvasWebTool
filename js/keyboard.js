@@ -8,7 +8,7 @@ import {
   deleteSelectedNodes, deleteSelectedShapes, deleteSelectedTextBoxes, deleteSelectedConnectors,
   deleteSelectedArrows, deleteConnection,
   duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
-  saveDocument,
+  saveDocument, saveDocumentAs,
 } from './document.js';
 
 export function setupKeyboard() {
@@ -216,11 +216,15 @@ function pasteHoveredProp() {
 }
 
 window.addEventListener('keydown', (e) => {
-  if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
     const active = document.activeElement;
-    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
     if (isInput) return;
     e.preventDefault();
-    saveDocument();
+    if (e.shiftKey) {
+      saveDocumentAs();
+    } else {
+      saveDocument();
+    }
   }
 });

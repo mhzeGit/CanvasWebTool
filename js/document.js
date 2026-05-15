@@ -14,7 +14,7 @@ import {
   createBatchCmd,
 } from './undo.js';
 import { serializeDocument, deserializeDocument, FILE_EXTENSION } from './format.js';
-import { saveToFile, loadFromFile } from './file-io.js';
+import { saveToFile, loadFromFile, clearCachedFileHandle, saveToFileAs } from './file-io.js';
 import { screenToWorld, getObjectEdgePoint } from './utils.js';
 import { refreshSidePanel } from './side-panel.js';
 import { DEFAULT_TEXTBOX_COLOR } from './config.js';
@@ -823,10 +823,31 @@ export async function newDocument() {
   }
   restoreDocumentState({ nodes: [], connections: [], arrows: [], shapes: [], textBoxes: [], connectors: [], viewport: { offsetX: 0, offsetY: 0, scale: 1 } });
   state.currentFileName = null;
+  clearCachedFileHandle();
   state.markDrawOrderDirty();
 }
 
+function showSaving() {
+  const el = document.getElementById('saveIndicator');
+  if (!el) return;
+  el.textContent = 'Saving...';
+  el.className = 'save-indicator saving';
+}
+
+function showSaved() {
+  const el = document.getElementById('saveIndicator');
+  if (!el) return;
+  el.textContent = 'Saved!';
+  el.className = 'save-indicator saved';
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => {
+    el.textContent = '';
+    el.className = 'save-indicator';
+  }, 2000);
+}
+
 export async function saveDocument() {
+  showSaving();
   const docState = getDocumentState();
   const doc = serializeDocument(docState);
   const suggestedName = state.currentFileName || `document${FILE_EXTENSION}`;
@@ -834,7 +855,33 @@ export async function saveDocument() {
   if (result) {
     state.currentFileName = result.name;
     state.isDirty = false;
+    showSaved();
+  } else {
+    clearIndicator();
   }
+}
+
+export async function saveDocumentAs() {
+  showSaving();
+  const docState = getDocumentState();
+  const doc = serializeDocument(docState);
+  const suggestedName = state.currentFileName || `document${FILE_EXTENSION}`;
+  const result = await saveToFileAs(doc, suggestedName);
+  if (result) {
+    state.currentFileName = result.name;
+    state.isDirty = false;
+    showSaved();
+  } else {
+    clearIndicator();
+  }
+}
+
+function clearIndicator() {
+  const el = document.getElementById('saveIndicator');
+  if (!el) return;
+  el.textContent = '';
+  el.className = 'save-indicator';
+  clearTimeout(el._timer);
 }
 
 export async function openDocument() {
