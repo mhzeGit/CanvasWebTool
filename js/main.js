@@ -41,6 +41,10 @@ function resizeCanvas() {
   state.canvas.style.height = cssHeight + 'px';
   state.canvas.width = cssWidth * dpr;
   state.canvas.height = cssHeight * dpr;
+  state.arrowCanvas.style.width = cssWidth + 'px';
+  state.arrowCanvas.style.height = cssHeight + 'px';
+  state.arrowCanvas.width = cssWidth * dpr;
+  state.arrowCanvas.height = cssHeight * dpr;
 }
 
 function animate() {
@@ -59,6 +63,17 @@ function animate() {
   ctx.restore();
 
   drawGrid(ctx, canvas, state.offsetX, state.offsetY, state.scale, dpr);
+
+  // Clear arrow canvas and set world transform
+  const actx = state.arrowCtx;
+  const acvs = state.arrowCanvas;
+  actx.save();
+  actx.setTransform(1, 0, 0, 1, 0, 0);
+  actx.clearRect(0, 0, acvs.width, acvs.height);
+  actx.restore();
+  actx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  actx.translate(state.offsetX, state.offsetY);
+  actx.scale(state.scale, state.scale);
 
   // Clean up stale connections (where textBox was deleted)
   for (let ci = state.connections.length - 1; ci >= 0; ci--) {

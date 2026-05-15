@@ -242,7 +242,7 @@ function applyDrawOrder() {
       el = domByTypeIdx.textBox['t' + item.i];
     }
     if (el) {
-      el.style.zIndex = 5 + i;
+      el.style.zIndex = 2 + i * 2;
     }
   }
 }

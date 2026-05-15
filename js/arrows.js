@@ -56,7 +56,7 @@ export function updateArrowPositionsFromConnections() {
 }
 
 export function drawArrows(indices) {
-  const ctx = state.ctx;
+  const ctx = state.arrowCtx;
   const iter = indices != null ? indices : state.arrows.keys();
   for (const ai of iter) {
     const arrow = state.arrows[ai];

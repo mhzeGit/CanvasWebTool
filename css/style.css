@@ -79,7 +79,7 @@ canvas#gridCanvas {
   top: 40px;
   bottom: 0;
   width: 5px;
-  z-index: 10;
+  z-index: 10001;
   cursor: col-resize;
   background: transparent;
   transition: background-color 0.12s ease;
@@ -102,9 +102,9 @@ canvas#gridCanvas {
   border-left: 1px solid var(--border-color);
   color: var(--text-color);
   overflow: auto;
-  z-index: 9; /* below top bar but above canvas */
+  z-index: 10000;
 }
-
+ 
 .side-panel-content {
   padding: 12px;
   display: flex;
@@ -178,7 +178,7 @@ canvas#gridCanvas {
 
 .color-popover {
   position: fixed;
-  z-index: 1000;
+  z-index: 20000;
   background: var(--bg-menu);
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -323,7 +323,7 @@ canvas#gridCanvas {
   gap: 12px;
   padding: 0 12px;
   border-bottom: 1px solid var(--border-color);
-  z-index: 10;
+  z-index: 10001;
   user-select: none;
 }
 
@@ -421,7 +421,7 @@ canvas#gridCanvas {
   padding: 4px;
   display: flex;
   flex-direction: column;
-  z-index: 1000;
+  z-index: 20000;
   font-size: 13px;
 }
 
@@ -479,7 +479,7 @@ canvas#gridCanvas {
   padding: 4px;
   display: none;
   flex-direction: column;
-  z-index: 1001;
+  z-index: 20001;
 }
 
 .context-submenu-trigger:hover > .context-submenu {
@@ -926,7 +926,7 @@ canvas#gridCanvas {
   align-items: center;
   padding: 6px 0;
   gap: 2px;
-  z-index: 9;
+  z-index: 10000;
   user-select: none;
 }
 
@@ -979,7 +979,7 @@ canvas#gridCanvas {
   flex-direction: column;
   gap: 2px;
   box-shadow: 0 6px 24px rgba(0,0,0,0.35);
-  z-index: 100;
+  z-index: 10010;
 }
 
 .toolbar-shapes-submenu.visible {
@@ -1015,6 +1015,15 @@ canvas#gridCanvas {
   left: 44px;
 }
 
+canvas#arrowCanvas {
+  position: absolute;
+  top: 40px;
+  left: 44px;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
 /* ===== Entity Layer (DOM-based nodes, shapes, textboxes) ===== */
 #entityLayer {
   display: none;
@@ -1024,7 +1033,7 @@ canvas#gridCanvas {
   position: fixed;
   pointer-events: none;
   display: none;
-  z-index: 1000;
+  z-index: 20000;
   border: 1px solid rgba(90, 160, 255, 0.9);
   background: rgba(90, 160, 255, 0.15);
 }
@@ -1209,7 +1218,7 @@ canvas#gridCanvas {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  z-index: 30000;
 }
 
 .dialog-box {
@@ -1314,7 +1323,7 @@ canvas#gridCanvas {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  z-index: 30000;
 }
 
 .settings-dialog {

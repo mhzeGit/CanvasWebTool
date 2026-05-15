@@ -2,6 +2,8 @@ import { EDGE_MARGIN } from './config.js';
 
 const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
+const arrowCanvas = document.getElementById('arrowCanvas');
+const arrowCtx = arrowCanvas.getContext('2d');
 const sidePanel = document.getElementById('sidePanel');
 const sidePanelContent = document.getElementById('sidePanelContent');
 const entityLayer = document.getElementById('entityLayer');
@@ -101,6 +103,8 @@ function escAttr(s) {
 export const state = {
   canvas,
   ctx,
+  arrowCanvas,
+  arrowCtx,
   sidePanel,
   sidePanelContent,
   entityLayer,

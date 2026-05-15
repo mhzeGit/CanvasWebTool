@@ -272,7 +272,7 @@ function startConnectionEditing(connIdx) {
   el.style.width = 'auto';
   el.style.minWidth = '80px';
   el.style.transform = 'translate(-50%, -50%)';
-  el.style.zIndex = '8';
+  el.style.zIndex = '9999';
   el.style.background = 'rgba(0,0,0,0.85)';
   el.style.color = '#fff';
   el.style.fontSize = (13 * state.scale) + 'px';

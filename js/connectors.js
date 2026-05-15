@@ -56,7 +56,7 @@ export function updateConnectorPositionsFromConnections() {
 }
 
 export function drawConnectors() {
-  const ctx = state.ctx;
+  const ctx = state.arrowCtx;
   for (let ci = 0; ci < state.connectors.length; ci++) {
     const conn = state.connectors[ci];
     const startPt = getConnectorEndpoint(conn, 'start');
@@ -85,7 +85,7 @@ export function drawConnectors() {
 
 export function drawConnectorPreview() {
   if (!state.drawingTool || state.drawingTool !== 'connector') return;
-  const ctx = state.ctx;
+  const ctx = state.arrowCtx;
   let x1 = state.drawingStartX;
   let y1 = state.drawingStartY;
 
@@ -123,7 +123,7 @@ export function drawConnectorPreview() {
 
 export function drawArrowPreview() {
   if (!state.drawingTool || state.drawingTool !== 'arrow') return;
-  const ctx = state.ctx;
+  const ctx = state.arrowCtx;
   let x1 = state.drawingStartX;
   let y1 = state.drawingStartY;
 
