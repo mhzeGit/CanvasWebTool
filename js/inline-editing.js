@@ -142,8 +142,7 @@ export function startEditing(idx, field) {
       e.preventDefault();
       const text = (e.clipboardData || window.clipboardData).getData('text/plain');
       if (!text) return;
-      const editor = e.target;
-      editor.focus();
+      e.target.focus();
       const sel = window.getSelection();
       if (sel.rangeCount) {
         const range = sel.getRangeAt(0);
@@ -341,8 +340,7 @@ function startTextBoxEditing(tbIdx) {
     e.preventDefault();
     const text = (e.clipboardData || window.clipboardData).getData('text/plain');
     if (!text) return;
-    const editor = e.target;
-    editor.focus();
+    e.target.focus();
     const sel = window.getSelection();
     if (sel.rangeCount) {
       const range = sel.getRangeAt(0);
