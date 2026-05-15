@@ -157,7 +157,7 @@ function setupMarkdownEditor(editorId, opts) {
   const rawTa = document.getElementById(editorId + 'Raw');
   if (!editorEl || !rtDiv || !rawTa) return;
 
-  let isRichText = true;
+  let isRichText = (state.panelTextMode !== 'raw');
   let syncTimer = 0;
   let isSyncing = false;
 
@@ -209,6 +209,7 @@ function setupMarkdownEditor(editorId, opts) {
         isRichText = false;
         rawTa.focus();
       }
+      state.panelTextMode = toRich ? 'rich' : 'raw';
       opts.setText(isRichText ? richToText() : rawTa.value);
     } finally {
       isSyncing = false;
@@ -360,6 +361,11 @@ function setupMarkdownEditor(editorId, opts) {
   rawTa.addEventListener('focus', onEditorFocus);
   rtDiv.addEventListener('blur', onEditorBlur);
   rawTa.addEventListener('blur', onEditorBlur);
+
+  if (!isRichText) {
+    rtDiv.style.display = 'none';
+    rawTa.style.display = '';
+  }
 
   return {
     switchMode,

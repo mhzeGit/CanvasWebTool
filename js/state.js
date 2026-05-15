@@ -226,6 +226,7 @@ export const state = {
 
   editingState: null,
   hoveredHandleInfo: null,
+  panelTextMode: 'rich',
 
   getTopHitAt(wx, wy) {
     const order = state.getAllDrawOrder();

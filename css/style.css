@@ -614,6 +614,8 @@ canvas#gridCanvas {
 .md-block.md-numbered,
 .md-block.md-checkbox {
   margin: 1px 0;
+  padding-left: 1.5em;
+  text-indent: -1.5em;
 }
 
 .md-marker {
@@ -713,7 +715,11 @@ canvas#gridCanvas {
   font-style: italic;
 }
 
-.rt-bullet, .rt-numbered, .rt-checkbox { margin: 1px 0; }
+.rt-bullet, .rt-numbered, .rt-checkbox {
+  margin: 1px 0;
+  padding-left: 1.5em;
+  text-indent: -1.5em;
+}
 
 .rt-checkbox .rt-marker {
   display: inline-flex;
@@ -1152,7 +1158,11 @@ canvas#arrowCanvas {
   border-top: 1px solid var(--node-divider-color, rgba(255,255,255,0.15));
   margin: 0.3em 0;
 }
-.entity-textbox-content .rt-bullet, .entity-textbox-content .rt-numbered, .entity-textbox-content .rt-checkbox { margin: 0.05em 0; }
+.entity-textbox-content .rt-bullet, .entity-textbox-content .rt-numbered, .entity-textbox-content .rt-checkbox {
+  margin: 0.05em 0;
+  padding-left: 1.5em;
+  text-indent: -1.5em;
+}
 .entity-textbox-content strong { color: var(--text-heading); font-weight: 700; }
 .entity-textbox-content em { color: var(--text-color); }
 .entity-textbox-content u { text-decoration: underline; }

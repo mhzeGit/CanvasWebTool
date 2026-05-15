@@ -180,6 +180,7 @@ export function startEditing(idx, field) {
       }
       sel.removeAllRanges();
       sel.addRange(range);
+      pendingWordBoundary = true;
       body.dispatchEvent(new Event('input', { bubbles: true }));
     };
     body.addEventListener('paste', onPaste);
@@ -398,6 +399,7 @@ function startTextBoxEditing(tbIdx) {
     }
     sel.removeAllRanges();
     sel.addRange(range);
+    pendingWordBoundary = true;
     content.dispatchEvent(new Event('input', { bubbles: true }));
   };
   content.addEventListener('paste', onPaste);

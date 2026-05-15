@@ -182,7 +182,7 @@ function init() {
   document.addEventListener('pointerdown', (e) => {
     const target = e.target;
     if (target === state.canvas) return;
-    if (target && (target.closest && (target.closest('#sidePanel') || target.closest('#contextMenu') || target.closest('.top-bar') || target.closest('#leftToolbar')))) return;
+    if (target && (target.closest && (target.closest('#sidePanel') || target.closest('#contextMenu') || target.closest('.top-bar') || target.closest('#leftToolbar') || target.closest('.entity')))) return;
     let didClear = false;
     if (state.selectedTextBoxes.size > 0) {
       state.selectedTextBoxes.clear();
