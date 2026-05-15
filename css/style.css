@@ -731,12 +731,12 @@ canvas#gridCanvas {
 
 .rt-bullet, .rt-numbered {
   margin: 1px 0;
-  padding-left: 1.15em;
+  padding-left: 1.0em;
 }
 
 .rt-bullet .rt-marker, .rt-numbered .rt-marker {
   display: inline-block;
-  margin-left: -1.15em;
+  margin-left: -1.0em;
   padding-right: 0.3em;
 }
 
@@ -1189,12 +1189,12 @@ canvas#arrowCanvas {
 }
 .entity-textbox-content .rt-bullet, .entity-textbox-content .rt-numbered, .entity-textbox-content .rt-checkbox {
   margin: 0.05em 0;
-  padding-left: 1.15em;
+  padding-left: 1.00em;
 }
 
 .entity-textbox-content .rt-bullet .rt-marker, .entity-textbox-content .rt-numbered .rt-marker {
   display: inline-block;
-  margin-left: -1.15em;
+  margin-left: -1.00em;
   padding-right: 0.3em;
 }
 
