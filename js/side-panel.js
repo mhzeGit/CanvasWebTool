@@ -222,20 +222,39 @@ function setupMarkdownEditor(editorId, opts) {
     const text = (e.clipboardData || window.clipboardData).getData('text/plain');
     if (!text) return;
     const sel = window.getSelection();
-    if (sel.rangeCount) {
-      const range = sel.getRangeAt(0);
-      range.deleteContents();
-      const lines = text.split('\n');
-      for (let i = 0; i < lines.length; i++) {
-        if (i > 0) {
-          range.insertNode(document.createElement('br'));
-          range.collapse(false);
-        }
-        range.insertNode(document.createTextNode(lines[i]));
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    let block = range.startContainer;
+    while (block && block !== rtDiv && !(block.classList && block.classList.contains('rt-block'))) {
+      block = block.parentNode;
+    }
+    if (!block || block === rtDiv) {
+      block = document.createElement('div');
+      block.className = 'rt-block rt-paragraph';
+      range.insertNode(block);
+      range.setStart(block, 0);
+      range.collapse(true);
+    }
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (i > 0) {
+        range.insertNode(document.createElement('br'));
         range.collapse(false);
       }
+      range.insertNode(document.createTextNode(lines[i]));
+      range.collapse(false);
+    }
+    sel.removeAllRanges();
+    sel.addRange(range);
+    rtDiv.innerHTML = blocksToHtml(htmlToBlocks(rtDiv));
+    const lastBlock = rtDiv.querySelector('.rt-block:last-of-type');
+    if (lastBlock) {
+      const cr = document.createRange();
+      cr.selectNodeContents(lastBlock);
+      cr.collapse(false);
       sel.removeAllRanges();
-      sel.addRange(range);
+      sel.addRange(cr);
     }
     scheduleSync(10);
   });

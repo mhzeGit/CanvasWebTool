@@ -144,23 +144,36 @@ export function startEditing(idx, field) {
       if (!text) return;
       e.target.focus();
       const sel = window.getSelection();
-      if (sel.rangeCount) {
-        const range = sel.getRangeAt(0);
-        range.deleteContents();
-        const lines = text.split('\n');
-        for (let i = 0; i < lines.length; i++) {
-          if (i > 0) {
-            range.insertNode(document.createElement('br'));
-            range.collapse(false);
-          }
-          range.insertNode(document.createTextNode(lines[i]));
+      if (!sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      let block = range.startContainer;
+      while (block && block !== body && !(block.classList && block.classList.contains('rt-block'))) {
+        block = block.parentNode;
+      }
+      if (!block || block === body) {
+        block = document.createElement('div');
+        block.className = 'rt-block rt-paragraph';
+        range.insertNode(block);
+        range.setStart(block, 0);
+        range.collapse(true);
+      }
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (i > 0) {
+          range.insertNode(document.createElement('br'));
           range.collapse(false);
         }
-        sel.removeAllRanges();
-        sel.addRange(range);
+        range.insertNode(document.createTextNode(lines[i]));
+        range.collapse(false);
       }
+      sel.removeAllRanges();
+      sel.addRange(range);
       n.blocks = htmlToBlocks(body);
       n.text = blocksToMarkdown(n.blocks);
+      body.innerHTML = blocksToEditorHtml(n.blocks);
+      const lastBlock = body.querySelector('.rt-block:last-of-type');
+      placeCursorAtEnd(lastBlock || body);
     };
     body.addEventListener('paste', onPaste);
 
@@ -342,23 +355,36 @@ function startTextBoxEditing(tbIdx) {
     if (!text) return;
     e.target.focus();
     const sel = window.getSelection();
-    if (sel.rangeCount) {
-      const range = sel.getRangeAt(0);
-      range.deleteContents();
-      const lines = text.split('\n');
-      for (let i = 0; i < lines.length; i++) {
-        if (i > 0) {
-          range.insertNode(document.createElement('br'));
-          range.collapse(false);
-        }
-        range.insertNode(document.createTextNode(lines[i]));
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    let block = range.startContainer;
+    while (block && block !== content && !(block.classList && block.classList.contains('rt-block'))) {
+      block = block.parentNode;
+    }
+    if (!block || block === content) {
+      block = document.createElement('div');
+      block.className = 'rt-block rt-paragraph';
+      range.insertNode(block);
+      range.setStart(block, 0);
+      range.collapse(true);
+    }
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (i > 0) {
+        range.insertNode(document.createElement('br'));
         range.collapse(false);
       }
-      sel.removeAllRanges();
-      sel.addRange(range);
+      range.insertNode(document.createTextNode(lines[i]));
+      range.collapse(false);
     }
+    sel.removeAllRanges();
+    sel.addRange(range);
     tb.blocks = htmlToBlocks(content);
     tb.text = blocksToMarkdown(tb.blocks);
+    content.innerHTML = blocksToEditorHtml(tb.blocks);
+    const lastBlock = content.querySelector('.rt-block:last-of-type');
+    placeCursorAtEnd(lastBlock || content);
   };
   content.addEventListener('paste', onPaste);
 
