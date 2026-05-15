@@ -6,6 +6,34 @@ export function worldToScreen(wx, wy, offsetX, offsetY, scale) {
   return { x: wx * scale + offsetX, y: wy * scale + offsetY };
 }
 
+export function getBorderColor(color) {
+  let r, g, b;
+  if (typeof color === 'string' && color.startsWith('#') && color.length === 7) {
+    r = parseInt(color.slice(1,3), 16);
+    g = parseInt(color.slice(3,5), 16);
+    b = parseInt(color.slice(5,7), 16);
+  } else if (typeof color === 'string' && color.startsWith('rgb')) {
+    const m = color.match(/\d+/g);
+    if (m && m.length >= 3) {
+      r = parseInt(m[0], 10); g = parseInt(m[1], 10); b = parseInt(m[2], 10);
+    }
+  }
+  if (r === undefined) return 'rgb(100, 100, 100)';
+  const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+  if (luminance < 128) {
+    const t = 1 - luminance / 128;
+    const amt = 0.12 + t * 0.10;
+    r = Math.min(255, Math.round(r + (255 - r) * amt));
+    g = Math.min(255, Math.round(g + (255 - g) * amt));
+    b = Math.min(255, Math.round(b + (255 - b) * amt));
+  } else {
+    r = Math.max(0, Math.round(r * 0.55));
+    g = Math.max(0, Math.round(g * 0.55));
+    b = Math.max(0, Math.round(b * 0.55));
+  }
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 export function getDarkerColor(color, factor = 0.7) {
   let r, g, b;
   if (typeof color === 'string' && color.startsWith('#') && color.length === 7) {

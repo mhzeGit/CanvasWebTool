@@ -10,6 +10,7 @@ const defaultSettings = {
     background: '#e8e8e8',
     gridLine: '#c8c8c8',
   },
+  palette: [],
 };
 
 let currentSettings = null;
@@ -118,6 +119,33 @@ export function resetAllSettings() {
 
 export function onChange(fn) {
   changeListeners.push(fn);
+}
+
+export function getPalette() {
+  const s = getSettings();
+  if (!Array.isArray(s.palette)) s.palette = [];
+  return s.palette;
+}
+
+export function addPaletteColor(hex) {
+  if (!/^#[a-f\d]{6}$/i.test(hex)) return false;
+  const s = getSettings();
+  if (!Array.isArray(s.palette)) s.palette = [];
+  if (s.palette.includes(hex.toLowerCase())) return false;
+  s.palette.push(hex.toLowerCase());
+  saveSettings();
+  notifyListeners();
+  return true;
+}
+
+export function removePaletteColor(hex) {
+  const s = getSettings();
+  if (!Array.isArray(s.palette)) return;
+  const idx = s.palette.indexOf(hex.toLowerCase());
+  if (idx === -1) return;
+  s.palette.splice(idx, 1);
+  saveSettings();
+  notifyListeners();
 }
 
 export function hexToRgb(hex) {

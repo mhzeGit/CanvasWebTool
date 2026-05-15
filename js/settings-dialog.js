@@ -1,4 +1,4 @@
-import { getSettings, setTheme, setCustomColor, resetColor, resetAllSettings } from './settings.js';
+import { getSettings, setTheme, setCustomColor, resetColor, resetAllSettings, getPalette, addPaletteColor, removePaletteColor } from './settings.js';
 
 let overlay = null;
 
@@ -45,12 +45,34 @@ function buildDialog() {
         '</div>' +
       '</div>' +
 
+      '<div class="settings-section">' +
+        '<div class="settings-section-title">Color Palette</div>' +
+        '<div class="settings-row" style="gap:4px;flex-wrap:wrap;" id="settingsPaletteColors">' +
+          paletteSwatchesHTML() +
+        '</div>' +
+        '<div class="settings-row" style="margin-top:6px;gap:4px;">' +
+          '<input type="text" id="settingsPaletteInput" class="settings-palette-input" placeholder="#ff6600" maxlength="7" />' +
+          '<button class="dialog-btn dialog-btn-primary" id="settingsPaletteAdd">Add</button>' +
+        '</div>' +
+      '</div>' +
+
       '<div class="settings-footer">' +
         '<button class="dialog-btn dialog-btn-secondary" id="settingsResetAll">Reset all</button>' +
         '<button class="dialog-btn dialog-btn-primary" id="settingsClose">Close</button>' +
       '</div>' +
     '</div>' +
   '</div>';
+}
+
+function paletteSwatchesHTML() {
+  const palette = getPalette();
+  if (palette.length === 0) return '<span class="settings-palette-empty">No custom colors yet</span>';
+  return palette.map((c, i) =>
+    '<span class="settings-palette-item">' +
+      '<span class="settings-palette-swatch" style="background:' + c + '" title="' + c + '"></span>' +
+      '<button class="settings-palette-remove" data-idx="' + i + '" title="Remove">&times;</button>' +
+    '</span>'
+  ).join('');
 }
 
 function hexOrFallback(hex) {
@@ -121,6 +143,34 @@ function wireDialog() {
   if (closeBtn) {
     closeBtn.addEventListener('click', closeSettings);
   }
+
+  const paletteInput = document.getElementById('settingsPaletteInput');
+  const paletteAddBtn = document.getElementById('settingsPaletteAdd');
+  if (paletteAddBtn && paletteInput) {
+    const doAdd = () => {
+      const v = paletteInput.value.trim();
+      if (addPaletteColor(v)) {
+        paletteInput.value = '';
+        refreshDialog();
+      } else {
+        paletteInput.style.borderColor = '#e74c3c';
+        setTimeout(() => { paletteInput.style.borderColor = ''; }, 800);
+      }
+    };
+    paletteAddBtn.addEventListener('click', doAdd);
+    paletteInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
+  }
+
+  document.querySelectorAll('.settings-palette-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx, 10);
+      const palette = getPalette();
+      if (!Number.isNaN(idx) && idx >= 0 && idx < palette.length) {
+        removePaletteColor(palette[idx]);
+        refreshDialog();
+      }
+    });
+  });
 }
 
 function refreshDialog() {

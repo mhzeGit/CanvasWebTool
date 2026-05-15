@@ -102,7 +102,7 @@ export function startEditing(idx, field) {
     body.focus();
     placeCursorAtEnd(body);
 
-    const originalValue = JSON.stringify(n.blocks);
+    const originalValue = n.text;
     state.editingState = { type: 'node', idx, field, el: body, originalValue, isRichText: true };
 
     const onInput = () => {
@@ -299,7 +299,7 @@ function startTextBoxEditing(tbIdx) {
   content.focus();
   placeCursorAtEnd(content);
 
-  const originalValue = JSON.stringify(tb.blocks);
+  const originalValue = tb.text;
   state.editingState = { type: 'textBox', idx: tbIdx, el: content, originalValue, isRichText: true };
 
   const onInput = () => {
@@ -622,18 +622,18 @@ export function commitEditing() {
   if (isRichText) {
     const domBlocks = htmlToBlocks(el);
     if (type === 'textBox') {
-      state.textBoxes[idx].text = blocksToMarkdown(domBlocks);
-      state.textBoxes[idx].blocks = markdownToBlocks(state.textBoxes[idx].text);
-      const newValue = JSON.stringify(state.textBoxes[idx].blocks);
-      if (originalValue !== newValue && state.textBoxes[idx].id !== undefined) {
-        history.push(createPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, state.textBoxes[idx].id, field, originalValue, newValue));
+      const newText = blocksToMarkdown(domBlocks);
+      state.textBoxes[idx].text = newText;
+      state.textBoxes[idx].blocks = markdownToBlocks(newText);
+      if (originalValue !== newText && state.textBoxes[idx].id !== undefined) {
+        history.push(createPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, state.textBoxes[idx].id, field, originalValue, newText));
       }
     } else if (type === 'node') {
-      state.nodes[idx].text = blocksToMarkdown(domBlocks);
-      state.nodes[idx].blocks = markdownToBlocks(state.nodes[idx].text);
-      const newValue = JSON.stringify(state.nodes[idx].blocks);
-      if (originalValue !== newValue && state.nodes[idx].id !== undefined) {
-        history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, state.nodes[idx].id, field, originalValue, newValue));
+      const newText = blocksToMarkdown(domBlocks);
+      state.nodes[idx].text = newText;
+      state.nodes[idx].blocks = markdownToBlocks(newText);
+      if (originalValue !== newText && state.nodes[idx].id !== undefined) {
+        history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, state.nodes[idx].id, field, originalValue, newText));
       }
     }
   } else {
@@ -671,16 +671,13 @@ export function cancelEditing() {
   }
 
   if (isRichText) {
-    try {
-      const blocks = JSON.parse(originalValue);
-      if (type === 'textBox') {
-        state.textBoxes[idx].blocks = blocks;
-        state.textBoxes[idx].text = blocksToMarkdown(blocks);
-      } else if (type === 'node') {
-        state.nodes[idx].blocks = blocks;
-        state.nodes[idx].text = blocksToMarkdown(blocks);
-      }
-    } catch (e) { /* ignore */ }
+    if (type === 'textBox') {
+      state.textBoxes[idx].text = originalValue;
+      state.textBoxes[idx].blocks = null;
+    } else if (type === 'node') {
+      state.nodes[idx].text = originalValue;
+      state.nodes[idx].blocks = null;
+    }
   } else {
     if (type === 'connection') {
       state.connections[idx].text = originalValue;

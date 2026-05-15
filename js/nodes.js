@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { EDGE_MARGIN, NODE_MIN_W, NODE_MIN_H, DEFAULT_NODE_COLOR } from './config.js';
-import { getEdgeAt as getEntityEdgeAt, drawRoundedRect, getDarkerColor } from './utils.js';
+import { getEdgeAt as getEntityEdgeAt, drawRoundedRect, getDarkerColor, getBorderColor } from './utils.js';
 
 export function hitTestNode(wx, wy) {
   const drawOrder = state.getDrawOrder();
@@ -54,6 +54,10 @@ export function drawNodePreview() {
   ctx.fillStyle = DEFAULT_NODE_COLOR;
   drawRoundedRect(ctx, x, y, w, h, cornerRadius);
   ctx.fill();
+  ctx.strokeStyle = getBorderColor(DEFAULT_NODE_COLOR);
+  ctx.lineWidth = 1;
+  drawRoundedRect(ctx, x, y, w, h, cornerRadius);
+  ctx.stroke();
   ctx.restore();
 
   ctx.save();

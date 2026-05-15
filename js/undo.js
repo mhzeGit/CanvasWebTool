@@ -157,12 +157,18 @@ export function createPropertyChangeCmd(nodes, selected, refreshPanelFn, nodeId,
   return {
     undo() {
       const found = findNodeById(nodes, nodeId);
-      if (found) found.node[property] = oldValue;
+      if (found) {
+        found.node[property] = oldValue;
+        if (property === 'text') found.node.blocks = null;
+      }
       refreshPanelFn();
     },
     redo() {
       const found = findNodeById(nodes, nodeId);
-      if (found) found.node[property] = newValue;
+      if (found) {
+        found.node[property] = newValue;
+        if (property === 'text') found.node.blocks = null;
+      }
       refreshPanelFn();
     },
     description: label
@@ -529,12 +535,18 @@ export function createTextBoxPropertyChangeCmd(textBoxes, selectedTextBoxes, ref
   return {
     undo() {
       const found = textBoxes.find(t => t.id === tbId);
-      if (found) found[property] = oldValue;
+      if (found) {
+        found[property] = oldValue;
+        if (property === 'text') found.blocks = null;
+      }
       if (refreshPanelFn) refreshPanelFn();
     },
     redo() {
       const found = textBoxes.find(t => t.id === tbId);
-      if (found) found[property] = newValue;
+      if (found) {
+        found[property] = newValue;
+        if (property === 'text') found.blocks = null;
+      }
       if (refreshPanelFn) refreshPanelFn();
     },
     description: `Change TextBox ${property}`
@@ -602,14 +614,20 @@ export function createBatchNodePropertyChangeCmd(nodes, selected, refreshPanelFn
     undo() {
       for (const c of changes) {
         const found = findNodeById(nodes, c.nodeId);
-        if (found) found.node[c.property] = c.oldValue;
+        if (found) {
+          found.node[c.property] = c.oldValue;
+          if (c.property === 'text') found.node.blocks = null;
+        }
       }
       if (refreshPanelFn) refreshPanelFn();
     },
     redo() {
       for (const c of changes) {
         const found = findNodeById(nodes, c.nodeId);
-        if (found) found.node[c.property] = c.newValue;
+        if (found) {
+          found.node[c.property] = c.newValue;
+          if (c.property === 'text') found.node.blocks = null;
+        }
       }
       if (refreshPanelFn) refreshPanelFn();
     },
@@ -698,14 +716,20 @@ export function createBatchTextBoxPropertyChangeCmd(textBoxes, selectedTextBoxes
     undo() {
       for (const c of changes) {
         const found = textBoxes.find(t => t.id === c.tbId);
-        if (found) found[c.property] = c.oldValue;
+        if (found) {
+          found[c.property] = c.oldValue;
+          if (c.property === 'text') found.blocks = null;
+        }
       }
       if (refreshPanelFn) refreshPanelFn();
     },
     redo() {
       for (const c of changes) {
         const found = textBoxes.find(t => t.id === c.tbId);
-        if (found) found[c.property] = c.newValue;
+        if (found) {
+          found[c.property] = c.newValue;
+          if (c.property === 'text') found.blocks = null;
+        }
       }
       if (refreshPanelFn) refreshPanelFn();
     },

@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { getDarkerColor, worldToScreen } from './utils.js';
+import { getDarkerColor, getBorderColor, worldToScreen } from './utils.js';
 import { blocksToHtml, getOrCreateBlocks } from './rich-text.js';
 import { parseInlineSpans } from './markdown.js';
 import {
@@ -129,7 +129,7 @@ function ensureNodeElement(idx) {
 
   el.style.background = baseColor;
   el.style.borderRadius = (nodeRadius * state.scale) + 'px';
-  el.style.borderColor = getDarkerColor(baseColor, 0.7);
+  el.style.borderColor = getBorderColor(baseColor);
   el.style.zIndex = ''; // set by applyDrawOrder
 
   const titlebar = el.querySelector('.entity-node-titlebar');

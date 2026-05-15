@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { history, flushPanelEdit, startPanelEdit, startShapePanelEdit, startTextBoxPanelEdit } from './history.js';
+import { colorSwatchHTML, initColorSwatch } from './color-palette.js';
 import {
   createResizeNodeCmd, createResizeShapeCmd, createResizeTextBoxCmd,
   createBatchNodePropertyChangeCmd, createBatchResizeNodeCmd,
@@ -470,10 +471,12 @@ export function refreshSidePanel() {
       '<div class="panel-section-title">Arrow</div>',
       '<div class="panel-row"><label>From</label><span class="panel-static">' + state.escAttr(fromLabel) + '</span></div>',
       '<div class="panel-row"><label>To</label><span class="panel-static">' + state.escAttr(toLabel) + '</span></div>',
-      '<div class="panel-row"><label>Color</label><input id="panelArrowColor" class="panel-input" type="color" value="' + state.escAttr(arrow.color || '#6bb5ff') + '" /></div>',
+      '<div class="panel-row"><label>Color</label>' + colorSwatchHTML('panelArrowColor', arrow.color || '#6bb5ff') + '</div>',
     ].join(''));
-    const colorInput = document.getElementById('panelArrowColor');
-    if (colorInput) colorInput.addEventListener('input', (ev) => { arrow.color = ev.target.value; });
+    const colorSwatch = document.getElementById('panelArrowColor');
+    initColorSwatch(colorSwatch, {
+      onSelect: (color) => { arrow.color = color; },
+    });
     return;
   }
 
@@ -494,12 +497,14 @@ export function refreshSidePanel() {
       '<div class="panel-section-title">Connection</div>',
       '<div class="panel-row"><label>From</label><span class="panel-static">' + state.escAttr(fromLabel) + '</span></div>',
       '<div class="panel-row"><label>To</label><span class="panel-static">' + state.escAttr(toLabel) + '</span></div>',
-      '<div class="panel-row"><label>Color</label><input id="panelConnColor" class="panel-input" type="color" value="' + state.escAttr(conn.color || '#6bb5ff') + '" /></div>',
+      '<div class="panel-row"><label>Color</label>' + colorSwatchHTML('panelConnColor', conn.color || '#6bb5ff') + '</div>',
       '<div class="panel-row"><label>Text</label><input id="panelConnText" class="panel-input" type="text" value="' + state.escAttr(conn.text ?? '') + '" /></div>',
     ].join(''));
-    const colorInput = document.getElementById('panelConnColor');
+    const colorSwatch = document.getElementById('panelConnColor');
     const textInput = document.getElementById('panelConnText');
-    if (colorInput) colorInput.addEventListener('input', (ev) => { conn.color = ev.target.value; });
+    initColorSwatch(colorSwatch, {
+      onSelect: (color) => { conn.color = color; },
+    });
     if (textInput) textInput.addEventListener('input', (ev) => { conn.text = ev.target.value; });
     return;
   }
@@ -526,48 +531,40 @@ export function refreshSidePanel() {
 
     _sp( [
       '<div class="panel-section-title">' + title + '</div>',
-      '<div class="panel-row"><label>Color</label><input id="panelShapeColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(s.color ?? '#2b2b2b') + '" /></div>',
-      '<div class="panel-row"><label>Border</label><input id="panelShapeBorderColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(s.borderColor ?? '#6bb5ff') + '" /></div>',
+      '<div class="panel-row"><label>Color</label>' + colorSwatchHTML('panelShapeColor', s.color ?? '#2b2b2b') + '</div>',
+      '<div class="panel-row"><label>Border</label>' + colorSwatchHTML('panelShapeBorderColor', s.borderColor ?? '#6bb5ff') + '</div>',
       '<div class="panel-row"><label>Border W</label><input id="panelShapeBorderWidth" class="panel-input" type="number" min="0" max="20" step="0.5" value="' + (colorMixed || borderWidthMixed ? '' : (s.borderWidth ?? 2)) + '" placeholder="' + (borderWidthMixed ? '(mixed)' : '') + '" /></div>',
       '<div class="panel-row"><label>Width</label><input id="panelShapeW" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : s.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
       '<div class="panel-row"><label>Height</label><input id="panelShapeH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : s.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
       (isRect ? '<div class="panel-row"><label>Radius</label><input id="panelShapeCornerRadius" class="panel-input" type="number" min="0" max="200" value="' + (radiusMixed ? '' : (s.cornerRadius ?? 4)) + '" placeholder="' + (radiusMixed ? '(mixed)' : '') + '" /></div>' : ''),
     ].join(''));
 
-    const colorInput = document.getElementById('panelShapeColor');
-    const borderColorInput = document.getElementById('panelShapeBorderColor');
+    const colorSwatch = document.getElementById('panelShapeColor');
+    const borderColorSwatch = document.getElementById('panelShapeBorderColor');
     const borderWidthInput = document.getElementById('panelShapeBorderWidth');
     const wInput = document.getElementById('panelShapeW');
     const hInput = document.getElementById('panelShapeH');
     const radiusInput = document.getElementById('panelShapeCornerRadius');
 
-    if (colorInput) {
-      colorInput.addEventListener('input', (ev) => {
-        const v = ev.target.value;
-        if (isBatch) { for (const m of members) m.color = v; } else { s.color = v; }
-        state.lastShapeColor = v;
+    if (colorSwatch) {
+      initColorSwatch(colorSwatch, {
+        onSelect: (v) => {
+          if (isBatch) { for (const m of members) m.color = v; } else { s.color = v; }
+          state.lastShapeColor = v;
+        },
+        onOpen: isBatch ? (() => _captureShapeSnapshot('color', members)) : (() => { startShapePanelEdit(shapeId, 'color', s.color); }),
+        onClose: isBatch ? (() => _commitShapeSnapshot('color')) : (() => { flushPanelEdit(); }),
       });
-      if (isBatch) {
-        colorInput.addEventListener('pointerdown', () => _captureShapeSnapshot('color', members));
-        colorInput.addEventListener('change', () => _commitShapeSnapshot('color'));
-      } else {
-        colorInput.addEventListener('pointerdown', () => { startShapePanelEdit(shapeId, 'color', s.color); });
-        colorInput.addEventListener('change', () => { flushPanelEdit(); });
-      }
     }
-    if (borderColorInput) {
-      borderColorInput.addEventListener('input', (ev) => {
-        const v = ev.target.value;
-        if (isBatch) { for (const m of members) m.borderColor = v; } else { s.borderColor = v; }
-        state.lastShapeBorderColor = v;
+    if (borderColorSwatch) {
+      initColorSwatch(borderColorSwatch, {
+        onSelect: (v) => {
+          if (isBatch) { for (const m of members) m.borderColor = v; } else { s.borderColor = v; }
+          state.lastShapeBorderColor = v;
+        },
+        onOpen: isBatch ? (() => _captureShapeSnapshot('borderColor', members)) : (() => { startShapePanelEdit(shapeId, 'borderColor', s.borderColor); }),
+        onClose: isBatch ? (() => _commitShapeSnapshot('borderColor')) : (() => { flushPanelEdit(); }),
       });
-      if (isBatch) {
-        borderColorInput.addEventListener('pointerdown', () => _captureShapeSnapshot('borderColor', members));
-        borderColorInput.addEventListener('change', () => _commitShapeSnapshot('borderColor'));
-      } else {
-        borderColorInput.addEventListener('pointerdown', () => { startShapePanelEdit(shapeId, 'borderColor', s.borderColor); });
-        borderColorInput.addEventListener('change', () => { flushPanelEdit(); });
-      }
     }
     if (borderWidthInput) {
       borderWidthInput.setAttribute('data-drag-number', 'true');
@@ -741,9 +738,9 @@ export function refreshSidePanel() {
 
     _sp( [
       '<div class="panel-section-title">' + title + '</div>',
-      '<div class="panel-row"><label>Color</label><input id="panelTBColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(tb.color ?? '#1a1a1a') + '" /></div>',
-      '<div class="panel-row"><label>Border</label><input id="panelTBBorderColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(tb.borderColor ?? '#444444') + '" /></div>',
-      '<div class="panel-row"><label>Text Color</label><input id="panelTBTextColor" class="panel-input panel-input-color" type="color" value="' + state.escAttr(tb.textColor ?? '#dddddd') + '" /></div>',
+      '<div class="panel-row"><label>Color</label>' + colorSwatchHTML('panelTBColor', tb.color ?? '#1a1a1a') + '</div>',
+      '<div class="panel-row"><label>Border</label>' + colorSwatchHTML('panelTBBorderColor', tb.borderColor ?? '#444444') + '</div>',
+      '<div class="panel-row"><label>Text Color</label>' + colorSwatchHTML('panelTBTextColor', tb.textColor ?? '#dddddd') + '</div>',
       '<div class="panel-row"><label>Font Size</label><input id="panelTBFontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (tb.fontSize ?? 14)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
       '<div class="panel-row"><label>Width</label><input id="panelTBW" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : tb.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
       '<div class="panel-row"><label>Height</label><input id="panelTBH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : tb.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
@@ -756,41 +753,32 @@ export function refreshSidePanel() {
       '</div>',
     ].join(''));
 
-    const colorInput = document.getElementById('panelTBColor');
-    const borderColorInput = document.getElementById('panelTBBorderColor');
-    const textColorInput = document.getElementById('panelTBTextColor');
+    const colorSwatch = document.getElementById('panelTBColor');
+    const borderColorSwatch = document.getElementById('panelTBBorderColor');
+    const textColorSwatch = document.getElementById('panelTBTextColor');
     const fontSizeInput = document.getElementById('panelTBFontSize');
     const wInput = document.getElementById('panelTBW');
     const hInput = document.getElementById('panelTBH');
-    if (colorInput) {
-      colorInput.addEventListener('input', (ev) => {
-        const v = ev.target.value;
-        if (isBatch) { for (const m of members) m.color = v; } else { tb.color = v; }
+    if (colorSwatch) {
+      initColorSwatch(colorSwatch, {
+        onSelect: (v) => { if (isBatch) { for (const m of members) m.color = v; } else { tb.color = v; } },
+        onOpen: isBatch ? (() => _captureTbSnapshot('color', members)) : undefined,
+        onClose: isBatch ? (() => _commitTbSnapshot('color')) : undefined,
       });
-      if (isBatch) {
-        colorInput.addEventListener('pointerdown', () => _captureTbSnapshot('color', members));
-        colorInput.addEventListener('change', () => _commitTbSnapshot('color'));
-      }
     }
-    if (borderColorInput) {
-      borderColorInput.addEventListener('input', (ev) => {
-        const v = ev.target.value;
-        if (isBatch) { for (const m of members) m.borderColor = v; } else { tb.borderColor = v; }
+    if (borderColorSwatch) {
+      initColorSwatch(borderColorSwatch, {
+        onSelect: (v) => { if (isBatch) { for (const m of members) m.borderColor = v; } else { tb.borderColor = v; } },
+        onOpen: isBatch ? (() => _captureTbSnapshot('borderColor', members)) : undefined,
+        onClose: isBatch ? (() => _commitTbSnapshot('borderColor')) : undefined,
       });
-      if (isBatch) {
-        borderColorInput.addEventListener('pointerdown', () => _captureTbSnapshot('borderColor', members));
-        borderColorInput.addEventListener('change', () => _commitTbSnapshot('borderColor'));
-      }
     }
-    if (textColorInput) {
-      textColorInput.addEventListener('input', (ev) => {
-        const v = ev.target.value;
-        if (isBatch) { for (const m of members) m.textColor = v; } else { tb.textColor = v; }
+    if (textColorSwatch) {
+      initColorSwatch(textColorSwatch, {
+        onSelect: (v) => { if (isBatch) { for (const m of members) m.textColor = v; } else { tb.textColor = v; } },
+        onOpen: isBatch ? (() => _captureTbSnapshot('textColor', members)) : undefined,
+        onClose: isBatch ? (() => _commitTbSnapshot('textColor')) : undefined,
       });
-      if (isBatch) {
-        textColorInput.addEventListener('pointerdown', () => _captureTbSnapshot('textColor', members));
-        textColorInput.addEventListener('change', () => _commitTbSnapshot('textColor'));
-      }
     }
     if (fontSizeInput) {
       fontSizeInput.setAttribute('data-drag-number', 'true');
@@ -919,8 +907,8 @@ export function refreshSidePanel() {
       setText: (v) => {
         if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; } } else { tb.text = v; tb.blocks = null; }
       },
-      onFocus: isBatch ? (() => _captureTbSnapshot('text', members)) : null,
-      onBlur: isBatch ? (() => _commitTbSnapshot('text')) : null,
+      onFocus: isBatch ? (() => _captureTbSnapshot('text', members)) : (() => { startTextBoxPanelEdit(tbId, 'text', tb.text); }),
+      onBlur: isBatch ? (() => _commitTbSnapshot('text')) : (() => { flushPanelEdit(); }),
       onChange: () => {},
     });
     return;
@@ -972,9 +960,9 @@ export function refreshSidePanel() {
   _sp( [
     '<div class="panel-section-title">' + sectionTitle + '</div>',
     '<div class="panel-row"><label>Title</label><input id="panelTitle" class="panel-input" type="text" value="' + (titleMixed ? '' : state.escAttr(n.title ?? '')) + '" placeholder="' + (titleMixed ? '(mixed)' : state.escAttr(TITLE_PLACEHOLDER)) + '" /></div>',
-    '<div class="panel-row"><label>Title Color</label><input id="panelTitleColor" class="panel-input panel-input-color" type="color" value="' + (n.titleColor ?? '#e7e7e7') + '" /></div>',
-    '<div class="panel-row"><label>Color</label><input id="panelColor" class="panel-input panel-input-color" type="color" value="' + (n.color ?? '#1a1a1a') + '" /></div>',
-    '<div class="panel-row"><label>Text Color</label><input id="panelTextColor" class="panel-input panel-input-color" type="color" value="' + (n.textColor ?? '#dddddd') + '" /></div>',
+    '<div class="panel-row"><label>Title Color</label>' + colorSwatchHTML('panelTitleColor', n.titleColor ?? '#e7e7e7') + '</div>',
+    '<div class="panel-row"><label>Color</label>' + colorSwatchHTML('panelColor', n.color ?? '#1a1a1a') + '</div>',
+    '<div class="panel-row"><label>Text Color</label>' + colorSwatchHTML('panelTextColor', n.textColor ?? '#dddddd') + '</div>',
     '<div class="panel-row"><label>Font Size</label><input id="panelFontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (n.fontSize ?? 12)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Width</label><input id="panelW" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : n.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Height</label><input id="panelH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : n.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
@@ -989,9 +977,9 @@ export function refreshSidePanel() {
   ].join(''));
 
   const titleInput = document.getElementById('panelTitle');
-  const titleColorInput = document.getElementById('panelTitleColor');
-  const colorInput = document.getElementById('panelColor');
-  const textColorInput = document.getElementById('panelTextColor');
+  const titleColorSwatch = document.getElementById('panelTitleColor');
+  const colorSwatch = document.getElementById('panelColor');
+  const textColorSwatch = document.getElementById('panelTextColor');
   const fontSizeInput = document.getElementById('panelFontSize');
   const wInput = document.getElementById('panelW');
   const hInput = document.getElementById('panelH');
@@ -1009,44 +997,26 @@ export function refreshSidePanel() {
       titleInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
     }
   }
-  if (titleColorInput) {
-    titleColorInput.addEventListener('input', (ev) => {
-      const v = ev.target.value;
-      if (isBatch) { for (const m of members) m.titleColor = v; } else { n.titleColor = v; }
+  if (titleColorSwatch) {
+    initColorSwatch(titleColorSwatch, {
+      onSelect: (v) => { if (isBatch) { for (const m of members) m.titleColor = v; } else { n.titleColor = v; } },
+      onOpen: isBatch ? (() => _captureNodeSnapshot('titleColor', members)) : (() => { startPanelEdit(nodeId, 'titleColor', n.titleColor); }),
+      onClose: isBatch ? (() => _commitNodeSnapshot('titleColor')) : (() => { flushPanelEdit(refreshSidePanel); }),
     });
-    if (isBatch) {
-      titleColorInput.addEventListener('pointerdown', () => _captureNodeSnapshot('titleColor', members));
-      titleColorInput.addEventListener('change', () => _commitNodeSnapshot('titleColor'));
-    } else {
-      titleColorInput.addEventListener('pointerdown', () => { startPanelEdit(nodeId, 'titleColor', n.titleColor); });
-      titleColorInput.addEventListener('change', () => { flushPanelEdit(refreshSidePanel); });
-    }
   }
-  if (colorInput) {
-    colorInput.addEventListener('input', (ev) => {
-      const v = ev.target.value;
-      if (isBatch) { for (const m of members) m.color = v; } else { n.color = v; }
+  if (colorSwatch) {
+    initColorSwatch(colorSwatch, {
+      onSelect: (v) => { if (isBatch) { for (const m of members) m.color = v; } else { n.color = v; } },
+      onOpen: isBatch ? (() => _captureNodeSnapshot('color', members)) : (() => { startPanelEdit(nodeId, 'color', n.color); }),
+      onClose: isBatch ? (() => _commitNodeSnapshot('color')) : (() => { flushPanelEdit(refreshSidePanel); }),
     });
-    if (isBatch) {
-      colorInput.addEventListener('pointerdown', () => _captureNodeSnapshot('color', members));
-      colorInput.addEventListener('change', () => _commitNodeSnapshot('color'));
-    } else {
-      colorInput.addEventListener('pointerdown', () => { startPanelEdit(nodeId, 'color', n.color); });
-      colorInput.addEventListener('change', () => { flushPanelEdit(refreshSidePanel); });
-    }
   }
-  if (textColorInput) {
-    textColorInput.addEventListener('input', (ev) => {
-      const v = ev.target.value;
-      if (isBatch) { for (const m of members) m.textColor = v; } else { n.textColor = v; }
+  if (textColorSwatch) {
+    initColorSwatch(textColorSwatch, {
+      onSelect: (v) => { if (isBatch) { for (const m of members) m.textColor = v; } else { n.textColor = v; } },
+      onOpen: isBatch ? (() => _captureNodeSnapshot('textColor', members)) : (() => { startPanelEdit(nodeId, 'textColor', n.textColor); }),
+      onClose: isBatch ? (() => _commitNodeSnapshot('textColor')) : (() => { flushPanelEdit(refreshSidePanel); }),
     });
-    if (isBatch) {
-      textColorInput.addEventListener('pointerdown', () => _captureNodeSnapshot('textColor', members));
-      textColorInput.addEventListener('change', () => _commitNodeSnapshot('textColor'));
-    } else {
-      textColorInput.addEventListener('pointerdown', () => { startPanelEdit(nodeId, 'textColor', n.textColor); });
-      textColorInput.addEventListener('change', () => { flushPanelEdit(refreshSidePanel); });
-    }
   }
   if (fontSizeInput) {
     fontSizeInput.setAttribute('data-drag-number', 'true');
@@ -1236,7 +1206,7 @@ function renderMixedEditor() {
     parts.push('<div class="panel-section-title">' + members.length + ' arrow' + (members.length > 1 ? 's' : '') + '</div>');
     const colorMixed = members.some(m => m.color !== members[0].color);
     parts.push(
-      '<div class="panel-row"><label>Color</label><input id="' + prefix + '_color" class="panel-input" type="color" value="' + state.escAttr(members[0].color || '#6bb5ff') + '" /></div>'
+      '<div class="panel-row"><label>Color</label>' + colorSwatchHTML(prefix + '_color', members[0].color || '#6bb5ff') + '</div>'
     );
   }
 
@@ -1253,7 +1223,7 @@ function renderMixedEditor() {
     parts.push(
       '<div class="panel-row"><label>From</label><span class="panel-static">' + state.escAttr(fromLabel) + '</span></div>',
       '<div class="panel-row"><label>To</label><span class="panel-static">' + state.escAttr(toLabel) + '</span></div>',
-      '<div class="panel-row"><label>Color</label><input id="' + prefix + '_color" class="panel-input" type="color" value="' + state.escAttr(conn.color || '#6bb5ff') + '" /></div>',
+      '<div class="panel-row"><label>Color</label>' + colorSwatchHTML(prefix + '_color', conn.color || '#6bb5ff') + '</div>',
       '<div class="panel-row"><label>Text</label><input id="' + prefix + '_text" class="panel-input" type="text" value="' + state.escAttr(conn.text ?? '') + '" /></div>'
     );
   }
@@ -1281,17 +1251,23 @@ function renderMixedEditor() {
   if (state.selectedArrows.size > 0) {
     const members = Array.from(state.selectedArrows).map(i => state.arrows[i]);
     const prefix = 'mx' + (prefixCounter++);
-    const ci = document.getElementById(prefix + '_color');
-    if (ci) {
-      ci.addEventListener('input', (ev) => { for (const m of members) m.color = ev.target.value; });
+    const cs = document.getElementById(prefix + '_color');
+    if (cs) {
+      initColorSwatch(cs, {
+        onSelect: (v) => { for (const m of members) m.color = v; },
+      });
     }
   }
   if (state.selectedConnection !== null && state.connections[state.selectedConnection]) {
     const conn = state.connections[state.selectedConnection];
     const prefix = 'mx' + (prefixCounter++);
-    const ci = document.getElementById(prefix + '_color');
+    const cs = document.getElementById(prefix + '_color');
     const ti = document.getElementById(prefix + '_text');
-    if (ci) ci.addEventListener('input', (ev) => { conn.color = ev.target.value; });
+    if (cs) {
+      initColorSwatch(cs, {
+        onSelect: (v) => { conn.color = v; },
+      });
+    }
     if (ti) ti.addEventListener('input', (ev) => { conn.text = ev.target.value; });
   }
 }
@@ -1305,9 +1281,9 @@ function appendNodeEditorHTML(parts, prefix, members, first) {
 
   parts.push(
     '<div class="panel-row"><label>Title</label><input id="' + prefix + '_title" class="panel-input" type="text" value="' + (titleMixed ? '' : state.escAttr(first.title ?? '')) + '" placeholder="' + (titleMixed ? '(mixed)' : state.escAttr(TITLE_PLACEHOLDER)) + '" /></div>',
-    '<div class="panel-row"><label>Title Color</label><input id="' + prefix + '_titleColor" class="panel-input panel-input-color" type="color" value="' + (first.titleColor ?? '#e7e7e7') + '" /></div>',
-    '<div class="panel-row"><label>Color</label><input id="' + prefix + '_color" class="panel-input panel-input-color" type="color" value="' + (first.color ?? '#1a1a1a') + '" /></div>',
-    '<div class="panel-row"><label>Text Color</label><input id="' + prefix + '_textColor" class="panel-input panel-input-color" type="color" value="' + (first.textColor ?? '#dddddd') + '" /></div>',
+    '<div class="panel-row"><label>Title Color</label>' + colorSwatchHTML(prefix + '_titleColor', first.titleColor ?? '#e7e7e7') + '</div>',
+    '<div class="panel-row"><label>Color</label>' + colorSwatchHTML(prefix + '_color', first.color ?? '#1a1a1a') + '</div>',
+    '<div class="panel-row"><label>Text Color</label>' + colorSwatchHTML(prefix + '_textColor', first.textColor ?? '#dddddd') + '</div>',
     '<div class="panel-row"><label>Font Size</label><input id="' + prefix + '_fontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (first.fontSize ?? 12)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Width</label><input id="' + prefix + '_w" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : first.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Height</label><input id="' + prefix + '_h" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : first.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
@@ -1329,8 +1305,8 @@ function appendShapeEditorHTML(parts, prefix, members, first) {
   const rMixed = isRect && members.some(m => m.cornerRadius !== first.cornerRadius);
 
   parts.push(
-    '<div class="panel-row"><label>Color</label><input id="' + prefix + '_color" class="panel-input panel-input-color" type="color" value="' + (first.color ?? '#2b2b2b') + '" /></div>',
-    '<div class="panel-row"><label>Border</label><input id="' + prefix + '_borderColor" class="panel-input panel-input-color" type="color" value="' + (first.borderColor ?? '#6bb5ff') + '" /></div>',
+    '<div class="panel-row"><label>Color</label>' + colorSwatchHTML(prefix + '_color', first.color ?? '#2b2b2b') + '</div>',
+    '<div class="panel-row"><label>Border</label>' + colorSwatchHTML(prefix + '_borderColor', first.borderColor ?? '#6bb5ff') + '</div>',
     '<div class="panel-row"><label>Border W</label><input id="' + prefix + '_borderWidth" class="panel-input" type="number" min="0" max="20" step="0.5" value="' + (bwMixed ? '' : (first.borderWidth ?? 2)) + '" placeholder="' + (bwMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Width</label><input id="' + prefix + '_w" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : first.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Height</label><input id="' + prefix + '_h" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : first.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
@@ -1345,9 +1321,9 @@ function appendTextBoxEditorHTML(parts, prefix, members, first) {
   const hMixed = members.some(m => m.h !== first.h);
 
   parts.push(
-    '<div class="panel-row"><label>Color</label><input id="' + prefix + '_color" class="panel-input panel-input-color" type="color" value="' + (first.color ?? '#1a1a1a') + '" /></div>',
-    '<div class="panel-row"><label>Border</label><input id="' + prefix + '_borderColor" class="panel-input panel-input-color" type="color" value="' + (first.borderColor ?? '#444444') + '" /></div>',
-    '<div class="panel-row"><label>Text Color</label><input id="' + prefix + '_textColor" class="panel-input panel-input-color" type="color" value="' + (first.textColor ?? '#dddddd') + '" /></div>',
+    '<div class="panel-row"><label>Color</label>' + colorSwatchHTML(prefix + '_color', first.color ?? '#1a1a1a') + '</div>',
+    '<div class="panel-row"><label>Border</label>' + colorSwatchHTML(prefix + '_borderColor', first.borderColor ?? '#444444') + '</div>',
+    '<div class="panel-row"><label>Text Color</label>' + colorSwatchHTML(prefix + '_textColor', first.textColor ?? '#dddddd') + '</div>',
     '<div class="panel-row"><label>Font Size</label><input id="' + prefix + '_fontSize" class="panel-input" type="number" min="8" max="72" value="' + (fontSizeMixed ? '' : (first.fontSize ?? 14)) + '" placeholder="' + (fontSizeMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Width</label><input id="' + prefix + '_w" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : first.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Height</label><input id="' + prefix + '_h" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : first.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
@@ -1363,9 +1339,9 @@ function appendTextBoxEditorHTML(parts, prefix, members, first) {
 
 function wireBatchNodeGroup(prefix, members) {
   const titleInput = document.getElementById(prefix + '_title');
-  const titleColorInput = document.getElementById(prefix + '_titleColor');
-  const colorInput = document.getElementById(prefix + '_color');
-  const textColorInput = document.getElementById(prefix + '_textColor');
+  const titleColorSwatch = document.getElementById(prefix + '_titleColor');
+  const colorSwatch = document.getElementById(prefix + '_color');
+  const textColorSwatch = document.getElementById(prefix + '_textColor');
   const fontSizeInput = document.getElementById(prefix + '_fontSize');
   const wInput = document.getElementById(prefix + '_w');
   const hInput = document.getElementById(prefix + '_h');
@@ -1375,20 +1351,26 @@ function wireBatchNodeGroup(prefix, members) {
     titleInput.addEventListener('focus', () => _captureNodeSnapshot('title', members));
     titleInput.addEventListener('blur', () => _commitNodeSnapshot('title'));
   }
-  if (titleColorInput) {
-    titleColorInput.addEventListener('input', (ev) => { for (const m of members) m.titleColor = ev.target.value; });
-    titleColorInput.addEventListener('pointerdown', () => _captureNodeSnapshot('titleColor', members));
-    titleColorInput.addEventListener('change', () => _commitNodeSnapshot('titleColor'));
+  if (titleColorSwatch) {
+    initColorSwatch(titleColorSwatch, {
+      onSelect: (v) => { for (const m of members) m.titleColor = v; },
+      onOpen: () => _captureNodeSnapshot('titleColor', members),
+      onClose: () => _commitNodeSnapshot('titleColor'),
+    });
   }
-  if (colorInput) {
-    colorInput.addEventListener('input', (ev) => { for (const m of members) m.color = ev.target.value; });
-    colorInput.addEventListener('pointerdown', () => _captureNodeSnapshot('color', members));
-    colorInput.addEventListener('change', () => _commitNodeSnapshot('color'));
+  if (colorSwatch) {
+    initColorSwatch(colorSwatch, {
+      onSelect: (v) => { for (const m of members) m.color = v; },
+      onOpen: () => _captureNodeSnapshot('color', members),
+      onClose: () => _commitNodeSnapshot('color'),
+    });
   }
-  if (textColorInput) {
-    textColorInput.addEventListener('input', (ev) => { for (const m of members) m.textColor = ev.target.value; });
-    textColorInput.addEventListener('pointerdown', () => _captureNodeSnapshot('textColor', members));
-    textColorInput.addEventListener('change', () => _commitNodeSnapshot('textColor'));
+  if (textColorSwatch) {
+    initColorSwatch(textColorSwatch, {
+      onSelect: (v) => { for (const m of members) m.textColor = v; },
+      onOpen: () => _captureNodeSnapshot('textColor', members),
+      onClose: () => _commitNodeSnapshot('textColor'),
+    });
   }
   if (fontSizeInput) {
     fontSizeInput.setAttribute('data-drag-number', 'true');
@@ -1459,22 +1441,26 @@ function wireBatchNodeGroup(prefix, members) {
 }
 
 function wireMixedShapeGroup(prefix, members) {
-  const colorInput = document.getElementById(prefix + '_color');
-  const borderColorInput = document.getElementById(prefix + '_borderColor');
+  const colorSwatch = document.getElementById(prefix + '_color');
+  const borderColorSwatch = document.getElementById(prefix + '_borderColor');
   const borderWidthInput = document.getElementById(prefix + '_borderWidth');
   const wInput = document.getElementById(prefix + '_w');
   const hInput = document.getElementById(prefix + '_h');
   const radiusInput = document.getElementById(prefix + '_cornerRadius');
 
-  if (colorInput) {
-    colorInput.addEventListener('input', (ev) => { for (const m of members) m.color = ev.target.value; state.lastShapeColor = ev.target.value; });
-    colorInput.addEventListener('pointerdown', () => _captureShapeSnapshot('color', members));
-    colorInput.addEventListener('change', () => _commitShapeSnapshot('color'));
+  if (colorSwatch) {
+    initColorSwatch(colorSwatch, {
+      onSelect: (v) => { for (const m of members) m.color = v; state.lastShapeColor = v; },
+      onOpen: () => _captureShapeSnapshot('color', members),
+      onClose: () => _commitShapeSnapshot('color'),
+    });
   }
-  if (borderColorInput) {
-    borderColorInput.addEventListener('input', (ev) => { for (const m of members) m.borderColor = ev.target.value; state.lastShapeBorderColor = ev.target.value; });
-    borderColorInput.addEventListener('pointerdown', () => _captureShapeSnapshot('borderColor', members));
-    borderColorInput.addEventListener('change', () => _commitShapeSnapshot('borderColor'));
+  if (borderColorSwatch) {
+    initColorSwatch(borderColorSwatch, {
+      onSelect: (v) => { for (const m of members) m.borderColor = v; state.lastShapeBorderColor = v; },
+      onOpen: () => _captureShapeSnapshot('borderColor', members),
+      onClose: () => _commitShapeSnapshot('borderColor'),
+    });
   }
   if (borderWidthInput) {
     borderWidthInput.setAttribute('data-drag-number', 'true');
@@ -1552,27 +1538,33 @@ function wireMixedShapeGroup(prefix, members) {
 }
 
 function wireMixedTBGroup(prefix, members) {
-  const colorInput = document.getElementById(prefix + '_color');
-  const borderColorInput = document.getElementById(prefix + '_borderColor');
-  const textColorInput = document.getElementById(prefix + '_textColor');
+  const colorSwatch = document.getElementById(prefix + '_color');
+  const borderColorSwatch = document.getElementById(prefix + '_borderColor');
+  const textColorSwatch = document.getElementById(prefix + '_textColor');
   const fontSizeInput = document.getElementById(prefix + '_fontSize');
   const wInput = document.getElementById(prefix + '_w');
   const hInput = document.getElementById(prefix + '_h');
 
-  if (colorInput) {
-    colorInput.addEventListener('input', (ev) => { for (const m of members) m.color = ev.target.value; });
-    colorInput.addEventListener('pointerdown', () => _captureTbSnapshot('color', members));
-    colorInput.addEventListener('change', () => _commitTbSnapshot('color'));
+  if (colorSwatch) {
+    initColorSwatch(colorSwatch, {
+      onSelect: (v) => { for (const m of members) m.color = v; },
+      onOpen: () => _captureTbSnapshot('color', members),
+      onClose: () => _commitTbSnapshot('color'),
+    });
   }
-  if (borderColorInput) {
-    borderColorInput.addEventListener('input', (ev) => { for (const m of members) m.borderColor = ev.target.value; });
-    borderColorInput.addEventListener('pointerdown', () => _captureTbSnapshot('borderColor', members));
-    borderColorInput.addEventListener('change', () => _commitTbSnapshot('borderColor'));
+  if (borderColorSwatch) {
+    initColorSwatch(borderColorSwatch, {
+      onSelect: (v) => { for (const m of members) m.borderColor = v; },
+      onOpen: () => _captureTbSnapshot('borderColor', members),
+      onClose: () => _commitTbSnapshot('borderColor'),
+    });
   }
-  if (textColorInput) {
-    textColorInput.addEventListener('input', (ev) => { for (const m of members) m.textColor = ev.target.value; });
-    textColorInput.addEventListener('pointerdown', () => _captureTbSnapshot('textColor', members));
-    textColorInput.addEventListener('change', () => _commitTbSnapshot('textColor'));
+  if (textColorSwatch) {
+    initColorSwatch(textColorSwatch, {
+      onSelect: (v) => { for (const m of members) m.textColor = v; },
+      onOpen: () => _captureTbSnapshot('textColor', members),
+      onClose: () => _commitTbSnapshot('textColor'),
+    });
   }
   if (fontSizeInput) {
     fontSizeInput.setAttribute('data-drag-number', 'true');
