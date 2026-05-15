@@ -1,7 +1,7 @@
 import { state } from './state.js';
-import { history, flushPanelEdit, startPanelEdit, startShapePanelEdit } from './history.js';
+import { history, flushPanelEdit, startPanelEdit, startShapePanelEdit, startTextBoxPanelEdit } from './history.js';
 import {
-  createResizeNodeCmd, createResizeShapeCmd,
+  createResizeNodeCmd, createResizeShapeCmd, createResizeTextBoxCmd,
   createBatchNodePropertyChangeCmd, createBatchResizeNodeCmd,
   createBatchShapePropertyChangeCmd, createBatchResizeShapeCmd,
   createBatchTextBoxPropertyChangeCmd, createBatchResizeTextBoxCmd
@@ -570,6 +570,7 @@ export function refreshSidePanel() {
       }
     }
     if (borderWidthInput) {
+      borderWidthInput.setAttribute('data-drag-number', 'true');
       borderWidthInput.addEventListener('input', (ev) => {
         const v = parseFloat(ev.target.value);
         if (!Number.isNaN(v) && v >= 0) {
@@ -579,9 +580,21 @@ export function refreshSidePanel() {
       if (isBatch) {
         borderWidthInput.addEventListener('focus', () => _captureShapeSnapshot('borderWidth', members));
         borderWidthInput.addEventListener('blur', () => _commitShapeSnapshot('borderWidth'));
+        attachDragNumber(borderWidthInput,
+          (delta) => {
+            const v = Math.max(0, (members[0].borderWidth ?? 2) + delta * 0.5);
+            for (const m of members) m.borderWidth = v;
+            borderWidthInput.value = String(v);
+          }, () => {}, () => {});
       } else {
         borderWidthInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'borderWidth', s.borderWidth); });
         borderWidthInput.addEventListener('blur', () => { flushPanelEdit(); });
+        attachDragNumber(borderWidthInput,
+          (delta) => {
+            s.borderWidth = Math.max(0, (s.borderWidth ?? 2) + delta * 0.5);
+            borderWidthInput.value = String(s.borderWidth);
+          },
+          () => { flushPanelEdit(); }, () => {});
       }
     }
     if (wInput) {
@@ -780,6 +793,7 @@ export function refreshSidePanel() {
       }
     }
     if (fontSizeInput) {
+      fontSizeInput.setAttribute('data-drag-number', 'true');
       fontSizeInput.addEventListener('input', (ev) => {
         const v = parseFloat(ev.target.value);
         if (!Number.isNaN(v) && v >= 8) {
@@ -789,9 +803,25 @@ export function refreshSidePanel() {
       if (isBatch) {
         fontSizeInput.addEventListener('focus', () => _captureTbSnapshot('fontSize', members));
         fontSizeInput.addEventListener('blur', () => _commitTbSnapshot('fontSize'));
+        attachDragNumber(fontSizeInput,
+          (delta) => {
+            const v = Math.max(8, Math.min(72, (members[0].fontSize ?? 14) + delta));
+            for (const m of members) m.fontSize = v;
+            fontSizeInput.value = String(Math.round(members[0].fontSize));
+          }, () => {}, () => {});
+      } else {
+        fontSizeInput.addEventListener('focus', () => { startTextBoxPanelEdit(tbId, 'fontSize', tb.fontSize); });
+        fontSizeInput.addEventListener('blur', () => { flushPanelEdit(); });
+        attachDragNumber(fontSizeInput,
+          (delta) => {
+            tb.fontSize = Math.max(8, Math.min(72, (tb.fontSize ?? 14) + delta));
+            fontSizeInput.value = String(Math.round(tb.fontSize));
+          },
+          () => { flushPanelEdit(); }, () => {});
       }
     }
     if (wInput) {
+      wInput.setAttribute('data-drag-number', 'true');
       wInput.addEventListener('input', (ev) => {
         const v = parseFloat(ev.target.value);
         if (!Number.isNaN(v) && v >= 10) {
@@ -818,9 +848,27 @@ export function refreshSidePanel() {
             }
             if (changes.length > 0) history.push(createBatchResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, changes));
           });
+      } else {
+        wInput.addEventListener('focus', () => { startTextBoxPanelEdit(tbId, 'w', tb.w, { x: tb.x, y: tb.y, w: tb.w, h: tb.h }); });
+        wInput.addEventListener('blur', () => { flushPanelEdit(); });
+        let wDragStartBounds = { x: tb.x, y: tb.y, w: tb.w, h: tb.h };
+        attachDragNumber(wInput,
+          (delta) => { tb.w = Math.max(10, tb.w + delta); wInput.value = String(Math.round(tb.w)); },
+          () => {
+            flushPanelEdit();
+            wDragStartBounds = { x: tb.x, y: tb.y, w: tb.w, h: tb.h };
+          },
+          () => {
+            if (tb.w !== wDragStartBounds.w) {
+              history.push(createResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbId,
+                { x: wDragStartBounds.x, y: wDragStartBounds.y, w: wDragStartBounds.w, h: wDragStartBounds.h },
+                { x: tb.x, y: tb.y, w: tb.w, h: tb.h }));
+            }
+          });
       }
     }
     if (hInput) {
+      hInput.setAttribute('data-drag-number', 'true');
       hInput.addEventListener('input', (ev) => {
         const v = parseFloat(ev.target.value);
         if (!Number.isNaN(v) && v >= 10) {
@@ -846,6 +894,23 @@ export function refreshSidePanel() {
               if (fromB.h !== toB.h) changes.push({ tbId: members[i].id, fromBounds: fromB, toBounds: toB });
             }
             if (changes.length > 0) history.push(createBatchResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, changes));
+          });
+      } else {
+        hInput.addEventListener('focus', () => { startTextBoxPanelEdit(tbId, 'h', tb.h, { x: tb.x, y: tb.y, w: tb.w, h: tb.h }); });
+        hInput.addEventListener('blur', () => { flushPanelEdit(); });
+        let hDragStartBounds = { x: tb.x, y: tb.y, w: tb.w, h: tb.h };
+        attachDragNumber(hInput,
+          (delta) => { tb.h = Math.max(10, tb.h + delta); hInput.value = String(Math.round(tb.h)); },
+          () => {
+            flushPanelEdit();
+            hDragStartBounds = { x: tb.x, y: tb.y, w: tb.w, h: tb.h };
+          },
+          () => {
+            if (tb.h !== hDragStartBounds.h) {
+              history.push(createResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbId,
+                { x: hDragStartBounds.x, y: hDragStartBounds.y, w: hDragStartBounds.w, h: hDragStartBounds.h },
+                { x: tb.x, y: tb.y, w: tb.w, h: tb.h }));
+            }
           });
       }
     }
@@ -984,6 +1049,7 @@ export function refreshSidePanel() {
     }
   }
   if (fontSizeInput) {
+    fontSizeInput.setAttribute('data-drag-number', 'true');
     fontSizeInput.addEventListener('input', (ev) => {
       const v = parseFloat(ev.target.value);
       if (!Number.isNaN(v) && v >= 8) {
@@ -993,9 +1059,21 @@ export function refreshSidePanel() {
     if (isBatch) {
       fontSizeInput.addEventListener('focus', () => _captureNodeSnapshot('fontSize', members));
       fontSizeInput.addEventListener('blur', () => _commitNodeSnapshot('fontSize'));
+      attachDragNumber(fontSizeInput,
+        (delta) => {
+          const v = Math.max(8, Math.min(72, (members[0].fontSize ?? 12) + delta));
+          for (const m of members) m.fontSize = v;
+          fontSizeInput.value = String(Math.round(members[0].fontSize));
+        }, () => {}, () => {});
     } else {
       fontSizeInput.addEventListener('focus', () => { startPanelEdit(nodeId, 'fontSize', n.fontSize); });
       fontSizeInput.addEventListener('blur', () => { flushPanelEdit(refreshSidePanel); });
+      attachDragNumber(fontSizeInput,
+        (delta) => {
+          n.fontSize = Math.max(8, Math.min(72, (n.fontSize ?? 12) + delta));
+          fontSizeInput.value = String(Math.round(n.fontSize));
+        },
+        () => { flushPanelEdit(refreshSidePanel); }, () => {});
     }
   }
   if (wInput) {
@@ -1313,12 +1391,19 @@ function wireBatchNodeGroup(prefix, members) {
     textColorInput.addEventListener('change', () => _commitNodeSnapshot('textColor'));
   }
   if (fontSizeInput) {
+    fontSizeInput.setAttribute('data-drag-number', 'true');
     fontSizeInput.addEventListener('input', (ev) => {
       const v = parseFloat(ev.target.value);
       if (!Number.isNaN(v) && v >= 8) for (const m of members) m.fontSize = v;
     });
     fontSizeInput.addEventListener('focus', () => _captureNodeSnapshot('fontSize', members));
     fontSizeInput.addEventListener('blur', () => _commitNodeSnapshot('fontSize'));
+    attachDragNumber(fontSizeInput,
+      (delta) => {
+        const v = Math.max(8, Math.min(72, (members[0].fontSize ?? 12) + delta));
+        for (const m of members) m.fontSize = v;
+        fontSizeInput.value = String(Math.round(members[0].fontSize));
+      }, () => {}, () => {});
   }
   if (wInput) {
     wInput.setAttribute('data-drag-number', 'true');
@@ -1392,12 +1477,19 @@ function wireMixedShapeGroup(prefix, members) {
     borderColorInput.addEventListener('change', () => _commitShapeSnapshot('borderColor'));
   }
   if (borderWidthInput) {
+    borderWidthInput.setAttribute('data-drag-number', 'true');
     borderWidthInput.addEventListener('input', (ev) => {
       const v = parseFloat(ev.target.value);
       if (!Number.isNaN(v) && v >= 0) for (const m of members) m.borderWidth = v;
     });
     borderWidthInput.addEventListener('focus', () => _captureShapeSnapshot('borderWidth', members));
     borderWidthInput.addEventListener('blur', () => _commitShapeSnapshot('borderWidth'));
+    attachDragNumber(borderWidthInput,
+      (delta) => {
+        const v = Math.max(0, (members[0].borderWidth ?? 2) + delta * 0.5);
+        for (const m of members) m.borderWidth = v;
+        borderWidthInput.value = String(v);
+      }, () => {}, () => {});
   }
   if (wInput) {
     wInput.setAttribute('data-drag-number', 'true');
@@ -1483,12 +1575,19 @@ function wireMixedTBGroup(prefix, members) {
     textColorInput.addEventListener('change', () => _commitTbSnapshot('textColor'));
   }
   if (fontSizeInput) {
+    fontSizeInput.setAttribute('data-drag-number', 'true');
     fontSizeInput.addEventListener('input', (ev) => {
       const v = parseFloat(ev.target.value);
       if (!Number.isNaN(v) && v >= 8) for (const m of members) m.fontSize = v;
     });
     fontSizeInput.addEventListener('focus', () => _captureTbSnapshot('fontSize', members));
     fontSizeInput.addEventListener('blur', () => _commitTbSnapshot('fontSize'));
+    attachDragNumber(fontSizeInput,
+      (delta) => {
+        const v = Math.max(8, Math.min(72, (members[0].fontSize ?? 14) + delta));
+        for (const m of members) m.fontSize = v;
+        fontSizeInput.value = String(Math.round(members[0].fontSize));
+      }, () => {}, () => {});
   }
   if (wInput) {
     wInput.addEventListener('input', (ev) => {
