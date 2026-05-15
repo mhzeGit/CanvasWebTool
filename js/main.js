@@ -14,6 +14,7 @@ import { setupContextMenu, initContextMenu } from './context-menu.js';
 import { setupZoomPan } from './zoom-pan.js';
 import { setupInlineEditing } from './inline-editing.js';
 import { refreshSidePanel } from './side-panel.js';
+import { initPanelResize } from './panel-resize.js';
 import { history, initHistory } from './history.js';
 import {
   addNodeAtCenter, addNodeAt, addArrowAtCenter, addArrowAt,
@@ -126,6 +127,8 @@ function init() {
   setupZoomPan();
   setupInlineEditing();
   initTopBar();
+
+  initPanelResize();
 
   initContextMenu({
     addNodeAt,

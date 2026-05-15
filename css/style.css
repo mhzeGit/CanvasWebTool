@@ -74,14 +74,30 @@ canvas#gridCanvas {
   bottom: 0;
 }
 
+.panel-resize-handle {
+  position: fixed;
+  top: 40px;
+  bottom: 0;
+  width: 5px;
+  z-index: 10;
+  cursor: col-resize;
+  background: transparent;
+  transition: background-color 0.12s ease;
+}
+.panel-resize-handle:hover,
+.panel-resize-handle.active {
+  background: var(--text-muted);
+  opacity: 0.35;
+}
+
 .side-panel {
   position: fixed;
-  top: 40px; /* below top bar */
+  top: 40px;
   right: 0;
   bottom: 0;
   width: clamp(220px, 24vw, 420px);
   min-width: 220px;
-  max-width: 480px;
+  max-width: 700px;
   background: var(--bg-panel);
   border-left: 1px solid var(--border-color);
   color: var(--text-color);
