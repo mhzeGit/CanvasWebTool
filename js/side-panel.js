@@ -173,6 +173,7 @@ function setupMarkdownEditor(editorId, opts) {
 
   function syncToEntity() {
     if (isSyncing) return;
+    if (!document.contains(editorEl)) return;
     isSyncing = true;
     try {
       if (isRichText) {

@@ -100,7 +100,8 @@ export function startEditing(idx, field) {
     body.innerHTML = blocksToEditorHtml(n.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
 
     body.focus();
-    placeCursorAtEnd(body);
+    const lastBlock = body.querySelector('.rt-block:last-of-type');
+    placeCursorAtEnd(lastBlock || body);
 
     const originalValue = n.text;
     state.editingState = { type: 'node', idx, field, el: body, originalValue, isRichText: true };
@@ -161,9 +162,8 @@ export function startEditing(idx, field) {
         sel.removeAllRanges();
         sel.addRange(range);
       }
-      _detectingMarkdown = true;
-      editor.dispatchEvent(new Event('input', { bubbles: true }));
-      _detectingMarkdown = false;
+      n.blocks = htmlToBlocks(body);
+      n.text = blocksToMarkdown(n.blocks);
     };
     body.addEventListener('paste', onPaste);
 
@@ -301,7 +301,8 @@ function startTextBoxEditing(tbIdx) {
   content.innerHTML = blocksToEditorHtml(tb.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
 
   content.focus();
-  placeCursorAtEnd(content);
+  const lastBlock = content.querySelector('.rt-block:last-of-type');
+  placeCursorAtEnd(lastBlock || content);
 
   const originalValue = tb.text;
   state.editingState = { type: 'textBox', idx: tbIdx, el: content, originalValue, isRichText: true };
@@ -362,9 +363,8 @@ function startTextBoxEditing(tbIdx) {
       sel.removeAllRanges();
       sel.addRange(range);
     }
-    _detectingMarkdown = true;
-    content.dispatchEvent(new Event('input', { bubbles: true }));
-    _detectingMarkdown = false;
+    tb.blocks = htmlToBlocks(content);
+    tb.text = blocksToMarkdown(tb.blocks);
   };
   content.addEventListener('paste', onPaste);
 
