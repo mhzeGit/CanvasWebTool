@@ -104,7 +104,17 @@ export function startEditing(idx, field) {
     placeCursorAtEnd(lastBlock || body);
 
     const originalValue = n.text;
-    state.editingState = { type: 'node', idx, field, el: body, originalValue, isRichText: true };
+    let lastCommittedValue = originalValue;
+    let undoDebounceTimer = null;
+    let formattingApplied = false;
+    state.editingState = { type: 'node', idx, field, el: body, originalValue, lastCommittedValue, isRichText: true };
+
+    function pushUndoStep(newText) {
+      if (lastCommittedValue !== newText) {
+        history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, n.id, field, lastCommittedValue, newText));
+        lastCommittedValue = newText;
+      }
+    }
 
     const onInput = () => {
       if (!_detectingMarkdown) {
@@ -112,6 +122,21 @@ export function startEditing(idx, field) {
       }
       n.blocks = htmlToBlocks(body);
       n.text = blocksToMarkdown(n.blocks);
+
+      clearTimeout(undoDebounceTimer);
+      const currentText = n.text;
+      if (formattingApplied || _textEndsWithBoundary(currentText, lastCommittedValue)) {
+        pushUndoStep(currentText);
+        formattingApplied = false;
+      } else if (lastCommittedValue !== currentText) {
+        undoDebounceTimer = setTimeout(() => {
+          const latestText = n.text;
+          if (lastCommittedValue !== latestText) {
+            history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, n.id, field, lastCommittedValue, latestText));
+            lastCommittedValue = latestText;
+          }
+        }, 2000);
+      }
     };
 
     const onKeyDown = (ev) => {
@@ -128,10 +153,10 @@ export function startEditing(idx, field) {
         handleBackspace(body, ev);
       } else if (ev.ctrlKey || ev.metaKey) {
         const k = ev.key.toLowerCase();
-        if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); body.dispatchEvent(new Event('input', { bubbles: true })); }
-        else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); body.dispatchEvent(new Event('input', { bubbles: true })); }
-        else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); body.dispatchEvent(new Event('input', { bubbles: true })); }
-        else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); body.dispatchEvent(new Event('input', { bubbles: true })); }
+        if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); formattingApplied = true; body.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); formattingApplied = true; body.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); formattingApplied = true; body.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); formattingApplied = true; body.dispatchEvent(new Event('input', { bubbles: true })); }
       }
     };
 
@@ -311,7 +336,17 @@ function startTextBoxEditing(tbIdx) {
   placeCursorAtEnd(lastBlock || content);
 
   const originalValue = tb.text;
-  state.editingState = { type: 'textBox', idx: tbIdx, el: content, originalValue, isRichText: true };
+  let lastCommittedValue = originalValue;
+  let undoDebounceTimer = null;
+  let formattingApplied = false;
+  state.editingState = { type: 'textBox', idx: tbIdx, el: content, originalValue, lastCommittedValue, isRichText: true };
+
+  function pushUndoStep(newText) {
+    if (lastCommittedValue !== newText) {
+      history.push(createPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tb.id, 'text', lastCommittedValue, newText));
+      lastCommittedValue = newText;
+    }
+  }
 
   const onInput = () => {
     if (!_detectingMarkdown) {
@@ -319,28 +354,43 @@ function startTextBoxEditing(tbIdx) {
     }
     tb.blocks = htmlToBlocks(content);
     tb.text = blocksToMarkdown(tb.blocks);
+
+    clearTimeout(undoDebounceTimer);
+    const currentText = tb.text;
+    if (formattingApplied || _textEndsWithBoundary(currentText, lastCommittedValue)) {
+      pushUndoStep(currentText);
+      formattingApplied = false;
+    } else if (lastCommittedValue !== currentText) {
+      undoDebounceTimer = setTimeout(() => {
+        const latestText = tb.text;
+        if (lastCommittedValue !== latestText) {
+          history.push(createPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tb.id, 'text', lastCommittedValue, latestText));
+          lastCommittedValue = latestText;
+        }
+      }, 2000);
+    }
   };
 
-    const onKeyDown = (ev) => {
-      if (ev.key === 'Escape') {
-        cancelEditing();
-      } else if (ev.key === 'Enter') {
-        ev.preventDefault();
-        if (ev.shiftKey) {
-          handleEnter(content, ev);
-        } else {
-          content.blur();
-        }
-      } else if (ev.key === 'Backspace') {
-        handleBackspace(content, ev);
-      } else if (ev.ctrlKey || ev.metaKey) {
-        const k = ev.key.toLowerCase();
-        if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
-        else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
-        else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
-        else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); content.dispatchEvent(new Event('input', { bubbles: true })); }
+  const onKeyDown = (ev) => {
+    if (ev.key === 'Escape') {
+      cancelEditing();
+    } else if (ev.key === 'Enter') {
+      ev.preventDefault();
+      if (ev.shiftKey) {
+        handleEnter(content, ev);
+      } else {
+        content.blur();
       }
-    };
+    } else if (ev.key === 'Backspace') {
+      handleBackspace(content, ev);
+    } else if (ev.ctrlKey || ev.metaKey) {
+      const k = ev.key.toLowerCase();
+      if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); formattingApplied = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); formattingApplied = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); formattingApplied = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); formattingApplied = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
+    }
+  };
 
   content.addEventListener('input', onInput);
   content.addEventListener('keydown', onKeyDown);
@@ -619,6 +669,15 @@ function _detectAndApplyMarkdown(editor) {
   }
 }
 
+function _textEndsWithBoundary(newText, oldText) {
+  if (newText === oldText) return false;
+  if (typeof oldText === 'string' && typeof newText === 'string' && newText.startsWith(oldText)) {
+    const added = newText.slice(oldText.length);
+    return /[\s\n\r]$/.test(added);
+  }
+  return false;
+}
+
 function placeCursorAtEnd(el) {
   const range = document.createRange();
   range.selectNodeContents(el);
@@ -630,7 +689,7 @@ function placeCursorAtEnd(el) {
 
 export function commitEditing() {
   if (!state.editingState) return;
-  const { type, idx, field, el, originalValue, isRichText } = state.editingState;
+  const { type, idx, field, el, originalValue, lastCommittedValue, isRichText } = state.editingState;
 
   if (state.editingState._handlers) {
     el.removeEventListener('input', state.editingState._handlers.onInput);
@@ -639,21 +698,25 @@ export function commitEditing() {
     el.removeEventListener('blur', state.editingState._handlers.commit);
   }
 
+  if (state.editingState.undoDebounceTimer) {
+    clearTimeout(state.editingState.undoDebounceTimer);
+  }
+
   if (isRichText) {
     const domBlocks = htmlToBlocks(el);
     if (type === 'textBox') {
       const newText = blocksToMarkdown(domBlocks);
       state.textBoxes[idx].text = newText;
       state.textBoxes[idx].blocks = markdownToBlocks(newText);
-      if (originalValue !== newText && state.textBoxes[idx].id !== undefined) {
-        history.push(createPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, state.textBoxes[idx].id, field, originalValue, newText));
+      if (lastCommittedValue !== newText && state.textBoxes[idx].id !== undefined) {
+        history.push(createPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, state.textBoxes[idx].id, field, lastCommittedValue, newText));
       }
     } else if (type === 'node') {
       const newText = blocksToMarkdown(domBlocks);
       state.nodes[idx].text = newText;
       state.nodes[idx].blocks = markdownToBlocks(newText);
-      if (originalValue !== newText && state.nodes[idx].id !== undefined) {
-        history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, state.nodes[idx].id, field, originalValue, newText));
+      if (lastCommittedValue !== newText && state.nodes[idx].id !== undefined) {
+        history.push(createPropertyChangeCmd(state.nodes, state.selected, refreshSidePanel, state.nodes[idx].id, field, lastCommittedValue, newText));
       }
     }
   } else {
@@ -682,6 +745,10 @@ export function commitEditing() {
 export function cancelEditing() {
   if (!state.editingState) return;
   const { type, idx, field, el, originalValue, isRichText } = state.editingState;
+
+  if (state.editingState.undoDebounceTimer) {
+    clearTimeout(state.editingState.undoDebounceTimer);
+  }
 
   if (state.editingState._handlers) {
     el.removeEventListener('input', state.editingState._handlers.onInput);

@@ -12,10 +12,17 @@ export function hitTestNode(wx, wy) {
 
 export function findNodeAtEdge(wx, wy) {
   const allOrder = state.getAllDrawOrder();
-  const textBoxEntities = allOrder.filter(item => item.type === 'textBox').map(item => state.textBoxes[item.i]);
+  const tbIndexMap = [];
+  const textBoxEntities = [];
+  for (const item of allOrder) {
+    if (item.type === 'textBox') {
+      tbIndexMap.push(item.i);
+      textBoxEntities.push(state.textBoxes[item.i]);
+    }
+  }
   const hit = getEntityEdgeAt(wx, wy, textBoxEntities, EDGE_MARGIN);
   if (hit) {
-    const tbIdx = hit.idx;
+    const tbIdx = tbIndexMap[hit.idx];
     const allPos = allOrder.findIndex(item => item.type === 'textBox' && item.i === tbIdx);
     if (allPos === -1) return null;
     for (let i = allOrder.length - 1; i > allPos; i--) {

@@ -248,34 +248,29 @@ function onPointerDown(e) {
       return;
     }
 
-    let hit = hitTestNode(world.x, world.y);
-
-    let edgeHit = null;
-    if (hit !== -1) {
-      edgeHit = getEdgeAt(world.x, world.y);
-    } else {
-      const nearHit = findNodeAtEdge(world.x, world.y);
-      if (nearHit) {
-        edgeHit = nearHit;
-        hit = nearHit.idx;
-      }
-    }
-    if (edgeHit) {
-      flushPanelEdit();
-      if (!state.selectedTextBoxes.has(edgeHit.idx)) {
+    {
+      const tbEdge = getTextBoxEdgeAt(world.x, world.y);
+      if (tbEdge) {
+        flushPanelEdit();
         state.selectedTextBoxes.clear();
-        state.selectedTextBoxes.add(edgeHit.idx);
+        state.selectedConnection = null;
+        state.selectedArrows.clear();
+        state.selectedShapes.clear();
+        state.selectedConnectors.clear();
+        state.selectedTextBoxes.add(tbEdge.idx);
+        state.isResizingTextBox = true;
+        state.resizeTextBoxIdx = tbEdge.idx;
+        state.resizeTextBoxId = state.textBoxes[tbEdge.idx].id;
+        state.resizeTextBoxHandle = tbEdge.handle;
+        state.resizeTextBoxStartWorldX = world.x;
+        state.resizeTextBoxStartWorldY = world.y;
+        const tb = state.textBoxes[tbEdge.idx];
+        state.resizeTextBoxStartBounds = { x: tb.x, y: tb.y, w: tb.w, h: tb.h };
+        refreshSidePanel();
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
       }
-      state.isResizing = true;
-      state.resizeNodeIdx = edgeHit.idx;
-      state.resizeNodeId = state.textBoxes[edgeHit.idx].id;
-      state.resizeHandle = edgeHit.handle;
-      state.resizeStartWorldX = world.x;
-      state.resizeStartWorldY = world.y;
-      state.resizeStartNode = { x: state.textBoxes[edgeHit.idx].x, y: state.textBoxes[edgeHit.idx].y, w: state.textBoxes[edgeHit.idx].w, h: state.textBoxes[edgeHit.idx].h };
-      canvas.setPointerCapture(e.pointerId);
-      e.preventDefault();
-      return;
     }
 
     {
@@ -303,31 +298,7 @@ function onPointerDown(e) {
       }
     }
 
-    {
-      const tbEdge = getTextBoxEdgeAt(world.x, world.y);
-      if (tbEdge) {
-        flushPanelEdit();
-        state.selectedTextBoxes.clear();
-        state.selectedConnection = null;
-        state.selectedArrows.clear();
-        state.selectedShapes.clear();
-        state.selectedConnectors.clear();
-        state.selectedTextBoxes.add(tbEdge.idx);
-        state.isResizingTextBox = true;
-        state.resizeTextBoxIdx = tbEdge.idx;
-        state.resizeTextBoxId = state.textBoxes[tbEdge.idx].id;
-        state.resizeTextBoxHandle = tbEdge.handle;
-        state.resizeTextBoxStartWorldX = world.x;
-        state.resizeTextBoxStartWorldY = world.y;
-        const tb = state.textBoxes[tbEdge.idx];
-        state.resizeTextBoxStartBounds = { x: tb.x, y: tb.y, w: tb.w, h: tb.h };
-        refreshSidePanel();
-        canvas.setPointerCapture(e.pointerId);
-        e.preventDefault();
-        return;
-      }
-    }
-
+    let hit;
     {
       const topHit = state.getTopHitAt(world.x, world.y);
       if (topHit) {
@@ -579,32 +550,6 @@ function onPointerMove(e) {
         }
       }
     }
-    e.preventDefault();
-    return;
-  }
-
-  if (state.isResizing) {
-    const dx = world.x - state.resizeStartWorldX;
-    const dy = world.y - state.resizeStartWorldY;
-    const start = state.resizeStartNode;
-    const tb = state.textBoxes[state.resizeNodeIdx];
-    let newX = start.x, newY = start.y, newW = start.w, newH = start.h;
-
-    switch (state.resizeHandle) {
-      case 'left':   newX = start.x + dx; newW = start.w - dx; break;
-      case 'right':  newW = start.w + dx; break;
-      case 'top':    newY = start.y + dy; newH = start.h - dy; break;
-      case 'bottom': newH = start.h + dy; break;
-      case 'tl':     newX = start.x + dx; newY = start.y + dy; newW = start.w - dx; newH = start.h - dy; break;
-      case 'tr':     newY = start.y + dy; newW = start.w + dx; newH = start.h - dy; break;
-      case 'bl':     newX = start.x + dx; newW = start.w - dx; newH = start.h + dy; break;
-      case 'br':     newW = start.w + dx; newH = start.h + dy; break;
-    }
-
-    newW = Math.max(10, newW);
-    newH = Math.max(10, newH);
-
-    tb.x = newX; tb.y = newY; tb.w = newW; tb.h = newH;
     e.preventDefault();
     return;
   }
@@ -872,29 +817,22 @@ function onPointerMove(e) {
     canvas.style.cursor = 'crosshair';
     cursorSet = true;
   }
-  if (!state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
-    const handleHit = getEdgeAt(world.x, world.y);
-    if (handleHit) {
-      canvas.style.cursor = handleHit.cursor;
-      state.hoveredHandleInfo = handleHit;
+  if (!state.isDraggingNode && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
+    const tbEdge = getTextBoxEdgeAt(world.x, world.y);
+    if (tbEdge) {
+      canvas.style.cursor = tbEdge.cursor;
+      state.hoveredHandleInfo = tbEdge;
       cursorSet = true;
     }
   }
-  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
+  if (!cursorSet && !state.isDraggingNode && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
     const shapeEdge = getShapeEdgeAt(world.x, world.y);
     if (shapeEdge) {
       canvas.style.cursor = shapeEdge.cursor;
       cursorSet = true;
     }
   }
-  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
-    const tbEdge = getTextBoxEdgeAt(world.x, world.y);
-    if (tbEdge) {
-      canvas.style.cursor = tbEdge.cursor;
-      cursorSet = true;
-    }
-  }
-  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && state.connectingFrom === null && !state.isDraggingArrowEnd) {
+  if (!cursorSet && !state.isDraggingNode && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && state.connectingFrom === null && !state.isDraggingArrowEnd) {
     const connHit = hitTestConnection(world.x, world.y);
     if (connHit !== null) {
       canvas.style.cursor = 'pointer';
@@ -905,7 +843,7 @@ function onPointerMove(e) {
     canvas.style.cursor = 'move';
     cursorSet = true;
   }
-  if (!cursorSet && !state.isDraggingNode && !state.isResizing && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd && !state.isDraggingArrowBody) {
+  if (!cursorSet && !state.isDraggingNode && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd && !state.isDraggingArrowBody) {
     const bodyHit = hitTestArrowBody(world.x, world.y);
     if (bodyHit !== -1) {
       canvas.style.cursor = 'pointer';
@@ -1013,18 +951,6 @@ function onPointerUp(e) {
   const sy = e.clientY - rect.top;
   const world = screenToWorld(sx, sy, state.offsetX, state.offsetY, state.scale);
 
-  if (state.isResizing) {
-    const tb = state.textBoxes[state.resizeNodeIdx];
-    if (tb && (tb.x !== state.resizeStartNode.x || tb.y !== state.resizeStartNode.y || tb.w !== state.resizeStartNode.w || tb.h !== state.resizeStartNode.h)) {
-      _history.push(createResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, state.resizeNodeId,
-        { x: state.resizeStartNode.x, y: state.resizeStartNode.y, w: state.resizeStartNode.w, h: state.resizeStartNode.h },
-        { x: tb.x, y: tb.y, w: tb.w, h: tb.h }));
-      state.markDrawOrderDirty();
-      state.reparentAll();
-    }
-    state.isResizing = false;
-    state.resizeNodeId = -1;
-  }
   if (state.isResizingShape) {
     const s = state.shapes[state.resizeShapeIdx];
     if (s && state.resizeShapeStartBounds) {
@@ -1047,6 +973,7 @@ function onPointerUp(e) {
         _history.push(createResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, state.resizeTextBoxId,
           { x: state.resizeTextBoxStartBounds.x, y: state.resizeTextBoxStartBounds.y, w: state.resizeTextBoxStartBounds.w, h: state.resizeTextBoxStartBounds.h },
           { x: tb.x, y: tb.y, w: tb.w, h: tb.h }));
+        state.markDrawOrderDirty();
         state.reparentAll();
       }
     }

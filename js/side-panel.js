@@ -4,6 +4,7 @@ import { colorSwatchHTML, initColorSwatch } from './color-palette.js';
 import {
   createResizeShapeCmd, createResizeTextBoxCmd,
   createBatchShapePropertyChangeCmd, createBatchResizeShapeCmd,
+  createTextBoxPropertyChangeCmd,
   createBatchTextBoxPropertyChangeCmd, createBatchResizeTextBoxCmd
 } from './undo.js';
 import { getArrowEndpoint } from './arrows.js';
@@ -553,6 +554,18 @@ export function refreshSidePanel() {
 
     const title = isBatch ? indices.length + ' shapes selected' : 'Shape (' + state.escAttr(s.shapeType) + ')';
 
+    const shapeParentInfo = !isBatch && s.parentId !== null && s.parentId !== undefined
+      ? (() => {
+          if (s.parentType === 'textBox') {
+            const found = state.textBoxes.find(t => t.id === s.parentId);
+            return found ? (found.title || `Text Box ${found.id}`) : '?';
+          }
+          const found = state.shapes.find(sh => sh.id === s.parentId);
+          return found ? `Shape ${found.id} (${found.shapeType})` : '?';
+        })()
+      : null;
+    const shapeParentHtml = shapeParentInfo ? '<div class="panel-row"><label>Parent</label><span class="panel-static">' + state.escAttr(shapeParentInfo) + '</span></div>' : '';
+
     _sp( [
       '<div class="panel-section-title">' + title + '</div>',
       '<div class="panel-row"><label>Color</label>' + colorSwatchHTML('panelShapeColor', s.color ?? '#2b2b2b') + '</div>',
@@ -561,6 +574,7 @@ export function refreshSidePanel() {
       '<div class="panel-row"><label>Width</label><input id="panelShapeW" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : s.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
       '<div class="panel-row"><label>Height</label><input id="panelShapeH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : s.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
       (isRect ? '<div class="panel-row"><label>Radius</label><input id="panelShapeCornerRadius" class="panel-input" type="number" min="0" max="200" value="' + (radiusMixed ? '' : (s.cornerRadius ?? 4)) + '" placeholder="' + (radiusMixed ? '(mixed)' : '') + '" /></div>' : ''),
+      shapeParentHtml,
     ].join(''));
 
     const colorSwatch = document.getElementById('panelShapeColor');
@@ -762,7 +776,14 @@ export function refreshSidePanel() {
     const textMixed = isBatch && members.some(m => m.text !== tb.text);
 
     const parentInfo = tb.parentId !== null && tb.parentId !== undefined
-      ? (() => { const found = state.textBoxes.find(t => t.id === tb.parentId); return found ? (found.title || `Text Box ${found.id}`) : '?'; })()
+      ? (() => {
+          if (tb.parentType === 'shape') {
+            const found = state.shapes.find(s => s.id === tb.parentId);
+            return found ? `Shape ${found.id} (${found.shapeType})` : '?';
+          }
+          const found = state.textBoxes.find(t => t.id === tb.parentId);
+          return found ? (found.title || `Text Box ${found.id}`) : '?';
+        })()
       : null;
     const parentHtml = parentInfo ? '<div class="panel-row"><label>Parent</label><span class="panel-static">' + state.escAttr(parentInfo) + '</span></div>' : '';
 
@@ -960,15 +981,56 @@ export function refreshSidePanel() {
           });
       }
     }
-    setupMarkdownEditor('panelTBText', {
-      getText: () => tb.text ?? '',
-      setText: (v) => {
-        if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; } } else { tb.text = v; tb.blocks = null; }
-      },
-      onFocus: isBatch ? (() => _captureTbSnapshot('text', members)) : (() => { startTextBoxPanelEdit(tbId, 'text', tb.text); }),
-      onBlur: isBatch ? (() => _commitTbSnapshot('text')) : (() => { flushPanelEdit(); }),
-      onChange: () => {},
-    });
+    (() => {
+      let lastCommittedText = tb.text;
+      let undoDebounceTimer = null;
+
+      function wordBoundaryOrFormatting(newText, oldText) {
+        if (newText === oldText) return false;
+        if (typeof oldText === 'string' && typeof newText === 'string') {
+          if (newText.startsWith(oldText)) {
+            const added = newText.slice(oldText.length);
+            if (/[\s\n\r]$/.test(added)) return true;
+          }
+          const plainOld = oldText.replace(/[*_~`#>\-]/g, '').trim();
+          const plainNew = newText.replace(/[*_~`#>\-]/g, '').trim();
+          if (plainOld === plainNew) return true;
+        }
+        return false;
+      }
+
+      setupMarkdownEditor('panelTBText', {
+        getText: () => tb.text ?? '',
+        setText: (v) => {
+          if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; } } else { tb.text = v; tb.blocks = null; }
+          if (!isBatch) {
+            clearTimeout(undoDebounceTimer);
+            if (lastCommittedText !== v) {
+              if (wordBoundaryOrFormatting(v, lastCommittedText)) {
+                history.push(createTextBoxPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbId, 'text', lastCommittedText, v));
+                lastCommittedText = v;
+              } else {
+                undoDebounceTimer = setTimeout(() => {
+                  if (lastCommittedText !== tb.text) {
+                    history.push(createTextBoxPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbId, 'text', lastCommittedText, tb.text));
+                    lastCommittedText = tb.text;
+                  }
+                }, 2000);
+              }
+            }
+          }
+        },
+        onFocus: isBatch ? (() => { _captureTbSnapshot('text', members); }) : (() => { lastCommittedText = tb.text; }),
+        onBlur: isBatch ? (() => { _commitTbSnapshot('text'); }) : (() => {
+          clearTimeout(undoDebounceTimer);
+          if (lastCommittedText !== tb.text) {
+            history.push(createTextBoxPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbId, 'text', lastCommittedText, tb.text));
+            lastCommittedText = tb.text;
+          }
+        }),
+        onChange: () => {},
+      });
+    })();
     return;
   }
 

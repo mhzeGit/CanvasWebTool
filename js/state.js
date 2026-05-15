@@ -240,6 +240,19 @@ export const state = {
       items.push({ type: 'textBox', i, area: state.textBoxes[i].w * state.textBoxes[i].h });
     }
     items.sort((a, b) => b.area - a.area);
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const entity = item.type === 'shape' ? state.shapes[item.i] : state.textBoxes[item.i];
+      if (entity && entity.parentId != null) {
+        const parentIdx = items.findIndex(p => {
+          const pe = p.type === 'shape' ? state.shapes[p.i] : state.textBoxes[p.i];
+          return pe && pe.id === entity.parentId && p.type === entity.parentType;
+        });
+        if (parentIdx >= 0 && parentIdx >= i) {
+          [items[i], items[parentIdx]] = [items[parentIdx], items[i]];
+        }
+      }
+    }
     return items;
   },
   markDrawOrderDirty,

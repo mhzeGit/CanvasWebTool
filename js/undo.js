@@ -100,12 +100,16 @@ export function createAddShapeCmd(shapes, selectedShapes, refreshPanelFn, shape,
       const idx = shapes.findIndex(s => s.id === shapeId);
       if (idx !== -1) shapes.splice(idx, 1);
       selectedShapes.clear();
+      state.markDrawOrderDirty();
+      state.reparentAll();
       if (refreshPanelFn) refreshPanelFn();
     },
     redo() {
       shapes.splice(insertedAt, 0, shape);
       selectedShapes.clear();
       selectedShapes.add(insertedAt);
+      state.markDrawOrderDirty();
+      state.reparentAll();
       if (refreshPanelFn) refreshPanelFn();
     },
     description: 'Add Shape'
@@ -120,6 +124,8 @@ export function createDeleteShapesCmd(shapes, selectedShapes, refreshPanelFn, de
       }
       selectedShapes.clear();
       for (const entry of deletedEntries) selectedShapes.add(entry.index);
+      state.markDrawOrderDirty();
+      state.reparentAll();
       if (refreshPanelFn) refreshPanelFn();
     },
     redo() {
@@ -128,6 +134,8 @@ export function createDeleteShapesCmd(shapes, selectedShapes, refreshPanelFn, de
         if (ids.has(shapes[i].id)) shapes.splice(i, 1);
       }
       selectedShapes.clear();
+      state.markDrawOrderDirty();
+      state.reparentAll();
       if (refreshPanelFn) refreshPanelFn();
     },
     description: deletedEntries.length === 1 ? 'Delete Shape' : `Delete ${deletedEntries.length} Shapes`
@@ -221,12 +229,16 @@ export function createAddTextBoxCmd(textBoxes, selectedTextBoxes, refreshPanelFn
       const idx = textBoxes.findIndex(t => t.id === tbId);
       if (idx !== -1) textBoxes.splice(idx, 1);
       selectedTextBoxes.clear();
+      state.markDrawOrderDirty();
+      state.reparentAll();
       if (refreshPanelFn) refreshPanelFn();
     },
     redo() {
       textBoxes.splice(insertedAt, 0, textBox);
       selectedTextBoxes.clear();
       selectedTextBoxes.add(insertedAt);
+      state.markDrawOrderDirty();
+      state.reparentAll();
       if (refreshPanelFn) refreshPanelFn();
     },
     description: 'Add Text Box'
@@ -241,6 +253,8 @@ export function createDeleteTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPa
       }
       selectedTextBoxes.clear();
       for (const entry of deletedEntries) selectedTextBoxes.add(entry.index);
+      state.markDrawOrderDirty();
+      state.reparentAll();
       if (refreshPanelFn) refreshPanelFn();
     },
     redo() {
@@ -249,6 +263,8 @@ export function createDeleteTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPa
         if (ids.has(textBoxes[i].id)) textBoxes.splice(i, 1);
       }
       selectedTextBoxes.clear();
+      state.markDrawOrderDirty();
+      state.reparentAll();
       if (refreshPanelFn) refreshPanelFn();
     },
     description: deletedEntries.length === 1 ? 'Delete Text Box' : `Delete ${deletedEntries.length} Text Boxes`
@@ -581,6 +597,8 @@ export function createDuplicateTextBoxesCmd(textBoxes, selectedTextBoxes, refres
         if (ids.has(textBoxes[i].id)) textBoxes.splice(i, 1);
       }
       selectedTextBoxes.clear();
+      state.markDrawOrderDirty();
+      state.reparentAll();
       if (refreshPanelFn) refreshPanelFn();
     },
     redo() {
@@ -589,6 +607,8 @@ export function createDuplicateTextBoxesCmd(textBoxes, selectedTextBoxes, refres
       }
       selectedTextBoxes.clear();
       for (const entry of entries) selectedTextBoxes.add(entry.index);
+      state.markDrawOrderDirty();
+      state.reparentAll();
       if (refreshPanelFn) refreshPanelFn();
     },
     description: entries.length === 1 ? 'Duplicate Text Box' : `Duplicate ${entries.length} Text Boxes`
@@ -603,6 +623,8 @@ export function createPasteTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPan
         if (ids.has(textBoxes[i].id)) textBoxes.splice(i, 1);
       }
       selectedTextBoxes.clear();
+      state.markDrawOrderDirty();
+      state.reparentAll();
       if (refreshPanelFn) refreshPanelFn();
     },
     redo() {
@@ -611,6 +633,8 @@ export function createPasteTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPan
       }
       selectedTextBoxes.clear();
       for (const entry of pastedTextBoxes) selectedTextBoxes.add(entry.index);
+      state.markDrawOrderDirty();
+      state.reparentAll();
       if (refreshPanelFn) refreshPanelFn();
     },
     description: pastedTextBoxes.length === 1 ? 'Paste Text Box' : `Paste ${pastedTextBoxes.length} Text Boxes`

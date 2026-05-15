@@ -101,6 +101,8 @@ export function addShapeAt(worldX, worldY, shapeType, optW, optH) {
   };
   const idx = state.shapes.length;
   state.shapes.push(shape);
+  state.markDrawOrderDirty();
+  state.reparentAll();
   state.selectedShapes.clear();
   state.selectedTextBoxes.clear();
   state.selectedConnectors.clear();
@@ -133,6 +135,8 @@ export function addTextBoxAt(worldX, worldY, optW, optH) {
   };
   const idx = state.textBoxes.length;
   state.textBoxes.push(textBox);
+  state.markDrawOrderDirty();
+  state.reparentAll();
   state.selectedShapes.clear();
   state.selectedTextBoxes.clear();
   state.selectedConnectors.clear();
