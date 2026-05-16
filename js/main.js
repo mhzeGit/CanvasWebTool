@@ -176,7 +176,7 @@ function setupAutoSave() {
 function setupMobileUI() {
   const hamburgerBtn = document.getElementById('hamburgerBtn');
   const topBarMenus = document.getElementById('topBarMenus');
-  const mobilePanelToggle = document.getElementById('mobilePanelToggle');
+  const mobilePanelToggle = document.getElementById('toolPanelToggle');
   const sidePanel = document.getElementById('sidePanel');
 
   if (hamburgerBtn && topBarMenus) {

@@ -1856,6 +1856,15 @@ canvas#arrowCanvas {
     right: 0;
   }
 
+  .toolbar-spacer {
+    flex: 1;
+  }
+
+  .tool-panel-toggle.toolbar-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+
   canvas#gridCanvas {
     top: 40px;
     left: 0;
@@ -1894,33 +1903,6 @@ canvas#arrowCanvas {
 
   .side-panel-content {
     padding: 10px;
-  }
-
-  .mobile-panel-toggle {
-    display: flex;
-    position: fixed;
-    right: 8px;
-    bottom: 60px;
-    width: 42px;
-    height: 42px;
-    background: #1a3a5c;
-    color: #6bb5ff;
-    border: 1px solid #3a7bd5;
-    border-radius: 50%;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    z-index: 10003;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.4);
-    transition: background 0.15s;
-  }
-
-  .mobile-panel-toggle:active {
-    background: #1e4570;
-  }
-
-  .mobile-panel-toggle svg {
-    display: block;
   }
 
   .context-menu {
@@ -2014,7 +1996,7 @@ canvas#arrowCanvas {
     gap: 12px;
   }
 
-  .mobile-panel-toggle {
+  .tool-panel-toggle {
     display: none;
   }
 }

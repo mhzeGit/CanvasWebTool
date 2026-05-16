@@ -94,6 +94,17 @@ function createToolbar() {
 
   toolbar.appendChild(shapesContainer);
 
+  const spacer = document.createElement('div');
+  spacer.className = 'toolbar-spacer';
+  toolbar.appendChild(spacer);
+
+  const panelToggle = document.createElement('button');
+  panelToggle.className = 'toolbar-btn tool-panel-toggle';
+  panelToggle.id = 'toolPanelToggle';
+  panelToggle.title = 'Toggle Properties Panel';
+  panelToggle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>';
+  toolbar.appendChild(panelToggle);
+
   document.addEventListener('click', (e) => {
     if (!shapesContainer.contains(e.target)) {
       const submenu = shapesContainer.querySelector('.toolbar-shapes-submenu');
