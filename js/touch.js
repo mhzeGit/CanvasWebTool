@@ -5,10 +5,41 @@ import { openContextMenu, closeContextMenu } from './context-menu.js';
 let _touchActionHandler = null;
 
 const TAP_MAX_MS = 300;
+const LONG_PRESS_MS = 500;
 const TAP_MAX_MOVE = 10;
+
+let _longPressTimer = null;
+let _longPressTriggered = false;
 
 export function initTouch(ontouchaction) {
   _touchActionHandler = ontouchaction;
+}
+
+function _clearLongPress() {
+  if (_longPressTimer !== null) {
+    clearTimeout(_longPressTimer);
+    _longPressTimer = null;
+  }
+}
+
+function _startLongPressTimer(clientX, clientY) {
+  _clearLongPress();
+  _longPressTriggered = false;
+  _longPressTimer = setTimeout(() => {
+    _longPressTimer = null;
+    _longPressTriggered = true;
+    closeContextMenu();
+    const rect = state.canvas.getBoundingClientRect();
+    const sx = clientX - rect.left;
+    const sy = clientY - rect.top;
+    if (sx >= 0 && sx <= rect.width && sy >= 0 && sy <= rect.height) {
+      state.rmbPending = true;
+      state.rmbDownTime = performance.now();
+      state.rmbMoved = false;
+      const evt = { clientX, clientY, preventDefault: () => {} };
+      openContextMenu(evt);
+    }
+  }, LONG_PRESS_MS);
 }
 
 export function isTouchActive() {
@@ -61,10 +92,13 @@ export function handleTouchDown(e) {
       moved: false,
     };
     state.isTwoFingerGesture = false;
+    _startLongPressTimer(e.clientX, e.clientY);
     return false;
   }
 
   if (count === 2) {
+    _clearLongPress();
+    _longPressTriggered = false;
     state.isTwoFingerGesture = true;
     state.touchTapData = null;
     state.isPanning = false;
@@ -103,6 +137,7 @@ export function handleTouchMove(e) {
       if (state.touchTapData) {
         state.touchTapData.moved = true;
       }
+      _clearLongPress();
     }
   }
 
@@ -157,6 +192,7 @@ export function handleTouchUp(e) {
   state.touchPointers.delete(e.pointerId);
 
   if (state.isTwoFingerGesture && state.touchPointers.size < 2) {
+    _clearLongPress();
     state.isTwoFingerGesture = false;
 
     if (state.touchPointers.size === 1) {
@@ -175,12 +211,18 @@ export function handleTouchUp(e) {
     return true;
   }
 
+  if (_longPressTriggered) {
+    _clearLongPress();
+    state.touchTapData = null;
+    return true;
+  }
+
+  _clearLongPress();
+
   if (state.touchTapData && !state.touchTapData.moved &&
     (e.timeStamp - state.touchTapData.time) < TAP_MAX_MS) {
-    const td = state.touchTapData;
     state.touchTapData = null;
-    triggerTouchContextMenu(td.clientX, td.clientY);
-    return true;
+    return false;
   }
 
   state.touchTapData = null;
@@ -189,29 +231,15 @@ export function handleTouchUp(e) {
 
 export function handleTouchCancel(e) {
   if (e.pointerType !== 'touch') return false;
+  _clearLongPress();
   state.touchPointers.delete(e.pointerId);
 
   if (state.touchPointers.size < 2) {
     state.isTwoFingerGesture = false;
   }
   state.touchTapData = null;
+  _longPressTriggered = false;
   return true;
-}
-
-function triggerTouchContextMenu(clientX, clientY) {
-  closeContextMenu();
-
-  const rect = state.canvas.getBoundingClientRect();
-  const sx = clientX - rect.left;
-  const sy = clientY - rect.top;
-
-  if (sx >= 0 && sx <= rect.width && sy >= 0 && sy <= rect.height) {
-    state.rmbPending = true;
-    state.rmbDownTime = performance.now();
-    state.rmbMoved = false;
-    const evt = { clientX, clientY, preventDefault: () => {} };
-    openContextMenu(evt);
-  }
 }
 
 function _resetDrawingState() {
