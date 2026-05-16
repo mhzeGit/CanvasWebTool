@@ -134,18 +134,22 @@ function ensureShapeElement(idx) {
       fillEl.classList.add('entity-shape-rect');
       borderEl.style.borderRadius = ((s.cornerRadius ?? 4) * state.scale) + 'px';
       fillEl.style.borderRadius = Math.max(0, ((s.cornerRadius ?? 4) - (s.borderWidth || 2)) * state.scale) + 'px';
+      el.style.borderRadius = ((s.cornerRadius ?? 4) * state.scale) + 'px';
       break;
     case 'circle':
       borderEl.classList.add('entity-shape-circle');
       fillEl.classList.add('entity-shape-circle');
+      el.style.borderRadius = '50%';
       break;
     case 'triangle':
       borderEl.classList.add('entity-shape-triangle');
       fillEl.classList.add('entity-shape-triangle');
+      el.style.borderRadius = '0';
       break;
     case 'diamond':
       borderEl.classList.add('entity-shape-diamond');
       fillEl.classList.add('entity-shape-diamond');
+      el.style.borderRadius = '0';
       break;
     default:
       borderEl.classList.add('entity-shape-rect');
