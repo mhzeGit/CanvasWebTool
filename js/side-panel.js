@@ -9,6 +9,7 @@ import {
 import { addImageToShape, removeImageFromShape, openImageInShape } from './document.js';
 import { getArrowEndpoint } from './arrows.js';
 import { blocksToHtml, getOrCreateBlocks, htmlToBlocks, blocksToMarkdown, markdownToBlocks } from './rich-text.js';
+import { getNextNumber } from './inline-editing.js';
 import { TITLE_PLACEHOLDER, TEXT_PLACEHOLDER } from './config.js';
 
 function buildMarkdownToolbar() {
@@ -313,7 +314,7 @@ function setupMarkdownEditor(editorId, opts) {
           newBlock.className = block.className;
           if (blockLevel > 0) newBlock.dataset.l = blockLevel;
           if (block.classList.contains('rt-bullet')) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span> <br>';
-          else if (block.classList.contains('rt-numbered')) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">1.</span> <br>';
+          else if (block.classList.contains('rt-numbered')) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">' + getNextNumber(block) + '.</span> <br>';
           else if (block.classList.contains('rt-checkbox')) newBlock.innerHTML = '<span class="rt-marker" data-checked="0" contenteditable="false"></span> <br>';
           else newBlock.innerHTML = '<br>';
         } else {

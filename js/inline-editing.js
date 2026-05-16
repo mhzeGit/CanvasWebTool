@@ -127,12 +127,8 @@ export function startEditing(idx, field) {
         cancelEditing();
       } else if (ev.key === 'Enter') {
         ev.preventDefault();
-        if (ev.shiftKey) {
-          pendingWordBoundary = true;
-          handleEnter(body, ev);
-        } else {
-          body.blur();
-        }
+        pendingWordBoundary = true;
+        handleEnter(body, ev);
       } else if (ev.key === 'Backspace') {
         handleBackspace(body, ev);
       } else if (ev.key === ' ') {
@@ -346,12 +342,8 @@ function startTextBoxEditing(tbIdx) {
       cancelEditing();
     } else if (ev.key === 'Enter') {
       ev.preventDefault();
-      if (ev.shiftKey) {
-        pendingWordBoundary = true;
-        handleEnter(content, ev);
-      } else {
-        content.blur();
-      }
+      pendingWordBoundary = true;
+      handleEnter(content, ev);
     } else if (ev.key === 'Backspace') {
       handleBackspace(content, ev);
     } else if (ev.key === ' ') {
@@ -443,7 +435,7 @@ function handleEnter(editor, ev) {
     newBlock.className = block.className;
     if (blockLevel > 0) newBlock.dataset.l = blockLevel;
     if (isBullet) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span> <br>';
-    else if (isNumbered) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">1.</span> <br>';
+    else if (isNumbered) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">' + getNextNumber(block) + '.</span> <br>';
     else if (isCheckbox) newBlock.innerHTML = '<span class="rt-marker" data-checked="0" contenteditable="false"></span> <br>';
     else newBlock.innerHTML = '<br>';
   } else {
@@ -455,6 +447,17 @@ function handleEnter(editor, ev) {
   placeCursorAtEnd(newBlock);
   editor.dispatchEvent(new Event('input', { bubbles: true }));
 }
+
+function getNextNumber(block) {
+  const marker = block.querySelector('.rt-marker');
+  if (marker) {
+    const num = parseInt(marker.textContent, 10);
+    if (!isNaN(num)) return num + 1;
+  }
+  return 1;
+}
+
+export { handleEnter, getNextNumber };
 
 function handleBackspace(editor, ev) {
   const sel = window.getSelection();
