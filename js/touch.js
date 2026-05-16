@@ -7,9 +7,15 @@ let _touchActionHandler = null;
 const TAP_MAX_MS = 300;
 const LONG_PRESS_MS = 500;
 const TAP_MAX_MOVE = 10;
+const DOUBLE_TAP_MAX_MS = 300;
+const DOUBLE_TAP_MAX_MOVE = 30;
 
 let _longPressTimer = null;
 let _longPressTriggered = false;
+
+let _lastTapTime = null;
+let _lastTapX = 0;
+let _lastTapY = 0;
 
 export function initTouch(ontouchaction) {
   _touchActionHandler = ontouchaction;
@@ -25,6 +31,7 @@ function _clearLongPress() {
 function _startLongPressTimer(clientX, clientY) {
   _clearLongPress();
   _longPressTriggered = false;
+  _lastTapTime = null;
   _longPressTimer = setTimeout(() => {
     _longPressTimer = null;
     _longPressTriggered = true;
@@ -99,6 +106,7 @@ export function handleTouchDown(e) {
   if (count === 2) {
     _clearLongPress();
     _longPressTriggered = false;
+    _lastTapTime = null;
     state.isTwoFingerGesture = true;
     state.touchTapData = null;
     state.isPanning = false;
@@ -137,6 +145,7 @@ export function handleTouchMove(e) {
       if (state.touchTapData) {
         state.touchTapData.moved = true;
       }
+      _lastTapTime = null;
       _clearLongPress();
     }
   }
@@ -221,6 +230,23 @@ export function handleTouchUp(e) {
 
   if (state.touchTapData && !state.touchTapData.moved &&
     (e.timeStamp - state.touchTapData.time) < TAP_MAX_MS) {
+    if (_lastTapTime !== null &&
+        (e.timeStamp - _lastTapTime) < DOUBLE_TAP_MAX_MS &&
+        Math.abs(e.clientX - _lastTapX) < DOUBLE_TAP_MAX_MOVE &&
+        Math.abs(e.clientY - _lastTapY) < DOUBLE_TAP_MAX_MOVE) {
+      _lastTapTime = null;
+      state.touchTapData = null;
+      state.canvas.dispatchEvent(new MouseEvent('dblclick', {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        bubbles: true,
+        cancelable: true,
+      }));
+      return true;
+    }
+    _lastTapTime = e.timeStamp;
+    _lastTapX = e.clientX;
+    _lastTapY = e.clientY;
     state.touchTapData = null;
     return false;
   }
@@ -239,6 +265,7 @@ export function handleTouchCancel(e) {
   }
   state.touchTapData = null;
   _longPressTriggered = false;
+  _lastTapTime = null;
   return true;
 }
 
