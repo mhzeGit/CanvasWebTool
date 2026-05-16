@@ -1,4 +1,5 @@
 import { FILE_EXTENSION, extractImageAssets, embedImageAssets } from './format.js';
+import { showAlertDialog, isMobile } from './dialog.js';
 
 const MIME_TYPE = 'application/json';
 const FILE_DESCRIPTION = 'Canvas Web Document';
@@ -7,6 +8,7 @@ const ACCEPT_MIME = { [MIME_TYPE]: [FILE_EXTENSION] };
 let cachedFileHandle = null;
 let cachedAssetDirHandle = null;
 let currentAssetDirName = '';
+let cachedFileLastModified = null;
 
 export function hasCachedFileHandle() {
   return cachedFileHandle !== null;
@@ -16,6 +18,7 @@ export function clearCachedFileHandle() {
   cachedFileHandle = null;
   cachedAssetDirHandle = null;
   currentAssetDirName = '';
+  cachedFileLastModified = null;
 }
 
 export async function saveToFile(jsonData, suggestedName) {
@@ -34,6 +37,7 @@ export async function saveToFile(jsonData, suggestedName) {
         const writable = await cachedFileHandle.createWritable();
         await writable.write(blob);
         await writable.close();
+        await updateCachedFileTimestamp();
         return { name: cachedFileHandle.name, handle: cachedFileHandle };
       } catch (e) {
         cachedFileHandle = null;
@@ -72,6 +76,7 @@ export async function saveToFile(jsonData, suggestedName) {
       const writable = await handle.createWritable();
       await writable.write(blob);
       await writable.close();
+      await updateCachedFileTimestamp();
       return { name: handle.name, handle };
     } catch (e) {
       if (e.name === 'AbortError') return null;
@@ -142,6 +147,7 @@ export async function loadFromFile() {
       });
       cachedFileHandle = handle;
       const file = await handle.getFile();
+      cachedFileLastModified = file.lastModified;
       const text = await file.text();
       const docState = JSON.parse(text);
       const baseName = file.name.replace(/\.[^.]+$/, '');
@@ -204,7 +210,7 @@ function loadViaFileInput() {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = `${FILE_EXTENSION},.json,application/json,text/*`;
+    input.accept = isMobile() ? '*/*' : `${FILE_EXTENSION},.json,application/json,text/*`;
     input.style.position = 'fixed';
     input.style.top = '-100px';
     input.style.left = '-100px';
@@ -220,11 +226,16 @@ function loadViaFileInput() {
         return;
       }
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         try {
           resolve({ data: JSON.parse(reader.result), name: file.name, handle: null });
         } catch (e) {
-          reject(e);
+          if (isMobile()) {
+            await showAlertDialog(`Invalid file format.\n\n"${file.name}" is not a valid Canvas Web document.`);
+            resolve(null);
+          } else {
+            reject(e);
+          }
         }
       };
       reader.onerror = () => reject(new Error('Failed to read file'));
@@ -250,4 +261,58 @@ function loadViaFileInput() {
     document.body.appendChild(input);
     input.click();
   });
+}
+
+async function updateCachedFileTimestamp() {
+  if (!cachedFileHandle) return;
+  try {
+    const file = await cachedFileHandle.getFile();
+    cachedFileLastModified = file.lastModified;
+  } catch (_) {}
+}
+
+export async function checkFileModified() {
+  if (!cachedFileHandle || cachedFileLastModified === null) return false;
+  try {
+    const file = await cachedFileHandle.getFile();
+    return file.lastModified !== cachedFileLastModified;
+  } catch (_) {
+    return false;
+  }
+}
+
+export async function reloadFromCachedHandle() {
+  if (!cachedFileHandle) return null;
+  try {
+    const file = await cachedFileHandle.getFile();
+    const text = await file.text();
+    const docState = JSON.parse(text);
+
+    if (cachedAssetDirHandle) {
+      try {
+        const assetsMap = await readAssets(cachedAssetDirHandle);
+        if (Object.keys(assetsMap).length > 0) {
+          embedImageAssets(docState, assetsMap);
+        }
+      } catch (_) {}
+    } else if (currentAssetDirName) {
+      try {
+        const opfsRoot = await navigator.storage.getDirectory();
+        const dirHandle = await opfsRoot.getDirectoryHandle(currentAssetDirName);
+        const assetsMap = await readAssets(dirHandle);
+        if (Object.keys(assetsMap).length > 0) {
+          embedImageAssets(docState, assetsMap);
+        }
+      } catch (_) {}
+    }
+
+    cachedFileLastModified = file.lastModified;
+    return { data: docState, name: file.name, handle: cachedFileHandle };
+  } catch (_) {
+    return null;
+  }
+}
+
+export async function syncFileTimestamp() {
+  await updateCachedFileTimestamp();
 }

@@ -15,7 +15,7 @@ import {
   createBatchShapePropertyChangeCmd,
 } from './undo.js';
 import { serializeDocument, deserializeDocument, FILE_EXTENSION } from './format.js';
-import { saveToFile, loadFromFile, clearCachedFileHandle, saveToFileAs } from './file-io.js';
+import { saveToFile, loadFromFile, clearCachedFileHandle, saveToFileAs, reloadFromCachedHandle, syncFileTimestamp } from './file-io.js';
 import { screenToWorld, getObjectEdgePoint } from './utils.js';
 import { refreshSidePanel } from './side-panel.js';
 import { DEFAULT_TEXTBOX_COLOR } from './config.js';
@@ -974,6 +974,36 @@ function clearIndicator() {
   el.textContent = '';
   el.className = 'save-indicator';
   clearTimeout(el._timer);
+}
+
+function showReloaded() {
+  const el = document.getElementById('saveIndicator');
+  if (!el) return;
+  el.textContent = 'Reloaded!';
+  el.className = 'save-indicator saved';
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => {
+    el.textContent = '';
+    el.className = 'save-indicator';
+  }, 2000);
+}
+
+export async function reloadDocument() {
+  flushPanelEdit();
+  if (state.isDirty) {
+    const confirmed = await showConfirmDialog('The file has changed on disk. Reloading will discard your unsaved changes. Continue?');
+    if (!confirmed) {
+      await syncFileTimestamp();
+      return false;
+    }
+  }
+  const result = await reloadFromCachedHandle();
+  if (!result) return false;
+  const docState = deserializeDocument(result.data);
+  restoreDocumentState(docState);
+  state.currentFileName = result.name;
+  showReloaded();
+  return true;
 }
 
 export async function openDocument() {

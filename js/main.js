@@ -24,12 +24,12 @@ import {
   duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
   addShapeAt, addConnector,
   addImageContainerAt, addImageContainerAtCenter,
-  newDocument, saveDocument, openDocument,
+  newDocument, saveDocument, openDocument, reloadDocument,
 } from './document.js';
 import { performUndo, performRedo } from './history.js';
 import { initToolbar } from './toolbar.js';
 import { initEntityLayer, syncAllEntities } from './dom-entities.js';
-import { hasCachedFileHandle } from './file-io.js';
+import { hasCachedFileHandle, checkFileModified } from './file-io.js';
 
 function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
@@ -173,6 +173,28 @@ function setupAutoSave() {
   }, 2000);
 }
 
+function setupExternalChangeDetection() {
+  let lastCheck = 0;
+  const MIN_CHECK_INTERVAL = 30000;
+
+  async function handleCheck() {
+    const now = Date.now();
+    if (now - lastCheck < MIN_CHECK_INTERVAL) return;
+    lastCheck = now;
+    if (!hasCachedFileHandle()) return;
+    const modified = await checkFileModified();
+    if (modified) {
+      await reloadDocument();
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) handleCheck();
+  });
+  window.addEventListener('focus', handleCheck);
+  setTimeout(handleCheck, 1500);
+}
+
 function setupMobileUI() {
   const hamburgerBtn = document.getElementById('hamburgerBtn');
   const topBarMenus = document.getElementById('topBarMenus');
@@ -247,6 +269,7 @@ function init() {
   initPanelResize();
 
   setupAutoSave();
+  setupExternalChangeDetection();
 
   setupMobileUI();
 

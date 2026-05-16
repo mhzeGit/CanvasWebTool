@@ -4,6 +4,62 @@ function escHtml(str) {
   return div.innerHTML;
 }
 
+function isMobile() {
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+}
+
+export function showAlertDialog(message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'dialog-box';
+    dialog.setAttribute('role', 'alertdialog');
+    dialog.setAttribute('aria-modal', 'true');
+
+    dialog.innerHTML = `
+      <div class="dialog-icon">&#9888;</div>
+      <div class="dialog-message">${escHtml(message)}</div>
+      <div class="dialog-buttons">
+        <button class="dialog-btn dialog-btn-primary" data-action="ok">OK</button>
+      </div>
+    `;
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const okBtn = dialog.querySelector('[data-action="ok"]');
+
+    let resolved = false;
+
+    function cleanup() {
+      if (resolved) return;
+      resolved = true;
+      document.removeEventListener('keydown', onKeyDown);
+      overlay.remove();
+      resolve();
+    }
+
+    function onKeyDown(e) {
+      if (e.key === 'Escape' || e.key === 'Enter') {
+        e.preventDefault();
+        cleanup();
+      }
+    }
+
+    okBtn.addEventListener('click', cleanup);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) cleanup();
+    });
+    document.addEventListener('keydown', onKeyDown);
+
+    okBtn.focus();
+  });
+}
+
+export { isMobile };
+
 export function showConfirmDialog(message) {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
