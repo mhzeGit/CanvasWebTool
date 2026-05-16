@@ -214,6 +214,7 @@ function setupMobileUI() {
     mobilePanelToggle.addEventListener('click', (e) => {
       e.stopPropagation();
       sidePanel.classList.toggle('mobile-visible');
+      resizeCanvas();
     });
 
     document.addEventListener('pointerdown', (e) => {
@@ -221,6 +222,7 @@ function setupMobileUI() {
         !sidePanel.contains(e.target) &&
         e.target !== mobilePanelToggle) {
         sidePanel.classList.remove('mobile-visible');
+        resizeCanvas();
       }
     });
   }
