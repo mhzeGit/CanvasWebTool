@@ -35,11 +35,14 @@ function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
   const sideEl = document.getElementById('sidePanel');
   const toolbarEl = document.getElementById('leftToolbar');
-  const sideWidthPx = sideEl ? sideEl.getBoundingClientRect().width : Math.floor(window.innerWidth * 0.30);
-  const toolbarWidthPx = toolbarEl ? toolbarEl.getBoundingClientRect().width : 0;
+  const isMobile = window.innerWidth <= 768;
+  const sideVisible = sideEl && sideEl.classList.contains('mobile-visible');
+  const sideWidthPx = sideVisible ? sideEl.getBoundingClientRect().width : (isMobile ? 0 : (sideEl ? sideEl.getBoundingClientRect().width : Math.floor(window.innerWidth * 0.30)));
+  const toolbarWidthPx = isMobile ? 0 : (toolbarEl ? toolbarEl.getBoundingClientRect().width : 0);
+  const toolbarBottomPx = isMobile ? 52 : 0;
   const topBarPx = 40;
   const cssWidth = window.innerWidth - sideWidthPx - toolbarWidthPx;
-  const cssHeight = window.innerHeight - topBarPx;
+  const cssHeight = window.innerHeight - topBarPx - toolbarBottomPx;
   state.canvas.style.width = cssWidth + 'px';
   state.canvas.style.height = cssHeight + 'px';
   state.canvas.width = cssWidth * dpr;
