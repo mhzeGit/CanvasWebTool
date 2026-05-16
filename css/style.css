@@ -794,7 +794,6 @@ canvas#gridCanvas {
 .rt-bullet .rt-marker, .rt-numbered .rt-marker {
   display: inline-block;
   margin-left: -1.05em;
-  padding-right: 0.3em;
 }
 
 .rt-bullet[data-l="1"], .rt-numbered[data-l="1"] {
@@ -1271,7 +1270,6 @@ canvas#arrowCanvas {
 .entity-textbox-content .rt-bullet .rt-marker, .entity-textbox-content .rt-numbered .rt-marker {
   display: inline-block;
   margin-left: -1.05em;
-  padding-right: 0.3em;
 }
 
 .entity-textbox-content .rt-bullet[data-l="1"], .entity-textbox-content .rt-numbered[data-l="1"] {

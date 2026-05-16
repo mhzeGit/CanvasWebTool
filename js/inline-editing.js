@@ -612,7 +612,7 @@ function _applyBlockMarkdown(block) {
     return true;
   }
 
-  const numMatch = content.match(/^(\d+)\.\s(.+)/);
+  const numMatch = content.match(/^(\d+)\.\s+(.+)/);
   if (numMatch) {
     block.classList.remove('rt-paragraph');
     block.classList.add('rt-numbered');
