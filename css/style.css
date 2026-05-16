@@ -1350,6 +1350,24 @@ canvas#arrowCanvas {
   clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
 }
 
+.entity-shape-image-wrap {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.si-img {
+  position: absolute;
+  overflow: hidden;
+}
+
+.si-img-inner {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
 /* ===== Confirmation Dialog ===== */
 .dialog-overlay {
   position: fixed;

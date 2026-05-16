@@ -583,12 +583,13 @@ export function refreshSidePanel() {
           '<div class="panel-row" style="flex-direction:row;align-items:center;gap:4px;"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;">' + state.escAttr(s.image.fileName || 'Image') + '</span>' +
           '<button id="panelShapeRemoveImage" style="background:none;border:1px solid #555;color:#e74c3c;border-radius:3px;cursor:pointer;padding:0 6px;font-size:11px;line-height:1.4;">\u00d7</button></div>' +
           '<div class="panel-row" style="flex-direction:row;gap:4px;"><button id="panelShapeAddImage" class="panel-input" style="cursor:pointer;flex:1">Replace...</button>' +
-          '<button id="panelShapeUrlAddBtn" class="panel-input" style="cursor:pointer;width:auto;">URL</button></div>';
+          '<button id="panelShapeUrlAddBtn" class="panel-input" style="cursor:pointer;width:auto;">URL</button></div>' +
+          '<div class="panel-row"><span style="font-size:12px;color:#999">Image fills the shape. Resize corner handles to scale with locked ratio.</span></div>';
       } else {
         imageSectionHtml = '<div class="panel-section-title" style="margin-top:12px">Image</div>' +
           '<div class="panel-row" style="color:#777;font-size:11px;">No image</div>' +
-          '<div class="panel-row" style="flex-direction:row;gap:4px;"><button id="panelShapeAddImage" class="panel-input" style="cursor:pointer;flex:1">+ Add Image</button>' +
-          '<button id="panelShapeUrlAddBtn" class="panel-input" style="cursor:pointer;width:auto;">URL</button></div>';
+          '<div class="panel-row" style="flex-direction:row;gap:4px;"><button id="panelShapeAddImage" class="panel-input" style="cursor:pointer;flex:1">+ Add Image' +
+          '</button><button id="panelShapeUrlAddBtn" class="panel-input" style="cursor:pointer;width:auto;">URL</button></div>';
       }
     }
 

@@ -24,32 +24,6 @@ import { showConfirmDialog } from './dialog.js';
 
 let _nextImageId = 1;
 
-function fitImageInShape(s, naturalW, naturalH) {
-  const margin = 10;
-  const availW = s.w - margin * 2;
-  const availH = s.h - margin * 2;
-  let imgW, imgH;
-  if (naturalW && naturalH) {
-    const ratio = naturalW / naturalH;
-    if (availW / ratio <= availH) {
-      imgW = availW;
-      imgH = availW / ratio;
-    } else {
-      imgH = availH;
-      imgW = availH * ratio;
-    }
-  } else {
-    imgW = Math.min(120, availW);
-    imgH = Math.min(120, availH);
-  }
-  return {
-    x: margin + (availW - imgW) / 2,
-    y: margin + (availH - imgH) / 2,
-    w: Math.round(imgW),
-    h: Math.round(imgH),
-  };
-}
-
 export function addImageContainerAt(worldX, worldY, optW, optH) {
   flushPanelEdit();
   const isDrag = optW !== undefined && optH !== undefined;
@@ -95,38 +69,14 @@ export function addImageToShape(shapeIdx, src) {
   flushPanelEdit();
   const s = state.shapes[shapeIdx];
   if (!s) return;
-  const imgId = _nextImageId++;
-  const place = fitImageInShape(s, null, null);
   const img = {
-    id: imgId,
-    x: place.x,
-    y: place.y,
-    w: place.w,
-    h: place.h,
+    id: _nextImageId++,
     src: src || '',
     fileName: '',
-    keepRatio: true,
   };
   s.image = img;
   state.markDrawOrderDirty();
   refreshSidePanel();
-  if (src) {
-    const temp = new Image();
-    temp.onload = () => {
-      const nw = temp.naturalWidth;
-      const nh = temp.naturalHeight;
-      const newPlace = fitImageInShape(s, nw, nh);
-      if (s.image && s.image.id === imgId) {
-        s.image.x = newPlace.x;
-        s.image.y = newPlace.y;
-        s.image.w = newPlace.w;
-        s.image.h = newPlace.h;
-        state.markDrawOrderDirty();
-        refreshSidePanel();
-      }
-    };
-    temp.src = src;
-  }
   return img;
 }
 
@@ -634,6 +584,7 @@ export function copySelectedShapes() {
 
   for (const i of state.selectedShapes) {
     const s = state.shapes[i];
+    const imgCopy = s.image ? { id: s.image.id, src: s.image.src, fileName: s.image.fileName } : null;
     state.clipboard.push({
       _type: 'shape',
       dx: s.x - mouseWorld.x,
@@ -644,7 +595,7 @@ export function copySelectedShapes() {
       borderColor: s.borderColor,
       borderWidth: s.borderWidth,
       cornerRadius: s.cornerRadius,
-      image: s.image ? JSON.parse(JSON.stringify(s.image)) : null,
+      image: imgCopy,
     });
   }
 }
@@ -655,6 +606,7 @@ export function pasteShapesAt(worldX, worldY) {
   flushPanelEdit();
   const pastedShapes = [];
   for (const c of entries) {
+    const imgCopy = c.image ? { id: c.image.id, src: c.image.src, fileName: c.image.fileName } : null;
     const shape = {
       id: state.nextShapeId++,
       x: worldX + c.dx,
@@ -665,7 +617,7 @@ export function pasteShapesAt(worldX, worldY) {
       borderColor: c.borderColor || '#6bb5ff',
       borderWidth: c.borderWidth ?? 2,
       cornerRadius: c.cornerRadius ?? (c.shapeType === 'rectangle' ? 4 : 0),
-      image: c.image ? JSON.parse(JSON.stringify(c.image)) : null,
+      image: imgCopy,
       parentId: null,
       parentType: null,
     };
@@ -689,6 +641,7 @@ export function duplicateSelectedShapes() {
   const dupes = [];
   for (const i of state.selectedShapes) {
     const s = state.shapes[i];
+    const imgCopy = s.image ? { id: s.image.id, src: s.image.src, fileName: s.image.fileName } : null;
     dupes.push({
       id: state.nextShapeId++,
       x: s.x + 20,
@@ -699,7 +652,7 @@ export function duplicateSelectedShapes() {
       borderColor: s.borderColor,
       borderWidth: s.borderWidth,
       cornerRadius: s.cornerRadius,
-      image: s.image ? JSON.parse(JSON.stringify(s.image)) : null,
+      image: imgCopy,
       parentId: null,
       parentType: null,
     });
@@ -746,6 +699,7 @@ export function copySelection() {
   }
   for (const i of state.selectedShapes) {
     const s = state.shapes[i];
+    const imgCopy = s.image ? { id: s.image.id, src: s.image.src, fileName: s.image.fileName } : null;
     state.clipboard.push({
       _type: 'shape',
       dx: s.x - mouseWorld.x,
@@ -756,7 +710,7 @@ export function copySelection() {
       borderColor: s.borderColor,
       borderWidth: s.borderWidth,
       cornerRadius: s.cornerRadius,
-      image: s.image ? JSON.parse(JSON.stringify(s.image)) : null,
+      image: imgCopy,
     });
   }
 }
@@ -787,6 +741,7 @@ export function pasteAt(worldX, worldY) {
       state.textBoxes.push(tb);
       pastedTextBoxes.push({ textBox: tb, index: idx });
     } else if (type === 'shape') {
+      const imgCopy = c.image ? { id: c.image.id, src: c.image.src, fileName: c.image.fileName } : null;
       const shape = {
         id: state.nextShapeId++,
         x: worldX + c.dx, y: worldY + c.dy,
@@ -796,7 +751,7 @@ export function pasteAt(worldX, worldY) {
         borderColor: c.borderColor || '#6bb5ff',
         borderWidth: c.borderWidth ?? 2,
         cornerRadius: c.cornerRadius ?? (c.shapeType === 'rectangle' ? 4 : 0),
-        image: c.image ? JSON.parse(JSON.stringify(c.image)) : null,
+        image: imgCopy,
         parentId: null, parentType: null,
       };
       const idx = state.shapes.length;

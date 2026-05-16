@@ -176,17 +176,13 @@ function ensureShapeElement(idx) {
     }
     const innerImg = imgEl.querySelector('.si-img-inner');
     if (innerImg && innerImg.src !== s.image.src) innerImg.src = s.image.src;
-    const sc = state.scale;
     imgEl.style.position = 'absolute';
-    imgEl.style.left = (s.image.x * sc) + 'px';
-    imgEl.style.top = (s.image.y * sc) + 'px';
-    imgEl.style.width = (s.image.w * sc) + 'px';
-    imgEl.style.height = (s.image.h * sc) + 'px';
+    imgEl.style.inset = '0';
     imgEl.style.display = '';
     if (innerImg) {
       innerImg.style.width = '100%';
       innerImg.style.height = '100%';
-      innerImg.style.objectFit = s.image.keepRatio ? 'contain' : 'fill';
+      innerImg.style.objectFit = 'contain';
       innerImg.style.display = 'block';
     }
     imageWrap.style.display = '';

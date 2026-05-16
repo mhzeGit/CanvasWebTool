@@ -91,15 +91,30 @@ function handleImageDropAt(dataOrUrl, worldX, worldY) {
   if (targetIdx >= 0) {
     addImageToShape(targetIdx, dataOrUrl);
   } else {
-    const w = 280;
-    const h = 220;
-    const cx = worldX - w / 2;
-    const cy = worldY - h / 2;
-    const prevLen = state.shapes.length;
-    addImageContainerAt(cx, cy, w, h);
-    if (state.shapes.length > prevLen) {
-      addImageToShape(state.shapes.length - 1, dataOrUrl);
-    }
+    const temp = new Image();
+    temp.onload = () => {
+      const nw = temp.naturalWidth;
+      const nh = temp.naturalHeight;
+      const maxDim = 400;
+      let w, h;
+      if (nw > nh) {
+        w = maxDim;
+        h = Math.round((nh / nw) * maxDim);
+      } else {
+        h = maxDim;
+        w = Math.round((nw / nh) * maxDim);
+      }
+      w = Math.max(100, w);
+      h = Math.max(100, h);
+      const cx = worldX - w / 2;
+      const cy = worldY - h / 2;
+      const prevLen = state.shapes.length;
+      addImageContainerAt(cx, cy, w, h);
+      if (state.shapes.length > prevLen) {
+        addImageToShape(state.shapes.length - 1, dataOrUrl);
+      }
+    };
+    temp.src = dataOrUrl;
   }
 }
 
@@ -673,7 +688,19 @@ function onPointerMove(e) {
     const dx = world.x - state.resizeShapeStartWorldX;
     const dy = world.y - state.resizeShapeStartWorldY;
     const s = state.shapes[state.resizeShapeIdx];
-    const b = snapResizeBounds(state.resizeShapeStartBounds, state.resizeShapeHandle, dx, dy, SHAPE_MIN_W, SHAPE_MIN_H, state.scale, e.ctrlKey);
+    let b = snapResizeBounds(state.resizeShapeStartBounds, state.resizeShapeHandle, dx, dy, SHAPE_MIN_W, SHAPE_MIN_H, state.scale, e.ctrlKey);
+    if (s.image) {
+      const origRatio = state.resizeShapeStartBounds.w / state.resizeShapeStartBounds.h;
+      const corners = ['tl', 'tr', 'bl', 'br'];
+      const handle = state.resizeShapeHandle;
+      if (corners.includes(handle)) {
+        const newW = Math.abs(b.w);
+        const newH = newW / origRatio;
+        b.h = newH;
+        if (handle.includes('t')) b.y = state.resizeShapeStartBounds.y + state.resizeShapeStartBounds.h - newH;
+        if (handle.includes('l')) b.x = state.resizeShapeStartBounds.x + state.resizeShapeStartBounds.w - newW;
+      }
+    }
     s.x = b.x; s.y = b.y; s.w = b.w; s.h = b.h;
     e.preventDefault();
     return;
