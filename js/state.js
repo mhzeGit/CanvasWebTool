@@ -277,6 +277,16 @@ export const state = {
   drawingStartY: 0,
   drawingStartConnected: null,
 
+  touchPointers: new Map(),
+  touchTapData: null,
+  isTwoFingerGesture: false,
+  twoFingerMidX: 0,
+  twoFingerMidY: 0,
+  twoFingerStartDist: 0,
+  twoFingerStartScale: 1,
+  twoFingerStartOffsetX: 0,
+  twoFingerStartOffsetY: 0,
+
   pendingClickIndex: -1,
   pendingClickItemIdx: -1,
   pointerDownScreenX: 0,

@@ -28,6 +28,7 @@ import {
 import { flushPanelEdit } from './history.js';
 import { DRAG_THRESHOLD_PX, TEXTBOX_MIN_W, TEXTBOX_MIN_H, SHAPE_MIN_W, SHAPE_MIN_H, EDGE_MARGIN, IMAGE_CONTAINER_MIN_W, IMAGE_CONTAINER_MIN_H, IMAGE_ITEM_MIN_W, IMAGE_ITEM_MIN_H } from './config.js';
 import { getSnapIncrement, snapValue, snapResizeBounds } from './snap.js';
+import { handleTouchDown, handleTouchMove, handleTouchUp, handleTouchCancel, isTwoFingerActive } from './touch.js';
 
 let _history;
 
@@ -185,6 +186,7 @@ export function deleteArrowFn(ai) {
 }
 
 function onPointerCancel(e) {
+  handleTouchCancel(e);
   if (state.drawingTool) {
     state.drawingTool = null;
     state.drawingShapeType = null;
@@ -278,6 +280,8 @@ function hasHitOnExistingItem(wx, wy) {
 }
 
 function onPointerDown(e) {
+  if (handleTouchDown(e)) return;
+
   const canvas = state.canvas;
   const rect = canvas.getBoundingClientRect();
   const sx = e.clientX - rect.left;
@@ -801,6 +805,9 @@ function onPointerDown(e) {
 }
 
 function onPointerMove(e) {
+  if (handleTouchMove(e)) return;
+  if (isTwoFingerActive()) return;
+
   const canvas = state.canvas;
   const rect = canvas.getBoundingClientRect();
   const sx = e.clientX - rect.left;
@@ -1424,6 +1431,8 @@ function onPointerMove(e) {
 }
 
 function onPointerUp(e) {
+  if (handleTouchUp(e)) return;
+
   const canvas = state.canvas;
   const rect = canvas.getBoundingClientRect();
   const sx = e.clientX - rect.left;

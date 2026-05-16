@@ -1,6 +1,7 @@
 const MIN_PANEL_WIDTH = 220;
 const MAX_PANEL_WIDTH = 700;
 const STORAGE_KEY = 'canvasWebToolPanelWidth';
+const MOBILE_BREAKPOINT = 768;
 
 export function initPanelResize() {
   const panel = document.getElementById('sidePanel');
@@ -8,7 +9,12 @@ export function initPanelResize() {
 
   let isResizing = false;
 
+  function isMobile() {
+    return window.innerWidth <= MOBILE_BREAKPOINT;
+  }
+
   function restorePanelWidth() {
+    if (isMobile()) return;
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
@@ -21,6 +27,7 @@ export function initPanelResize() {
   }
 
   function savePanelWidth() {
+    if (isMobile()) return;
     try {
       const w = parseFloat(panel.style.width);
       if (!Number.isNaN(w)) {
@@ -46,7 +53,7 @@ export function initPanelResize() {
   }
 
   function onPointerMove(e) {
-    if (!isResizing) return;
+    if (!isResizing || isMobile()) return;
     const newWidth = Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, window.innerWidth - e.clientX));
     panel.style.width = newWidth + 'px';
     handle.style.left = (window.innerWidth - newWidth) + 'px';

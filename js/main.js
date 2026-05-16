@@ -16,6 +16,7 @@ import { setupInlineEditing } from './inline-editing.js';
 import { refreshSidePanel } from './side-panel.js';
 import { initPanelResize } from './panel-resize.js';
 import { history, initHistory } from './history.js';
+import { initTouch } from './touch.js';
 import {
   addNodeAt, addArrowAt, addNodeAtCenter, addArrowAtCenter, addShapeAtCenter, addConnectorAtCenter,
   deleteSelectedNodes, deleteSelectedShapes, deleteSelectedTextBoxes, deleteSelectedConnectors,
@@ -35,11 +36,14 @@ function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
   const sideEl = document.getElementById('sidePanel');
   const toolbarEl = document.getElementById('leftToolbar');
-  const sideWidthPx = sideEl ? sideEl.getBoundingClientRect().width : Math.floor(window.innerWidth * 0.30);
-  const toolbarWidthPx = toolbarEl ? toolbarEl.getBoundingClientRect().width : 0;
+  const isMobile = window.innerWidth <= 768;
+  const sideVisible = sideEl && sideEl.classList.contains('mobile-visible');
+  const sideWidthPx = sideVisible ? sideEl.getBoundingClientRect().width : (isMobile ? 0 : (sideEl ? sideEl.getBoundingClientRect().width : Math.floor(window.innerWidth * 0.30)));
+  const toolbarWidthPx = isMobile ? 0 : (toolbarEl ? toolbarEl.getBoundingClientRect().width : 0);
+  const toolbarBottomPx = isMobile ? 52 : 0;
   const topBarPx = 40;
   const cssWidth = window.innerWidth - sideWidthPx - toolbarWidthPx;
-  const cssHeight = window.innerHeight - topBarPx;
+  const cssHeight = window.innerHeight - topBarPx - toolbarBottomPx;
   state.canvas.style.width = cssWidth + 'px';
   state.canvas.style.height = cssHeight + 'px';
   state.canvas.width = cssWidth * dpr;
@@ -183,6 +187,61 @@ function setupAutoSave() {
   }, 2000);
 }
 
+function setupMobileUI() {
+  const hamburgerBtn = document.getElementById('hamburgerBtn');
+  const topBarMenus = document.getElementById('topBarMenus');
+  const mobilePanelToggle = document.getElementById('mobilePanelToggle');
+  const sidePanel = document.getElementById('sidePanel');
+
+  if (hamburgerBtn && topBarMenus) {
+    hamburgerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      topBarMenus.classList.toggle('mobile-open');
+    });
+
+    document.addEventListener('pointerdown', (e) => {
+      if (topBarMenus.classList.contains('mobile-open') &&
+        !topBarMenus.contains(e.target) &&
+        e.target !== hamburgerBtn) {
+        topBarMenus.classList.remove('mobile-open');
+      }
+    });
+  }
+
+  if (topBarMenus) {
+    topBarMenus.querySelectorAll('.menu-button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const menu = btn.closest('.menu');
+        if (!menu) return;
+        const wasOpen = menu.classList.contains('mobile-open');
+        topBarMenus.querySelectorAll('.menu.mobile-open').forEach(m => m.classList.remove('mobile-open'));
+        if (!wasOpen) {
+          menu.classList.add('mobile-open');
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      });
+    });
+  }
+
+  if (mobilePanelToggle && sidePanel) {
+    mobilePanelToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sidePanel.classList.toggle('mobile-visible');
+      resizeCanvas();
+    });
+
+    document.addEventListener('pointerdown', (e) => {
+      if (sidePanel.classList.contains('mobile-visible') &&
+        !sidePanel.contains(e.target) &&
+        e.target !== mobilePanelToggle) {
+        sidePanel.classList.remove('mobile-visible');
+        resizeCanvas();
+      }
+    });
+  }
+}
+
 function init() {
   initSettings();
   resizeCanvas();
@@ -191,6 +250,7 @@ function init() {
 
   initEntityLayer();
   initPointer(history);
+  initTouch();
   initToolbar();
   setupKeyboard();
   setupContextMenu();
@@ -201,6 +261,8 @@ function init() {
   initPanelResize();
 
   setupAutoSave();
+
+  setupMobileUI();
 
   function addConnectorAt(worldX, worldY) {
     const offset = 60;
