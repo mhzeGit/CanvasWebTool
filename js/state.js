@@ -81,8 +81,10 @@ function computeSelectionKey() {
   const ma = state.selectedArrows.size > 0 ? 1 : 0;
   const mc = state.selectedConnection !== null ? 1 : 0;
   const mx = state.selectedConnectors.size > 0 ? 1 : 0;
-  if (ms + mt + ma + mc + mx > 1) {
-    return `mixed:${state.selectedShapes.size}|${state.selectedTextBoxes.size}|${state.selectedArrows.size}|${state.selectedConnection !== null ? 1 : 0}|${state.selectedConnectors.size}`;
+  const mci = state.selectedImageContainers.size > 0 ? 1 : 0;
+  const mii = state.selectedImageItems.size > 0 ? 1 : 0;
+  if (ms + mt + ma + mc + mx + mci + mii > 1) {
+    return `mixed:${state.selectedShapes.size}|${state.selectedTextBoxes.size}|${state.selectedArrows.size}|${state.selectedConnection !== null ? 1 : 0}|${state.selectedConnectors.size}|${state.selectedImageContainers.size}|${state.selectedImageItems.size}`;
   }
   if (state.selectedArrows.size === 1) return `arrow:${Array.from(state.selectedArrows)[0]}`;
   if (state.selectedArrows.size > 1) return `arrows:${state.selectedArrows.size}`;
@@ -93,11 +95,56 @@ function computeSelectionKey() {
   if (state.selectedTextBoxes.size > 1) return `tbs:${state.selectedTextBoxes.size}`;
   if (state.selectedConnectors.size === 1) return `connector:${Array.from(state.selectedConnectors)[0]}`;
   if (state.selectedConnectors.size > 1) return `connectors:${state.selectedConnectors.size}`;
+  if (state.selectedImageContainers.size === 1) return `ic:${Array.from(state.selectedImageContainers)[0]}`;
+  if (state.selectedImageContainers.size > 1) return `ics:${state.selectedImageContainers.size}`;
+  if (state.selectedImageItems.size === 1) return `ii:${Array.from(state.selectedImageItems)[0].containerIdx}:${Array.from(state.selectedImageItems)[0].imageId}`;
+  if (state.selectedImageItems.size > 1) return `iis:${state.selectedImageItems.size}`;
   return 'none';
 }
 
 function escAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function getImageItemHitAt(wx, wy, container) {
+  if (!container || !container.image) return null;
+  const img = container.image;
+  const absX = container.x + img.x;
+  const absY = container.y + img.y;
+  if (wx >= absX && wx <= absX + img.w && wy >= absY && wy <= absY + img.h) {
+    return img;
+  }
+  return null;
+}
+
+function findImageItem(containerIdx, imageId) {
+  const c = state.imageContainers[containerIdx];
+  if (!c || !c.image) return null;
+  return c.image.id === imageId ? c.image : null;
+}
+
+function getImageItemAbsoluteBounds(containerIdx, imageId) {
+  const c = state.imageContainers[containerIdx];
+  if (!c || !c.image) return null;
+  const img = c.image;
+  if (img.id !== imageId) return null;
+  return {
+    x: c.x + img.x,
+    y: c.y + img.y,
+    w: img.w,
+    h: img.h,
+    containerIdx,
+    imageId,
+  };
+}
+
+function getImageNaturalRatio(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img.naturalWidth / img.naturalHeight);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
 }
 
 export const state = {
@@ -198,6 +245,32 @@ export const state = {
   isDraggingConnectorBody: false,
   dragConnectorBodySnapshots: [],
 
+  imageContainers: [],
+  nextImageContainerId: 1,
+  nextImageItemId: 1,
+  selectedImageContainers: new Set(),
+  selectedImageItems: new Set(),
+  isDraggingImageContainer: false,
+  dragImageContainerStarts: [],
+  isResizingImageContainer: false,
+  resizeImageContainerIdx: -1,
+  resizeImageContainerId: -1,
+  resizeImageContainerHandle: '',
+  resizeImageContainerStartWorldX: 0,
+  resizeImageContainerStartWorldY: 0,
+  resizeImageContainerStartBounds: null,
+  containerDropHighlight: -1,
+  isDraggingImageItem: false,
+  dragImageItemStarts: [],
+  isResizingImageItem: false,
+  resizeImageItemContainerIdx: -1,
+  resizeImageItemId: -1,
+  resizeImageItemHandle: '',
+  resizeImageItemStartWorldX: 0,
+  resizeImageItemStartWorldY: 0,
+  resizeImageItemStartBounds: null,
+  pendingImageItemId: null,
+
   drawingTool: null,
   drawingShapeType: null,
   drawingStartX: 0,
@@ -234,10 +307,46 @@ export const state = {
       const item = order[i];
       let e;
       if (item.type === 'shape') e = state.shapes[item.i];
-      else e = state.textBoxes[item.i];
+      else if (item.type === 'textBox') e = state.textBoxes[item.i];
+      else if (item.type === 'imageContainer') {
+        e = state.imageContainers[item.i];
+        if (e && wx >= e.x && wx <= e.x + e.w && wy >= e.y && wy <= e.y + e.h) {
+          const imgHit = getImageItemHitAt(wx, wy, e);
+          if (imgHit) {
+            return { type: 'imageItem', containerIdx: item.i, imageId: imgHit.id };
+          }
+        }
+      }
       if (e && wx >= e.x && wx <= e.x + e.w && wy >= e.y && wy <= e.y + e.h) return item;
     }
     return null;
+  },
+  getAllDrawOrder() {
+    const items = [];
+    for (let i = 0; i < state.shapes.length; i++) {
+      items.push({ type: 'shape', i, area: state.shapes[i].w * state.shapes[i].h });
+    }
+    for (let i = 0; i < state.textBoxes.length; i++) {
+      items.push({ type: 'textBox', i, area: state.textBoxes[i].w * state.textBoxes[i].h });
+    }
+    for (let i = 0; i < state.imageContainers.length; i++) {
+      items.push({ type: 'imageContainer', i, area: state.imageContainers[i].w * state.imageContainers[i].h });
+    }
+    items.sort((a, b) => b.area - a.area);
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const entity = item.type === 'shape' ? state.shapes[item.i] : item.type === 'textBox' ? state.textBoxes[item.i] : item.type === 'imageContainer' ? state.imageContainers[item.i] : null;
+      if (entity && entity.parentId != null) {
+        const parentIdx = items.findIndex(p => {
+          const pe = p.type === 'shape' ? state.shapes[p.i] : p.type === 'textBox' ? state.textBoxes[p.i] : p.type === 'imageContainer' ? state.imageContainers[p.i] : null;
+          return pe && pe.id === entity.parentId && p.type === entity.parentType;
+        });
+        if (parentIdx >= 0 && parentIdx >= i) {
+          [items[i], items[parentIdx]] = [items[parentIdx], items[i]];
+        }
+      }
+    }
+    return items;
   },
   getAllDrawOrder() {
     const items = [];
@@ -268,4 +377,7 @@ export const state = {
   getChildrenByParentId,
   computeSelectionKey,
   escAttr,
+  getImageItemHitAt,
+  findImageItem,
+  getImageItemAbsoluteBounds,
 };

@@ -22,6 +22,8 @@ import {
   deleteSelectedArrows, deleteConnection,
   duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
   addShapeAt, addConnector,
+  addImageContainerAt, addImageContainerAtCenter,
+  deleteSelectedImageContainers,
   newDocument, saveDocument, openDocument,
 } from './document.js';
 import { performUndo, performRedo } from './history.js';
@@ -102,6 +104,7 @@ function animate() {
   drawShapePreview();
   drawNodePreview();
   drawTextBoxPreview();
+  drawImageContainerPreview();
 
   const key = state.computeSelectionKey();
   if (key !== state.lastPanelKey) {
@@ -112,6 +115,22 @@ function animate() {
   requestAnimationFrame(animate);
 }
 
+function drawImageContainerPreview() {
+  if (!state.drawingTool || state.drawingTool !== 'imageContainer') return;
+  const ctx = state.ctx;
+  const x = Math.min(state.drawingStartX, state.lastWorldMouse.x);
+  const y = Math.min(state.drawingStartY, state.lastWorldMouse.y);
+  const w = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
+  const h = Math.abs(state.lastWorldMouse.y - state.drawingStartY);
+
+  ctx.save();
+  ctx.strokeStyle = '#6bb5ff';
+  ctx.lineWidth = 2 / state.scale;
+  ctx.setLineDash([6 / state.scale, 4 / state.scale]);
+  ctx.strokeRect(x, y, w, h);
+  ctx.restore();
+}
+
 function initTopBar() {
   const addNodeBtn = document.getElementById('actionAddNode');
   const addArrowBtn = document.getElementById('actionAddArrow');
@@ -120,6 +139,7 @@ function initTopBar() {
   const addTriangleBtn = document.getElementById('actionAddTriangle');
   const addDiamondBtn = document.getElementById('actionAddDiamond');
   const addConnectorBtn = document.getElementById('actionAddConnector');
+  const addImageContainerBtn = document.getElementById('actionAddImageContainer');
   const undoBtn = document.getElementById('actionUndo');
   const redoBtn = document.getElementById('actionRedo');
   const newBtn = document.getElementById('actionNew');
@@ -134,6 +154,7 @@ function initTopBar() {
   if (addTriangleBtn) addTriangleBtn.addEventListener('click', (e) => { e.preventDefault(); addShapeAtCenter('triangle'); });
   if (addDiamondBtn) addDiamondBtn.addEventListener('click', (e) => { e.preventDefault(); addShapeAtCenter('diamond'); });
   if (addConnectorBtn) addConnectorBtn.addEventListener('click', (e) => { e.preventDefault(); addConnectorAtCenter(); });
+  if (addImageContainerBtn) addImageContainerBtn.addEventListener('click', (e) => { e.preventDefault(); addImageContainerAtCenter(); });
   if (undoBtn) undoBtn.addEventListener('click', (e) => { e.preventDefault(); performUndo(); });
   if (redoBtn) redoBtn.addEventListener('click', (e) => { e.preventDefault(); performRedo(); });
   if (newBtn) newBtn.addEventListener('click', (e) => { e.preventDefault(); newDocument(); });
@@ -196,10 +217,12 @@ function init() {
     refreshSidePanel,
     addShapeAt,
     addConnectorAt,
+    addImageContainerAt,
     deleteSelectedShapes,
     deleteSelectedConnectors,
     deleteSelectedArrows,
     deleteConnection,
+    deleteSelectedImageContainers,
   });
 
   document.addEventListener('pointerdown', (e) => {
@@ -227,6 +250,14 @@ function init() {
     }
     if (state.selectedConnectors.size > 0) {
       state.selectedConnectors.clear();
+      didClear = true;
+    }
+    if (state.selectedImageContainers.size > 0) {
+      state.selectedImageContainers.clear();
+      didClear = true;
+    }
+    if (state.selectedImageItems.size > 0) {
+      state.selectedImageItems.clear();
       didClear = true;
     }
     if (didClear) refreshSidePanel();

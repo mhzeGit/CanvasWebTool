@@ -679,6 +679,319 @@ export function createBatchCmd(commands, description) {
   };
 }
 
+// --- Image Container Commands ---
+
+export function createAddImageContainerCmd(containers, selectedContainers, refreshPanelFn, container, insertedAt) {
+  const containerId = container.id;
+  return {
+    undo() {
+      const idx = containers.findIndex(c => c.id === containerId);
+      if (idx !== -1) containers.splice(idx, 1);
+      selectedContainers.clear();
+      state.markDrawOrderDirty();
+      state.reparentAll();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      containers.splice(insertedAt, 0, container);
+      selectedContainers.clear();
+      selectedContainers.add(insertedAt);
+      state.markDrawOrderDirty();
+      state.reparentAll();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: 'Add Image Container'
+  };
+}
+
+export function createDeleteImageContainersCmd(containers, selectedContainers, refreshPanelFn, deletedEntries) {
+  return {
+    undo() {
+      for (let i = 0; i < deletedEntries.length; i++) {
+        containers.splice(deletedEntries[i].index, 0, deletedEntries[i].container);
+      }
+      selectedContainers.clear();
+      for (const entry of deletedEntries) selectedContainers.add(entry.index);
+      state.markDrawOrderDirty();
+      state.reparentAll();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const ids = new Set(deletedEntries.map(e => e.container.id));
+      for (let i = containers.length - 1; i >= 0; i--) {
+        if (ids.has(containers[i].id)) containers.splice(i, 1);
+      }
+      selectedContainers.clear();
+      state.markDrawOrderDirty();
+      state.reparentAll();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: deletedEntries.length === 1 ? 'Delete Image Container' : `Delete ${deletedEntries.length} Image Containers`
+  };
+}
+
+export function createMoveImageContainersCmd(containers, selectedContainers, refreshPanelFn, moves) {
+  return {
+    undo() {
+      for (const m of moves) {
+        const found = containers.find(c => c.id === m.id);
+        if (found) { found.x = m.fromX; found.y = m.fromY; }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (const m of moves) {
+        const found = containers.find(c => c.id === m.id);
+        if (found) { found.x = m.toX; found.y = m.toY; }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: moves.length === 1 ? 'Move Image Container' : `Move ${moves.length} Image Containers`
+  };
+}
+
+export function createResizeImageContainerCmd(containers, selectedContainers, refreshPanelFn, containerId, fromBounds, toBounds) {
+  return {
+    undo() {
+      const found = containers.find(c => c.id === containerId);
+      if (found) {
+        found.x = fromBounds.x; found.y = fromBounds.y;
+        found.w = fromBounds.w; found.h = fromBounds.h;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const found = containers.find(c => c.id === containerId);
+      if (found) {
+        found.x = toBounds.x; found.y = toBounds.y;
+        found.w = toBounds.w; found.h = toBounds.h;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: 'Resize Image Container'
+  };
+}
+
+export function createAddImageItemCmd(containers, selectedContainers, refreshPanelFn, containerIdx, oldImageSnapshot, newImage) {
+  const containerId = containers[containerIdx] ? containers[containerIdx].id : -1;
+  const newImageClone = newImage ? { ...newImage } : null;
+  return {
+    undo() {
+      const c = containers.find(ct => ct.id === containerId);
+      if (c) {
+        c.image = oldImageSnapshot ? { ...oldImageSnapshot } : null;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const c = containers.find(ct => ct.id === containerId);
+      if (c && newImageClone) {
+        c.image = { ...newImageClone };
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: 'Add Image'
+  };
+}
+
+export function createRemoveImageItemCmd(containers, selectedContainers, refreshPanelFn, containerIdx, imageSnapshot) {
+  const containerId = containers[containerIdx] ? containers[containerIdx].id : -1;
+  const savedSnapshot = { ...imageSnapshot };
+  return {
+    undo() {
+      const c = containers.find(ct => ct.id === containerId);
+      if (c) {
+        c.image = { ...savedSnapshot };
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const c = containers.find(ct => ct.id === containerId);
+      if (c) {
+        c.image = null;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: 'Remove Image'
+  };
+}
+
+export function createMoveImageItemCmd(containers, containerIdx, imageId, fromX, fromY, toX, toY) {
+  const containerId = containers[containerIdx] ? containers[containerIdx].id : -1;
+  return {
+    undo() {
+      const c = containers.find(ct => ct.id === containerId);
+      if (c && c.image && c.image.id === imageId) {
+        c.image.x = fromX; c.image.y = fromY;
+      }
+    },
+    redo() {
+      const c = containers.find(ct => ct.id === containerId);
+      if (c && c.image && c.image.id === imageId) {
+        c.image.x = toX; c.image.y = toY;
+      }
+    },
+    description: 'Move Image'
+  };
+}
+
+export function createResizeImageItemCmd(containers, containerIdx, imageId, fromBounds, toBounds) {
+  const containerId = containers[containerIdx] ? containers[containerIdx].id : -1;
+  return {
+    undo() {
+      const c = containers.find(ct => ct.id === containerId);
+      if (c && c.image && c.image.id === imageId) {
+        c.image.x = fromBounds.x; c.image.y = fromBounds.y;
+        c.image.w = fromBounds.w; c.image.h = fromBounds.h;
+      }
+    },
+    redo() {
+      const c = containers.find(ct => ct.id === containerId);
+      if (c && c.image && c.image.id === imageId) {
+        c.image.x = toBounds.x; c.image.y = toBounds.y;
+        c.image.w = toBounds.w; c.image.h = toBounds.h;
+      }
+    },
+    description: 'Resize Image'
+  };
+}
+
+export function createContainerPropertyChangeCmd(containers, selectedContainers, refreshPanelFn, containerId, property, oldValue, newValue) {
+  return {
+    undo() {
+      const found = containers.find(c => c.id === containerId);
+      if (found) found[property] = oldValue;
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const found = containers.find(c => c.id === containerId);
+      if (found) found[property] = newValue;
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: `Change Container ${property}`
+  };
+}
+
+export function createImageItemPropertyChangeCmd(containers, containerIdx, imageId, property, oldValue, newValue, refreshPanelFn) {
+  const containerId = containers[containerIdx] ? containers[containerIdx].id : -1;
+  return {
+    undo() {
+      const c = containers.find(ct => ct.id === containerId);
+      if (c && c.image && c.image.id === imageId) {
+        c.image[property] = oldValue;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const c = containers.find(ct => ct.id === containerId);
+      if (c && c.image && c.image.id === imageId) {
+        c.image[property] = newValue;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: `Change Image ${property}`
+  };
+}
+
+// --- Batch image container commands ---
+export function createBatchContainerPropertyChangeCmd(containers, selectedContainers, refreshPanelFn, changes) {
+  return {
+    undo() {
+      for (const c of changes) {
+        const found = containers.find(ct => ct.id === c.containerId);
+        if (found) found[c.property] = c.oldValue;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (const c of changes) {
+        const found = containers.find(ct => ct.id === c.containerId);
+        if (found) found[c.property] = c.newValue;
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: changes.length === 1 ? `Change Container ${changes[0].property}` : `Change Container ${changes[0].property} (${changes.length} items)`
+  };
+}
+
+export function createBatchResizeImageContainerCmd(containers, selectedContainers, refreshPanelFn, changes) {
+  return {
+    undo() {
+      for (const c of changes) {
+        const found = containers.find(ct => ct.id === c.containerId);
+        if (found) {
+          found.x = c.fromBounds.x; found.y = c.fromBounds.y;
+          found.w = c.fromBounds.w; found.h = c.fromBounds.h;
+        }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (const c of changes) {
+        const found = containers.find(ct => ct.id === c.containerId);
+        if (found) {
+          found.x = c.toBounds.x; found.y = c.toBounds.y;
+          found.w = c.toBounds.w; found.h = c.toBounds.h;
+        }
+      }
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: `Resize ${changes.length} image containers`
+  };
+}
+
+export function createPasteImageContainersCmd(containers, selectedContainers, refreshPanelFn, pastedContainers) {
+  return {
+    undo() {
+      const ids = new Set(pastedContainers.map(e => e.container.id));
+      for (let i = containers.length - 1; i >= 0; i--) {
+        if (ids.has(containers[i].id)) containers.splice(i, 1);
+      }
+      selectedContainers.clear();
+      state.markDrawOrderDirty();
+      state.reparentAll();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (let i = 0; i < pastedContainers.length; i++) {
+        containers.splice(pastedContainers[i].index, 0, pastedContainers[i].container);
+      }
+      selectedContainers.clear();
+      for (const entry of pastedContainers) selectedContainers.add(entry.index);
+      state.markDrawOrderDirty();
+      state.reparentAll();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: pastedContainers.length === 1 ? 'Paste Image Container' : `Paste ${pastedContainers.length} Image Containers`
+  };
+}
+
+export function createDuplicateImageContainersCmd(containers, selectedContainers, refreshPanelFn, entries) {
+  return {
+    undo() {
+      const ids = new Set(entries.map(e => e.container.id));
+      for (let i = containers.length - 1; i >= 0; i--) {
+        if (ids.has(containers[i].id)) containers.splice(i, 1);
+      }
+      selectedContainers.clear();
+      state.markDrawOrderDirty();
+      state.reparentAll();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      for (let i = 0; i < entries.length; i++) {
+        containers.splice(entries[i].index, 0, entries[i].container);
+      }
+      selectedContainers.clear();
+      for (const entry of entries) selectedContainers.add(entry.index);
+      state.markDrawOrderDirty();
+      state.reparentAll();
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: entries.length === 1 ? 'Duplicate Image Container' : `Duplicate ${entries.length} Image Containers`
+  };
+}
+
 export function createPasteTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPanelFn, pastedTextBoxes) {
   return {
     undo() {

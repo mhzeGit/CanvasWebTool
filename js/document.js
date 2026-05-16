@@ -12,6 +12,12 @@ import {
   createDuplicateTextBoxesCmd, createPasteTextBoxesCmd,
   createDuplicateShapesCmd, createPasteShapesCmd,
   createBatchCmd,
+  createAddImageContainerCmd, createDeleteImageContainersCmd,
+  createMoveImageContainersCmd, createResizeImageContainerCmd,
+  createAddImageItemCmd, createRemoveImageItemCmd,
+  createMoveImageItemCmd, createResizeImageItemCmd,
+  createContainerPropertyChangeCmd,
+  createDuplicateImageContainersCmd, createPasteImageContainersCmd,
 } from './undo.js';
 import { serializeDocument, deserializeDocument, FILE_EXTENSION } from './format.js';
 import { saveToFile, loadFromFile, clearCachedFileHandle, saveToFileAs } from './file-io.js';
@@ -20,6 +26,283 @@ import { refreshSidePanel } from './side-panel.js';
 import { DEFAULT_TEXTBOX_COLOR } from './config.js';
 import { destroyAllEntities } from './dom-entities.js';
 import { showConfirmDialog } from './dialog.js';
+
+export function addImageContainerAt(worldX, worldY, optW, optH) {
+  flushPanelEdit();
+  const isDrag = optW !== undefined && optH !== undefined;
+  const w = isDrag ? optW : 280;
+  const h = isDrag ? optH : 220;
+  const container = {
+    id: state.nextImageContainerId++,
+    x: isDrag ? worldX : worldX - w / 2,
+    y: isDrag ? worldY : worldY - h / 2,
+    w,
+    h,
+    title: 'Image Container',
+    backgroundColor: '#1e1e1e',
+    borderColor: '#6bb5ff',
+    borderWidth: 2,
+    image: null,
+    parentId: null,
+    parentType: null,
+  };
+  const idx = state.imageContainers.length;
+  state.imageContainers.push(container);
+  state.markDrawOrderDirty();
+  state.reparentAll();
+  state.selectedImageContainers.clear();
+  state.selectedImageItems.clear();
+  state.selectedShapes.clear();
+  state.selectedTextBoxes.clear();
+  state.selectedConnectors.clear();
+  state.selectedImageContainers.add(idx);
+  refreshSidePanel();
+  history.push(createAddImageContainerCmd(state.imageContainers, state.selectedImageContainers, refreshSidePanel, container, idx));
+}
+
+export function addImageContainerAtCenter() {
+  flushPanelEdit();
+  const canvas = state.canvas;
+  const rect = canvas.getBoundingClientRect();
+  const centerCssX = rect.width / 2;
+  const centerCssY = rect.height / 2;
+  const world = screenToWorld(centerCssX, centerCssY, state.offsetX, state.offsetY, state.scale);
+  addImageContainerAt(world.x, world.y);
+}
+
+export function deleteSelectedImageContainers() {
+  if (state.selectedImageContainers.size === 0) return;
+  flushPanelEdit();
+  const sortedIndices = Array.from(state.selectedImageContainers).sort((a, b) => a - b);
+  const deletedEntries = sortedIndices.map(i => ({ container: JSON.parse(JSON.stringify(state.imageContainers[i])), index: i }));
+  for (let i = sortedIndices.length - 1; i >= 0; i--) {
+    state.imageContainers.splice(sortedIndices[i], 1);
+  }
+  state.selectedImageContainers.clear();
+  state.selectedImageItems.clear();
+  state.markDrawOrderDirty();
+  state.reparentAll();
+  refreshSidePanel();
+  history.push(createDeleteImageContainersCmd(state.imageContainers, state.selectedImageContainers, refreshSidePanel, deletedEntries));
+}
+
+function fitImageInContainer(c, naturalW, naturalH) {
+  const margin = 10;
+  const availW = c.w - margin * 2;
+  const availH = c.h - margin * 2;
+  let imgW, imgH;
+  if (naturalW && naturalH) {
+    const ratio = naturalW / naturalH;
+    if (availW / ratio <= availH) {
+      imgW = availW;
+      imgH = availW / ratio;
+    } else {
+      imgH = availH;
+      imgW = availH * ratio;
+    }
+  } else {
+    imgW = Math.min(120, availW);
+    imgH = Math.min(120, availH);
+  }
+  return {
+    x: margin + (availW - imgW) / 2,
+    y: margin + (availH - imgH) / 2,
+    w: Math.round(imgW),
+    h: Math.round(imgH),
+  };
+}
+
+export function addImageToContainer(containerIdx, src) {
+  flushPanelEdit();
+  const c = state.imageContainers[containerIdx];
+  if (!c) return;
+  const imgId = state.nextImageItemId++;
+  const oldImage = c.image ? { ...c.image } : null;
+  const place = fitImageInContainer(c, null, null);
+  const img = {
+    id: imgId,
+    x: place.x,
+    y: place.y,
+    w: place.w,
+    h: place.h,
+    src: src || '',
+    fileName: '',
+    keepRatio: true,
+  };
+  c.image = img;
+  state.selectedImageItems.clear();
+  state.selectedImageItems.add({ containerIdx, imageId: imgId });
+  state.markDrawOrderDirty();
+  refreshSidePanel();
+  history.push(createAddImageItemCmd(state.imageContainers, state.selectedImageContainers, refreshSidePanel, containerIdx, oldImage, img));
+  // After setting src, load the image to get natural dimensions and re-fit
+  if (src) {
+    const temp = new Image();
+    temp.onload = () => {
+      const nw = temp.naturalWidth;
+      const nh = temp.naturalHeight;
+      const newPlace = fitImageInContainer(c, nw, nh);
+      if (c.image && c.image.id === imgId) {
+        c.image.x = newPlace.x;
+        c.image.y = newPlace.y;
+        c.image.w = newPlace.w;
+        c.image.h = newPlace.h;
+        state.markDrawOrderDirty();
+        refreshSidePanel();
+      }
+    };
+    temp.src = src;
+  }
+  return img;
+}
+
+export function removeImageFromContainer(containerIdx) {
+  flushPanelEdit();
+  const c = state.imageContainers[containerIdx];
+  if (!c || !c.image) return;
+  const imageSnapshot = { ...c.image };
+  c.image = null;
+  state.selectedImageItems.clear();
+  state.markDrawOrderDirty();
+  refreshSidePanel();
+  history.push(createRemoveImageItemCmd(state.imageContainers, state.selectedImageContainers, refreshSidePanel, containerIdx, imageSnapshot));
+}
+
+export function replaceImageInContainer(containerIdx, newSrc) {
+  const c = state.imageContainers[containerIdx];
+  if (!c || !c.image) return;
+  const img = c.image;
+  const temp = new Image();
+  temp.onload = () => {
+    const nw = temp.naturalWidth;
+    const nh = temp.naturalHeight;
+    const place = fitImageInContainer(c, nw, nh);
+    img.w = place.w;
+    img.h = place.h;
+    img.x = place.x;
+    img.y = place.y;
+    img.src = newSrc;
+    state.markDrawOrderDirty();
+    refreshSidePanel();
+  };
+  temp.src = newSrc;
+  img.src = newSrc;
+  state.markDrawOrderDirty();
+}
+
+export function copySelectedImageContainers() {
+  state.clipboard = [];
+  if (state.selectedImageContainers.size === 0) return;
+  const rect = state.canvas.getBoundingClientRect();
+  const mx = window._lastMouseX ?? rect.width / 2;
+  const my = window._lastMouseY ?? rect.height / 2;
+  const mouseWorld = screenToWorld(mx, my, state.offsetX, state.offsetY, state.scale);
+  for (const i of state.selectedImageContainers) {
+    const c = state.imageContainers[i];
+    state.clipboard.push({
+      _type: 'imageContainer',
+      dx: c.x - mouseWorld.x,
+      dy: c.y - mouseWorld.y,
+      w: c.w, h: c.h,
+      title: c.title,
+      backgroundColor: c.backgroundColor,
+      borderColor: c.borderColor,
+      borderWidth: c.borderWidth,
+      image: c.image ? JSON.parse(JSON.stringify(c.image)) : null,
+    });
+  }
+}
+
+export function pasteImageContainersAt(worldX, worldY) {
+  const entries = state.clipboard.filter(c => c._type === 'imageContainer');
+  if (entries.length === 0) return;
+  flushPanelEdit();
+  const pasted = [];
+  for (const c of entries) {
+    const container = {
+      id: state.nextImageContainerId++,
+      x: worldX + c.dx,
+      y: worldY + c.dy,
+      w: c.w, h: c.h,
+      title: c.title || 'Image Container',
+      backgroundColor: c.backgroundColor || '#1e1e1e',
+      borderColor: c.borderColor || '#6bb5ff',
+      borderWidth: c.borderWidth ?? 2,
+      image: c.image ? JSON.parse(JSON.stringify(c.image)) : null,
+      parentId: null,
+      parentType: null,
+    };
+    const idx = state.imageContainers.length;
+    state.imageContainers.push(container);
+    pasted.push({ container, index: idx });
+  }
+  state.selectedImageContainers.clear();
+  state.selectedImageItems.clear();
+  state.selectedShapes.clear();
+  state.selectedTextBoxes.clear();
+  state.selectedConnectors.clear();
+  for (let i = 0; i < pasted.length; i++) state.selectedImageContainers.add(pasted[i].index);
+  state.markDrawOrderDirty();
+  state.reparentAll();
+  refreshSidePanel();
+  history.push(createPasteImageContainersCmd(state.imageContainers, state.selectedImageContainers, refreshSidePanel, pasted));
+}
+
+export function duplicateSelectedImageContainers() {
+  if (state.selectedImageContainers.size === 0) return;
+  flushPanelEdit();
+  const dupes = [];
+  for (const i of state.selectedImageContainers) {
+    const c = state.imageContainers[i];
+    dupes.push({
+      id: state.nextImageContainerId++,
+      x: c.x + 20,
+      y: c.y + 20,
+      w: c.w, h: c.h,
+      title: c.title,
+      backgroundColor: c.backgroundColor,
+      borderColor: c.borderColor,
+      borderWidth: c.borderWidth,
+      image: c.image ? JSON.parse(JSON.stringify(c.image)) : null,
+      parentId: null,
+      parentType: null,
+    });
+  }
+  const startIdx = state.imageContainers.length;
+  const entries = [];
+  for (let i = 0; i < dupes.length; i++) {
+    state.imageContainers.push(dupes[i]);
+    entries.push({ container: dupes[i], index: startIdx + i });
+  }
+  state.selectedImageContainers.clear();
+  state.selectedImageItems.clear();
+  state.selectedShapes.clear();
+  state.selectedTextBoxes.clear();
+  state.selectedConnectors.clear();
+  for (let i = 0; i < dupes.length; i++) state.selectedImageContainers.add(startIdx + i);
+  state.markDrawOrderDirty();
+  state.reparentAll();
+  refreshSidePanel();
+  history.push(createDuplicateImageContainersCmd(state.imageContainers, state.selectedImageContainers, refreshSidePanel, entries));
+}
+
+export function openImageInContainer(containerIdx) {
+  const c = state.imageContainers[containerIdx];
+  if (!c) return;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      replaceImageInContainer(containerIdx, ev.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
 
 export function addTextBoxAtCenter() {
   flushPanelEdit();
@@ -618,6 +901,20 @@ export function copySelection() {
       cornerRadius: s.cornerRadius,
     });
   }
+  for (const i of state.selectedImageContainers) {
+    const c = state.imageContainers[i];
+    state.clipboard.push({
+      _type: 'imageContainer',
+      dx: c.x - mouseWorld.x,
+      dy: c.y - mouseWorld.y,
+      w: c.w, h: c.h,
+      title: c.title,
+      backgroundColor: c.backgroundColor,
+      borderColor: c.borderColor,
+      borderWidth: c.borderWidth,
+      image: c.image ? JSON.parse(JSON.stringify(c.image)) : null,
+    });
+  }
 }
 
 export function pasteAt(worldX, worldY) {
@@ -625,6 +922,7 @@ export function pasteAt(worldX, worldY) {
   flushPanelEdit();
   const pastedTextBoxes = [];
   const pastedShapes = [];
+  const pastedImageContainers = [];
   for (const c of state.clipboard) {
     const type = c._type || 'textBox';
     if (type === 'textBox') {
@@ -660,13 +958,31 @@ export function pasteAt(worldX, worldY) {
       const idx = state.shapes.length;
       state.shapes.push(shape);
       pastedShapes.push({ shape, index: idx });
+    } else if (type === 'imageContainer') {
+      const container = {
+        id: state.nextImageContainerId++,
+        x: worldX + c.dx, y: worldY + c.dy,
+        w: c.w, h: c.h,
+        title: c.title || 'Image Container',
+        backgroundColor: c.backgroundColor || '#1e1e1e',
+        borderColor: c.borderColor || '#6bb5ff',
+        borderWidth: c.borderWidth ?? 2,
+        image: c.image ? JSON.parse(JSON.stringify(c.image)) : null,
+        parentId: null, parentType: null,
+      };
+      const idx = state.imageContainers.length;
+      state.imageContainers.push(container);
+      pastedImageContainers.push({ container, index: idx });
     }
   }
   state.selectedTextBoxes.clear();
   state.selectedShapes.clear();
   state.selectedConnectors.clear();
+  state.selectedImageContainers.clear();
+  state.selectedImageItems.clear();
   for (const entry of pastedTextBoxes) state.selectedTextBoxes.add(entry.index);
   for (const entry of pastedShapes) state.selectedShapes.add(entry.index);
+  for (const entry of pastedImageContainers) state.selectedImageContainers.add(entry.index);
   state.markDrawOrderDirty();
   state.reparentAll();
   refreshSidePanel();
@@ -677,6 +993,9 @@ export function pasteAt(worldX, worldY) {
   if (pastedShapes.length > 0) {
     commands.push(createPasteShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, pastedShapes));
   }
+  if (pastedImageContainers.length > 0) {
+    commands.push(createPasteImageContainersCmd(state.imageContainers, state.selectedImageContainers, refreshSidePanel, pastedImageContainers));
+  }
   if (commands.length > 0) {
     history.push(commands.length === 1 ? commands[0] : createBatchCmd(commands, 'Paste'));
   }
@@ -685,9 +1004,11 @@ export function pasteAt(worldX, worldY) {
 export function duplicateSelection() {
   const hasTextBoxes = state.selectedTextBoxes.size > 0;
   const hasShapes = state.selectedShapes.size > 0;
-  if (!hasTextBoxes && !hasShapes) return;
+  const hasContainers = state.selectedImageContainers.size > 0;
+  if (!hasTextBoxes && !hasShapes && !hasContainers) return;
   if (hasTextBoxes) duplicateSelectedTextBoxes();
   if (hasShapes) duplicateSelectedShapes();
+  if (hasContainers) duplicateSelectedImageContainers();
 }
 
 export function getDocumentState() {
@@ -697,6 +1018,7 @@ export function getDocumentState() {
     shapes: state.shapes,
     textBoxes: state.textBoxes,
     connectors: state.connectors,
+    imageContainers: state.imageContainers,
     viewport: {
       offsetX: state.targetOffsetX,
       offsetY: state.targetOffsetY,
@@ -712,11 +1034,14 @@ export function restoreDocumentState(docState) {
   state.shapes.length = 0;
   state.textBoxes.length = 0;
   state.connectors.length = 0;
+  state.imageContainers.length = 0;
   state.selectedTextBoxes.clear();
   state.selectedConnection = null;
   state.selectedArrows.clear();
   state.selectedShapes.clear();
   state.selectedConnectors.clear();
+  state.selectedImageContainers.clear();
+  state.selectedImageItems.clear();
   state.arrowDragTarget = null;
   state.clipboard = [];
   state.connectingFrom = null;
@@ -773,6 +1098,9 @@ export function restoreDocumentState(docState) {
   for (const cn of (docState.connectors || [])) {
     state.connectors.push(cn);
   }
+  for (const ic of (docState.imageContainers || [])) {
+    state.imageContainers.push(ic);
+  }
 
   let maxTextBoxId = 0;
   for (const tb of state.textBoxes) {
@@ -804,6 +1132,18 @@ export function restoreDocumentState(docState) {
   }
   state.nextConnectorId = maxConnectorId + 1;
 
+  let maxImageContainerId = 0;
+  for (const ic of state.imageContainers) {
+    if (ic.id > maxImageContainerId) maxImageContainerId = ic.id;
+  }
+  state.nextImageContainerId = maxImageContainerId + 1;
+
+  let maxImageItemId = 0;
+  for (const ic of state.imageContainers) {
+    if (ic.image && ic.image.id > maxImageItemId) maxImageItemId = ic.image.id;
+  }
+  state.nextImageItemId = maxImageItemId + 1;
+
   const vp = docState.viewport || {};
   state.offsetX = state.targetOffsetX = vp.offsetX ?? 0;
   state.offsetY = state.targetOffsetY = vp.offsetY ?? 0;
@@ -821,7 +1161,7 @@ export async function newDocument() {
     const confirmed = await showConfirmDialog('This project has unsaved changes. Are you sure you want to create a new file? Everything unsaved will be discarded!');
     if (!confirmed) return;
   }
-  restoreDocumentState({ nodes: [], connections: [], arrows: [], shapes: [], textBoxes: [], connectors: [], viewport: { offsetX: 0, offsetY: 0, scale: 1 } });
+  restoreDocumentState({ nodes: [], connections: [], arrows: [], shapes: [], textBoxes: [], connectors: [], imageContainers: [], viewport: { offsetX: 0, offsetY: 0, scale: 1 } });
   state.currentFileName = null;
   clearCachedFileHandle();
   state.markDrawOrderDirty();

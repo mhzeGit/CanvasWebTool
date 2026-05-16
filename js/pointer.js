@@ -16,13 +16,17 @@ import {
   addShapeAt, addTextBoxAt, addConnector, addArrowFromPoints,
   deleteSelectedShapes, deleteSelectedTextBoxes, deleteSelectedConnectors,
   addConnection,
+  addImageContainerAt, addImageToContainer, removeImageFromContainer,
+  deleteSelectedImageContainers, openImageInContainer,
 } from './document.js';
 import {
   createMoveShapesCmd, createResizeShapeCmd, createMoveTextBoxesCmd,
   createMoveConnectorsCmd, createResizeTextBoxCmd, createMoveArrowEndCmd,
+  createMoveImageContainersCmd, createResizeImageContainerCmd,
+  createMoveImageItemCmd, createResizeImageItemCmd,
 } from './undo.js';
 import { flushPanelEdit } from './history.js';
-import { DRAG_THRESHOLD_PX, TEXTBOX_MIN_W, TEXTBOX_MIN_H, SHAPE_MIN_W, SHAPE_MIN_H } from './config.js';
+import { DRAG_THRESHOLD_PX, TEXTBOX_MIN_W, TEXTBOX_MIN_H, SHAPE_MIN_W, SHAPE_MIN_H, EDGE_MARGIN, IMAGE_CONTAINER_MIN_W, IMAGE_CONTAINER_MIN_H, IMAGE_ITEM_MIN_W, IMAGE_ITEM_MIN_H } from './config.js';
 import { getSnapIncrement, snapValue, snapResizeBounds } from './snap.js';
 
 let _history;
@@ -37,6 +41,104 @@ function setupListeners() {
   state.canvas.addEventListener('pointermove', onPointerMove);
   state.canvas.addEventListener('pointerup', onPointerUp);
   state.canvas.addEventListener('pointercancel', onPointerCancel);
+  setupDropHandlers();
+}
+
+function setupDropHandlers() {
+  const preventDefaults = (e) => { e.preventDefault(); e.stopPropagation(); };
+
+  state.canvas.addEventListener('dragenter', (e) => {
+    preventDefaults(e);
+    const rect = state.canvas.getBoundingClientRect();
+    const world = screenToWorld(e.clientX - rect.left, e.clientY - rect.top, state.offsetX, state.offsetY, state.scale);
+    state.containerDropHighlight = -1;
+    for (let i = 0; i < state.imageContainers.length; i++) {
+      const c = state.imageContainers[i];
+      if (world.x >= c.x && world.x <= c.x + c.w && world.y >= c.y && world.y <= c.y + c.h) {
+        if (state.selectedImageContainers.has(i)) continue;
+        state.containerDropHighlight = i;
+        break;
+      }
+    }
+  });
+
+  state.canvas.addEventListener('dragover', (e) => {
+    preventDefaults(e);
+    const rect = state.canvas.getBoundingClientRect();
+    const world = screenToWorld(e.clientX - rect.left, e.clientY - rect.top, state.offsetX, state.offsetY, state.scale);
+    let found = -1;
+    for (let i = 0; i < state.imageContainers.length; i++) {
+      const c = state.imageContainers[i];
+      if (world.x >= c.x && world.x <= c.x + c.w && world.y >= c.y && world.y <= c.y + c.h) {
+        if (state.selectedImageContainers.has(i)) continue;
+        found = i;
+        break;
+      }
+    }
+    if (found !== state.containerDropHighlight) {
+      state.containerDropHighlight = found;
+    }
+    e.dataTransfer.dropEffect = 'copy';
+  });
+
+  state.canvas.addEventListener('dragleave', (e) => {
+    preventDefaults(e);
+    state.containerDropHighlight = -1;
+  });
+
+  state.canvas.addEventListener('drop', (e) => {
+    preventDefaults(e);
+    state.containerDropHighlight = -1;
+    const rect = state.canvas.getBoundingClientRect();
+    const dropWorld = screenToWorld(e.clientX - rect.left, e.clientY - rect.top, state.offsetX, state.offsetY, state.scale);
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) {
+      const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+      if (url && url.trim()) {
+        handleImageDropAt(url.trim(), dropWorld.x, dropWorld.y);
+      }
+      return;
+    }
+    for (const file of files) {
+      if (file.type.startsWith('image/')) {
+        handleImageFileDropAt(file, dropWorld.x, dropWorld.y);
+      }
+    }
+  });
+}
+
+function handleImageFileDropAt(file, dropX, dropY) {
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    handleImageDropAt(ev.target.result, dropX, dropY);
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleImageDropAt(dataOrUrl, worldX, worldY) {
+  let targetContainerIdx = -1;
+  for (let i = 0; i < state.imageContainers.length; i++) {
+    const c = state.imageContainers[i];
+    if (worldX >= c.x && worldX <= c.x + c.w && worldY >= c.y && worldY <= c.y + c.h) {
+      targetContainerIdx = i;
+      break;
+    }
+  }
+
+  if (targetContainerIdx >= 0) {
+    addImageToContainer(targetContainerIdx, dataOrUrl);
+  } else {
+    const w = 280;
+    const h = 220;
+    const cx = worldX - w / 2;
+    const cy = worldY - h / 2;
+    const prevLen = state.imageContainers.length;
+    addImageContainerAt(cx, cy, w, h);
+    if (state.imageContainers.length > prevLen) {
+      const idx = state.imageContainers.length - 1;
+      addImageToContainer(idx, dataOrUrl);
+    }
+  }
 }
 
 function gatherChildDragStarts() {
@@ -90,12 +192,69 @@ function onPointerCancel(e) {
     state.drawingStartY = 0;
     state.drawingStartConnected = null;
   }
+  state.isResizingImageContainer = false;
+  state.isResizingImageItem = false;
+  state.isDraggingImageContainer = false;
+  state.isDraggingImageItem = false;
+  state.dragImageContainerStarts = [];
+  state.dragImageItemStarts = [];
   try { state.canvas.releasePointerCapture(e.pointerId); } catch {}
 }
 
 function findConnectedObjectAtPoint(wx, wy) {
   const hit = state.getTopHitAt(wx, wy);
   if (hit) return { type: hit.type, index: hit.i };
+  return null;
+}
+
+function getImageContainerEdgeAt(wx, wy) {
+  const margin = EDGE_MARGIN;
+  for (let i = state.imageContainers.length - 1; i >= 0; i--) {
+    const c = state.imageContainers[i];
+    const onLeft = Math.abs(wx - c.x) <= margin;
+    const onRight = Math.abs(wx - (c.x + c.w)) <= margin;
+    const onTop = Math.abs(wy - c.y) <= margin;
+    const onBottom = Math.abs(wy - (c.y + c.h)) <= margin;
+    const inX = wx >= c.x - margin && wx <= c.x + c.w + margin;
+    const inY = wy >= c.y - margin && wy <= c.y + c.h + margin;
+    if (!inX || !inY) continue;
+    if (onLeft && onTop) return { idx: i, handle: 'tl', cursor: 'nw-resize' };
+    if (onRight && onTop) return { idx: i, handle: 'tr', cursor: 'ne-resize' };
+    if (onLeft && onBottom) return { idx: i, handle: 'bl', cursor: 'sw-resize' };
+    if (onRight && onBottom) return { idx: i, handle: 'br', cursor: 'se-resize' };
+    if (onLeft) return { idx: i, handle: 'ml', cursor: 'ew-resize' };
+    if (onRight) return { idx: i, handle: 'mr', cursor: 'ew-resize' };
+    if (onTop) return { idx: i, handle: 'tc', cursor: 'ns-resize' };
+    if (onBottom) return { idx: i, handle: 'bc', cursor: 'ns-resize' };
+  }
+  return null;
+}
+
+function getImageItemEdgeAt(wx, wy) {
+  const margin = EDGE_MARGIN;
+  for (let ci = state.imageContainers.length - 1; ci >= 0; ci--) {
+    const c = state.imageContainers[ci];
+    if (!(wx >= c.x && wx <= c.x + c.w && wy >= c.y && wy <= c.y + c.h)) continue;
+    const img = c.image;
+    if (!img) continue;
+    const ax = c.x + img.x;
+    const ay = c.y + img.y;
+    const onLeft = Math.abs(wx - ax) <= margin;
+    const onRight = Math.abs(wx - (ax + img.w)) <= margin;
+    const onTop = Math.abs(wy - ay) <= margin;
+    const onBottom = Math.abs(wy - (ay + img.h)) <= margin;
+    const inX = wx >= ax - margin && wx <= ax + img.w + margin;
+    const inY = wy >= ay - margin && wy <= ay + img.h + margin;
+    if (!inX || !inY) continue;
+    if (onLeft && onTop) return { containerIdx: ci, imageId: img.id, handle: 'tl', cursor: 'nw-resize' };
+    if (onRight && onTop) return { containerIdx: ci, imageId: img.id, handle: 'tr', cursor: 'ne-resize' };
+    if (onLeft && onBottom) return { containerIdx: ci, imageId: img.id, handle: 'bl', cursor: 'sw-resize' };
+    if (onRight && onBottom) return { containerIdx: ci, imageId: img.id, handle: 'br', cursor: 'se-resize' };
+    if (onLeft) return { containerIdx: ci, imageId: img.id, handle: 'ml', cursor: 'ew-resize' };
+    if (onRight) return { containerIdx: ci, imageId: img.id, handle: 'mr', cursor: 'ew-resize' };
+    if (onTop) return { containerIdx: ci, imageId: img.id, handle: 'tc', cursor: 'ns-resize' };
+    if (onBottom) return { containerIdx: ci, imageId: img.id, handle: 'bc', cursor: 'ns-resize' };
+  }
   return null;
 }
 
@@ -109,6 +268,8 @@ function hasHitOnExistingItem(wx, wy) {
   }
   if (getShapeEdgeAt(wx, wy)) return true;
   if (getTextBoxEdgeAt(wx, wy)) return true;
+  if (getImageContainerEdgeAt(wx, wy)) return true;
+  if (getImageItemEdgeAt(wx, wy)) return true;
   if (state.getTopHitAt(wx, wy)) return true;
   if (hitTestConnector(wx, wy) !== -1) return true;
   if (hitTestArrowBody(wx, wy) !== -1) return true;
@@ -159,7 +320,7 @@ function onPointerDown(e) {
   if (e.button === 0) {
     const tool = getActiveTool();
 
-    if (tool === TOOLS.TEXT || tool === TOOLS.SHAPES) {
+    if (tool === TOOLS.TEXT || tool === TOOLS.SHAPES || tool === TOOLS.IMAGE_CONTAINER) {
       if (hasHitOnExistingItem(world.x, world.y)) {
         setActiveTool(TOOLS.CURSOR);
       } else if (tool === TOOLS.TEXT) {
@@ -184,6 +345,21 @@ function onPointerDown(e) {
         state.arrowDragTarget = null;
         state.drawingTool = 'shape';
         state.drawingShapeType = getShapeSubType();
+        state.drawingStartX = world.x;
+        state.drawingStartY = world.y;
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      } else if (tool === TOOLS.IMAGE_CONTAINER) {
+        state.selectedTextBoxes.clear();
+        state.selectedConnection = null;
+        state.selectedArrows.clear();
+        state.selectedShapes.clear();
+        state.selectedConnectors.clear();
+        state.selectedImageContainers.clear();
+        state.selectedImageItems.clear();
+        state.arrowDragTarget = null;
+        state.drawingTool = 'imageContainer';
         state.drawingStartX = world.x;
         state.drawingStartY = world.y;
         canvas.setPointerCapture(e.pointerId);
@@ -299,10 +475,139 @@ function onPointerDown(e) {
       }
     }
 
+    // --- Image item edge resize ---
+    {
+      const imgEdge = getImageItemEdgeAt(world.x, world.y);
+      if (imgEdge) {
+        flushPanelEdit();
+        state.selectedTextBoxes.clear();
+        state.selectedConnection = null;
+        state.selectedArrows.clear();
+        state.selectedShapes.clear();
+        state.selectedConnectors.clear();
+        state.selectedImageContainers.clear();
+        state.selectedImageItems.clear();
+        state.selectedImageItems.add({ containerIdx: imgEdge.containerIdx, imageId: imgEdge.imageId });
+        state.isResizingImageItem = true;
+        state.resizeImageItemContainerIdx = imgEdge.containerIdx;
+        state.resizeImageItemId = imgEdge.imageId;
+        state.resizeImageItemHandle = imgEdge.handle;
+        state.resizeImageItemStartWorldX = world.x;
+        state.resizeImageItemStartWorldY = world.y;
+        const c = state.imageContainers[imgEdge.containerIdx];
+        if (c && c.image && c.image.id === imgEdge.imageId) {
+          state.resizeImageItemStartBounds = { x: c.image.x, y: c.image.y, w: c.image.w, h: c.image.h };
+        }
+        refreshSidePanel();
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
+
+    // --- Image container edge resize ---
+    {
+      const containerEdge = getImageContainerEdgeAt(world.x, world.y);
+      if (containerEdge) {
+        flushPanelEdit();
+        state.selectedTextBoxes.clear();
+        state.selectedConnection = null;
+        state.selectedArrows.clear();
+        state.selectedShapes.clear();
+        state.selectedConnectors.clear();
+        state.selectedImageContainers.clear();
+        state.selectedImageItems.clear();
+        state.selectedImageContainers.add(containerEdge.idx);
+        state.isResizingImageContainer = true;
+        state.resizeImageContainerIdx = containerEdge.idx;
+        state.resizeImageContainerId = state.imageContainers[containerEdge.idx].id;
+        state.resizeImageContainerHandle = containerEdge.handle;
+        state.resizeImageContainerStartWorldX = world.x;
+        state.resizeImageContainerStartWorldY = world.y;
+        const c = state.imageContainers[containerEdge.idx];
+        state.resizeImageContainerStartBounds = { x: c.x, y: c.y, w: c.w, h: c.h };
+        refreshSidePanel();
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
+
     let hit;
     {
       const topHit = state.getTopHitAt(world.x, world.y);
       if (topHit) {
+        if (topHit.type === 'imageItem') {
+          if (!e.shiftKey && !e.ctrlKey) {
+            state.selectedTextBoxes.clear();
+            state.selectedConnection = null;
+            state.selectedArrows.clear();
+            state.selectedShapes.clear();
+            state.selectedConnectors.clear();
+            state.selectedImageContainers.clear();
+            state.arrowDragTarget = null;
+            state.selectedImageItems.clear();
+          }
+          state.selectedImageItems.add({ containerIdx: topHit.containerIdx, imageId: topHit.imageId });
+          state.pendingClickIndex = -8;
+          state.pendingClickItemIdx = topHit.containerIdx;
+          state.pendingImageItemId = topHit.imageId;
+          state.pointerDownScreenX = sx;
+          state.pointerDownScreenY = sy;
+          state.pendingShiftKey = e.shiftKey;
+          state.pendingCtrlKey = e.ctrlKey;
+          state.didDragSincePointerDown = false;
+          state.dragStartWorldX = world.x;
+          state.dragStartWorldY = world.y;
+          state.dragImageItemStarts = [];
+          for (const sel of state.selectedImageItems) {
+            const imgContainer = state.imageContainers[sel.containerIdx];
+            if (imgContainer && imgContainer.image && imgContainer.image.id === sel.imageId) {
+              state.dragImageItemStarts.push({ containerIdx: sel.containerIdx, imageId: sel.imageId, x: imgContainer.image.x, y: imgContainer.image.y });
+            }
+          }
+          refreshSidePanel();
+          canvas.setPointerCapture(e.pointerId);
+          e.preventDefault();
+          return;
+        }
+        if (topHit.type === 'imageContainer') {
+          if (!e.shiftKey && !e.ctrlKey) {
+            state.selectedTextBoxes.clear();
+            state.selectedConnection = null;
+            state.selectedArrows.clear();
+            state.selectedShapes.clear();
+            state.selectedConnectors.clear();
+            state.selectedImageContainers.clear();
+            state.selectedImageItems.clear();
+            state.arrowDragTarget = null;
+          }
+          if (e.shiftKey) {
+            state.selectedImageContainers.add(topHit.i);
+          } else if (!state.selectedImageContainers.has(topHit.i)) {
+            state.selectedImageContainers.clear();
+            state.selectedImageItems.clear();
+            state.selectedImageContainers.add(topHit.i);
+          }
+          state.pendingClickIndex = -7;
+          state.pendingClickItemIdx = topHit.i;
+          state.pointerDownScreenX = sx;
+          state.pointerDownScreenY = sy;
+          state.pendingShiftKey = e.shiftKey;
+          state.pendingCtrlKey = e.ctrlKey;
+          state.didDragSincePointerDown = false;
+          state.dragStartWorldX = world.x;
+          state.dragStartWorldY = world.y;
+          state.dragImageContainerStarts = [];
+          for (const si of state.selectedImageContainers) {
+            const ic = state.imageContainers[si];
+            if (ic) state.dragImageContainerStarts.push({ i: si, x: ic.x, y: ic.y, id: ic.id });
+          }
+          refreshSidePanel();
+          canvas.setPointerCapture(e.pointerId);
+          e.preventDefault();
+          return;
+        }
         if (topHit.type === 'textBox') {
           state.selectedConnection = null;
           state.arrowDragTarget = null;
@@ -311,6 +616,8 @@ function onPointerDown(e) {
             state.selectedArrows.clear();
             state.selectedShapes.clear();
             state.selectedConnectors.clear();
+            state.selectedImageContainers.clear();
+            state.selectedImageItems.clear();
           }
           hit = topHit.i;
           state.pointerDownScreenX = sx;
@@ -352,6 +659,8 @@ function onPointerDown(e) {
             state.selectedArrows.clear();
             state.selectedShapes.clear();
             state.selectedConnectors.clear();
+            state.selectedImageContainers.clear();
+            state.selectedImageItems.clear();
             state.arrowDragTarget = null;
           }
           if (e.ctrlKey) {
@@ -606,6 +915,43 @@ function onPointerMove(e) {
     return;
   }
 
+  if (state.isResizingImageContainer) {
+    const dx = world.x - state.resizeImageContainerStartWorldX;
+    const dy = world.y - state.resizeImageContainerStartWorldY;
+    const c = state.imageContainers[state.resizeImageContainerIdx];
+    const b = snapResizeBounds(state.resizeImageContainerStartBounds, state.resizeImageContainerHandle, dx, dy, IMAGE_CONTAINER_MIN_W, IMAGE_CONTAINER_MIN_H, state.scale, e.ctrlKey);
+    c.x = b.x; c.y = b.y; c.w = b.w; c.h = b.h;
+    e.preventDefault();
+    return;
+  }
+
+  if (state.isResizingImageItem) {
+    const c = state.imageContainers[state.resizeImageItemContainerIdx];
+    if (!c) { state.isResizingImageItem = false; return; }
+    const dx = world.x - state.resizeImageItemStartWorldX;
+    const dy = world.y - state.resizeImageItemStartWorldY;
+    const img = c.image;
+    if (!img || img.id !== state.resizeImageItemId) { state.isResizingImageItem = false; return; }
+    let b = snapResizeBounds(state.resizeImageItemStartBounds, state.resizeImageItemHandle, dx, dy, IMAGE_ITEM_MIN_W, IMAGE_ITEM_MIN_H, state.scale, e.ctrlKey);
+    if (img.keepRatio) {
+      const origRatio = state.resizeImageItemStartBounds.w / state.resizeImageItemStartBounds.h;
+      const corners = ['tl', 'tr', 'bl', 'br'];
+      const edgeH = ['ml', 'mr'];
+      const edgeV = ['tc', 'bc'];
+      if (corners.includes(state.resizeImageItemHandle) || edgeH.includes(state.resizeImageItemHandle) || edgeV.includes(state.resizeImageItemHandle)) {
+        const newW = Math.abs(b.w);
+        const newH = newW / origRatio;
+        b.h = newH;
+        const handle = state.resizeImageItemHandle;
+        if (handle.includes('t')) b.y = state.resizeImageItemStartBounds.y + state.resizeImageItemStartBounds.h - newH;
+        if (handle.includes('l')) b.x = state.resizeImageItemStartBounds.x + state.resizeImageItemStartBounds.w - newW;
+      }
+    }
+    img.x = b.x; img.y = b.y; img.w = b.w; img.h = b.h;
+    e.preventDefault();
+    return;
+  }
+
   const dragDx = world.x - state.dragStartWorldX;
   const dragDy = world.y - state.dragStartWorldY;
 
@@ -661,6 +1007,34 @@ function onPointerMove(e) {
     for (const item of state.dragChildTextBoxStarts) {
       const tb = state.textBoxes[item.i];
       if (tb) { tb.x = snap(item.x + dragDx); tb.y = snap(item.y + dragDy); }
+    }
+    e.preventDefault();
+    return;
+  }
+
+  if (state.isDraggingImageContainer) {
+    const snapInc = e.ctrlKey ? getSnapIncrement(state.scale) : null;
+    const snap = (v) => snapInc !== null ? snapValue(v, snapInc) : v;
+    for (const item of state.dragImageContainerStarts) {
+      const c = state.imageContainers[item.i];
+      if (c) { c.x = snap(item.x + dragDx); c.y = snap(item.y + dragDy); }
+    }
+    e.preventDefault();
+    return;
+  }
+
+  if (state.isDraggingImageItem) {
+    const snapInc = e.ctrlKey ? getSnapIncrement(state.scale) : null;
+    const snap = (v) => snapInc !== null ? snapValue(v, snapInc) : v;
+    for (const item of state.dragImageItemStarts) {
+      const c = state.imageContainers[item.containerIdx];
+      if (c) {
+        const img = c.image;
+        if (img && img.id === item.imageId) {
+          img.x = snap(item.x + dragDx);
+          img.y = snap(item.y + dragDy);
+        }
+      }
     }
     e.preventDefault();
     return;
@@ -814,6 +1188,42 @@ function onPointerMove(e) {
     }
   }
 
+  if (state.pendingClickIndex === -7 && state.selectedImageContainers.size > 0 && (e.buttons & 1) === 1) {
+    const moveDx = Math.abs(sx - state.pointerDownScreenX);
+    const moveDy = Math.abs(sy - state.pointerDownScreenY);
+    if (moveDx >= DRAG_THRESHOLD_PX || moveDy >= DRAG_THRESHOLD_PX) {
+      state.isDraggingImageContainer = true;
+      state.didDragSincePointerDown = true;
+      if (state.dragImageContainerStarts.length === 0) {
+        state.dragStartWorldX = world.x;
+        state.dragStartWorldY = world.y;
+        for (const si of state.selectedImageContainers) {
+          const c = state.imageContainers[si];
+          if (c) state.dragImageContainerStarts.push({ i: si, x: c.x, y: c.y, id: c.id });
+        }
+      }
+    }
+  }
+
+  if (state.pendingClickIndex === -8 && state.selectedImageItems.size > 0 && (e.buttons & 1) === 1) {
+    const moveDx = Math.abs(sx - state.pointerDownScreenX);
+    const moveDy = Math.abs(sy - state.pointerDownScreenY);
+    if (moveDx >= DRAG_THRESHOLD_PX || moveDy >= DRAG_THRESHOLD_PX) {
+      state.isDraggingImageItem = true;
+      state.didDragSincePointerDown = true;
+      if (state.dragImageItemStarts.length === 0) {
+        state.dragStartWorldX = world.x;
+        state.dragStartWorldY = world.y;
+        for (const sel of state.selectedImageItems) {
+          const imgContainer = state.imageContainers[sel.containerIdx];
+          if (imgContainer && imgContainer.image && imgContainer.image.id === sel.imageId) {
+            state.dragImageItemStarts.push({ containerIdx: sel.containerIdx, imageId: sel.imageId, x: imgContainer.image.x, y: imgContainer.image.y });
+          }
+        }
+      }
+    }
+  }
+
   if (state.pendingClickIndex === -2 && state.selectedArrows.size > 0 && (e.buttons & 1) === 1) {
     const moveDx = Math.abs(sx - state.pointerDownScreenX);
     const moveDy = Math.abs(sy - state.pointerDownScreenY);
@@ -867,7 +1277,21 @@ function onPointerMove(e) {
       cursorSet = true;
     }
   }
-  if (!cursorSet && !state.isDraggingNode && !state.isResizingShape && !state.isResizingTextBox && !state.isDraggingShape && !state.isDraggingTextBox && !state.isPanning && !state.isSelectingBox && state.connectingFrom === null && !state.isDraggingArrowEnd) {
+  if (!cursorSet && !state.isDraggingNode && !state.isResizingShape && !state.isResizingTextBox && !state.isResizingImageContainer && !state.isResizingImageItem && !state.isDraggingShape && !state.isDraggingTextBox && !state.isDraggingImageContainer && !state.isDraggingImageItem && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
+    const icEdge = getImageContainerEdgeAt(world.x, world.y);
+    if (icEdge) {
+      canvas.style.cursor = icEdge.cursor;
+      cursorSet = true;
+    }
+  }
+  if (!cursorSet && !state.isDraggingNode && !state.isResizingShape && !state.isResizingTextBox && !state.isResizingImageContainer && !state.isResizingImageItem && !state.isDraggingShape && !state.isDraggingTextBox && !state.isDraggingImageContainer && !state.isDraggingImageItem && !state.isPanning && !state.isSelectingBox && !state.isDraggingArrowEnd) {
+    const iiEdge = getImageItemEdgeAt(world.x, world.y);
+    if (iiEdge) {
+      canvas.style.cursor = iiEdge.cursor;
+      cursorSet = true;
+    }
+  }
+  if (!cursorSet && !state.isDraggingNode && !state.isResizingShape && !state.isResizingTextBox && !state.isResizingImageContainer && !state.isResizingImageItem && !state.isDraggingShape && !state.isDraggingTextBox && !state.isDraggingImageContainer && !state.isDraggingImageItem && !state.isPanning && !state.isSelectingBox && state.connectingFrom === null && !state.isDraggingArrowEnd) {
     const connHit = hitTestConnection(world.x, world.y);
     if (connHit !== null) {
       canvas.style.cursor = 'pointer';
@@ -897,6 +1321,14 @@ function onPointerMove(e) {
       for (const si of state.selectedShapes) {
         const s = state.shapes[si];
         if (s && world.x >= s.x && world.x <= s.x + s.w && world.y >= s.y && world.y <= s.y + s.h) {
+          overSelected = true; break;
+        }
+      }
+    }
+    if (!overSelected) {
+      for (const sci of state.selectedImageContainers) {
+        const c = state.imageContainers[sci];
+        if (c && world.x >= c.x && world.x <= c.x + c.w && world.y >= c.y && world.y <= c.y + c.h) {
           overSelected = true; break;
         }
       }
@@ -944,31 +1376,43 @@ function onPointerMove(e) {
       }
     }
 
-    const boxConnHits = [];
-    for (let ci = 0; ci < state.connectors.length; ci++) {
-      if (isConnectorInBox(state.connectors[ci], bx1, by1, bx2, by2)) {
-        boxConnHits.push(ci);
+      const boxConnHits = [];
+      for (let ci = 0; ci < state.connectors.length; ci++) {
+        if (isConnectorInBox(state.connectors[ci], bx1, by1, bx2, by2)) {
+          boxConnHits.push(ci);
+        }
       }
-    }
 
-    if (state.boxMode === 'replace') {
-      state.selectedTextBoxes.clear();
-      hits.forEach(i => state.selectedTextBoxes.add(i));
-      state.selectedArrows.clear();
-      state.selectedShapes.clear();
-      state.selectedConnectors.clear();
-      state.arrowDragTarget = null;
-      for (const ai of boxArrowHits) state.selectedArrows.add(ai);
-      for (const si of boxShapeHits) state.selectedShapes.add(si);
-      for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
-      for (const ci of boxConnHits) state.selectedConnectors.add(ci);
-    } else if (state.boxMode === 'add') {
-      for (const i of hits) state.selectedTextBoxes.add(i);
-      for (const ai of boxArrowHits) state.selectedArrows.add(ai);
-      for (const si of boxShapeHits) state.selectedShapes.add(si);
-      for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
-      for (const ci of boxConnHits) state.selectedConnectors.add(ci);
-    } else {
+      const boxICHits = [];
+      for (let ici = 0; ici < state.imageContainers.length; ici++) {
+        const ic = state.imageContainers[ici];
+        if (!(ic.x + ic.w < bx1 || ic.x > bx2 || ic.y + ic.h < by1 || ic.y > by2)) {
+          boxICHits.push(ici);
+        }
+      }
+
+      if (state.boxMode === 'replace') {
+        state.selectedTextBoxes.clear();
+        hits.forEach(i => state.selectedTextBoxes.add(i));
+        state.selectedArrows.clear();
+        state.selectedShapes.clear();
+        state.selectedConnectors.clear();
+        state.selectedImageContainers.clear();
+        state.selectedImageItems.clear();
+        state.arrowDragTarget = null;
+        for (const ai of boxArrowHits) state.selectedArrows.add(ai);
+        for (const si of boxShapeHits) state.selectedShapes.add(si);
+        for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
+        for (const ci of boxConnHits) state.selectedConnectors.add(ci);
+        for (const ici of boxICHits) state.selectedImageContainers.add(ici);
+      } else if (state.boxMode === 'add') {
+        for (const i of hits) state.selectedTextBoxes.add(i);
+        for (const ai of boxArrowHits) state.selectedArrows.add(ai);
+        for (const si of boxShapeHits) state.selectedShapes.add(si);
+        for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
+        for (const ci of boxConnHits) state.selectedConnectors.add(ci);
+        for (const ici of boxICHits) state.selectedImageContainers.add(ici);
+      } else {
       for (const i of hits) state.selectedTextBoxes.delete(i);
       for (const ai of boxArrowHits) { state.selectedArrows.delete(ai); state.arrowDragTarget = null; }
       for (const si of boxShapeHits) state.selectedShapes.delete(si);
@@ -1015,6 +1459,40 @@ function onPointerUp(e) {
     state.isResizingTextBox = false;
     state.resizeTextBoxId = -1;
     state.resizeTextBoxStartBounds = null;
+  }
+  if (state.isResizingImageContainer) {
+    const c = state.imageContainers[state.resizeImageContainerIdx];
+    if (c && state.resizeImageContainerStartBounds) {
+      if (c.x !== state.resizeImageContainerStartBounds.x || c.y !== state.resizeImageContainerStartBounds.y ||
+          c.w !== state.resizeImageContainerStartBounds.w || c.h !== state.resizeImageContainerStartBounds.h) {
+        _history.push(createResizeImageContainerCmd(state.imageContainers, state.selectedImageContainers, refreshSidePanel, state.resizeImageContainerId,
+          { x: state.resizeImageContainerStartBounds.x, y: state.resizeImageContainerStartBounds.y, w: state.resizeImageContainerStartBounds.w, h: state.resizeImageContainerStartBounds.h },
+          { x: c.x, y: c.y, w: c.w, h: c.h }));
+        state.markDrawOrderDirty();
+        state.reparentAll();
+      }
+    }
+    state.isResizingImageContainer = false;
+    state.resizeImageContainerId = -1;
+    state.resizeImageContainerStartBounds = null;
+  }
+  if (state.isResizingImageItem) {
+    const c = state.imageContainers[state.resizeImageItemContainerIdx];
+    if (c && state.resizeImageItemStartBounds) {
+      const img = c.image;
+      if (img && img.id === state.resizeImageItemId) {
+        if (img.x !== state.resizeImageItemStartBounds.x || img.y !== state.resizeImageItemStartBounds.y ||
+            img.w !== state.resizeImageItemStartBounds.w || img.h !== state.resizeImageItemStartBounds.h) {
+          _history.push(createResizeImageItemCmd(state.imageContainers, state.resizeImageItemContainerIdx, state.resizeImageItemId,
+            { x: state.resizeImageItemStartBounds.x, y: state.resizeImageItemStartBounds.y, w: state.resizeImageItemStartBounds.w, h: state.resizeImageItemStartBounds.h },
+            { x: img.x, y: img.y, w: img.w, h: img.h }));
+        }
+      }
+    }
+    state.isResizingImageItem = false;
+    state.resizeImageItemContainerIdx = -1;
+    state.resizeImageItemId = -1;
+    state.resizeImageItemStartBounds = null;
   }
   if (state.isPanning) {
     state.isPanning = false;
@@ -1167,6 +1645,34 @@ function onPointerUp(e) {
     state.dragChildTextBoxStarts = [];
     state.reparentAll();
   }
+  if (state.isDraggingImageContainer) {
+    const moves = [];
+    for (const item of state.dragImageContainerStarts) {
+      const c = state.imageContainers[item.i];
+      if (c && (c.x !== item.x || c.y !== item.y)) {
+        moves.push({ id: item.id, fromX: item.x, fromY: item.y, toX: c.x, toY: c.y });
+      }
+    }
+    if (moves.length > 0) {
+      _history.push(createMoveImageContainersCmd(state.imageContainers, state.selectedImageContainers, refreshSidePanel, moves));
+    }
+    state.isDraggingImageContainer = false;
+    state.dragImageContainerStarts = [];
+    state.reparentAll();
+  }
+  if (state.isDraggingImageItem) {
+    for (const item of state.dragImageItemStarts) {
+      const c = state.imageContainers[item.containerIdx];
+      if (c) {
+        const img = c.image;
+        if (img && img.id === item.imageId && (img.x !== item.x || img.y !== item.y)) {
+          _history.push(createMoveImageItemCmd(state.imageContainers, item.containerIdx, item.imageId, item.x, item.y, img.x, img.y));
+        }
+      }
+    }
+    state.isDraggingImageItem = false;
+    state.dragImageItemStarts = [];
+  }
   if (state.isDraggingConnectorBody && state.dragConnectorBodySnapshots.length > 0) {
     for (const snap of state.dragConnectorBodySnapshots) {
       const c = state.connectors[snap.idx];
@@ -1298,6 +1804,22 @@ function onPointerUp(e) {
         } else {
           addTextBoxAt(world.x, world.y);
         }
+      } else if (state.drawingTool === 'imageContainer') {
+        const dx = world.x - state.drawingStartX;
+        const dy = world.y - state.drawingStartY;
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+          const x = Math.min(state.drawingStartX, world.x);
+          const y = Math.min(state.drawingStartY, world.y);
+          const w = Math.abs(dx);
+          const h = Math.abs(dy);
+          if (w < IMAGE_CONTAINER_MIN_W || h < IMAGE_CONTAINER_MIN_H) {
+            addImageContainerAt(state.drawingStartX, state.drawingStartY);
+          } else {
+            addImageContainerAt(x, y, w, h);
+          }
+        } else {
+          addImageContainerAt(world.x, world.y);
+        }
       }
     } finally {
       state.drawingTool = null;
@@ -1415,31 +1937,43 @@ function onPointerUp(e) {
       }
     }
 
+    const boxICHits = [];
+    for (let ici = 0; ici < state.imageContainers.length; ici++) {
+      const ic = state.imageContainers[ici];
+      if (!(ic.x + ic.w < bx1 || ic.x > bx2 || ic.y + ic.h < by1 || ic.y > by2)) {
+        boxICHits.push(ici);
+      }
+    }
+
     if (state.boxMode === 'replace') {
       state.selectedTextBoxes.clear();
       hits.forEach(i => state.selectedTextBoxes.add(i));
       state.selectedArrows.clear();
       state.selectedShapes.clear();
       state.selectedConnectors.clear();
+      state.selectedImageContainers.clear();
+      state.selectedImageItems.clear();
       state.arrowDragTarget = null;
       for (const ai of boxArrowHits) state.selectedArrows.add(ai);
       for (const si of boxShapeHits) state.selectedShapes.add(si);
       for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
       for (const ci of boxConnHits) state.selectedConnectors.add(ci);
+      for (const ici of boxICHits) state.selectedImageContainers.add(ici);
     } else if (state.boxMode === 'add') {
       hits.forEach(i => state.selectedTextBoxes.add(i));
       for (const ai of boxArrowHits) state.selectedArrows.add(ai);
       for (const si of boxShapeHits) state.selectedShapes.add(si);
       for (const ti of boxTBHits) state.selectedTextBoxes.add(ti);
       for (const ci of boxConnHits) state.selectedConnectors.add(ci);
+      for (const ici of boxICHits) state.selectedImageContainers.add(ici);
     } else if (state.boxMode === 'remove') {
-      hits.forEach(i => state.selectedTextBoxes.delete(i));
+      for (const i of hits) state.selectedTextBoxes.delete(i);
       for (const ai of boxArrowHits) { state.selectedArrows.delete(ai); state.arrowDragTarget = null; }
       for (const si of boxShapeHits) state.selectedShapes.delete(si);
       for (const ti of boxTBHits) state.selectedTextBoxes.delete(ti);
       for (const ci of boxConnHits) state.selectedConnectors.delete(ci);
+      for (const ici of boxICHits) state.selectedImageContainers.delete(ici);
     }
-
     state.isSelectingBox = false;
     refreshSidePanel();
   }
@@ -1465,11 +1999,20 @@ function onPointerUp(e) {
           state.selectedShapes.clear();
           state.selectedShapes.add(state.pendingClickItemIdx);
         }
+      } else if (state.pendingClickIndex === -7 && state.selectedImageContainers.size > 1) {
+        if (state.selectedImageContainers.has(state.pendingClickItemIdx)) {
+          state.selectedImageContainers.clear();
+          state.selectedImageContainers.add(state.pendingClickItemIdx);
+        }
+      } else if (state.pendingClickIndex === -8 && state.selectedImageItems.size > 1) {
+        state.selectedImageItems.clear();
+        state.selectedImageItems.add({ containerIdx: state.pendingClickItemIdx, imageId: state.pendingImageItemId });
       }
     }
   }
   state.pendingClickIndex = -1;
   state.pendingClickItemIdx = -1;
+  state.pendingImageItemId = null;
   state.didDragSincePointerDown = false;
   state.pendingShiftKey = false;
   state.pendingCtrlKey = false;

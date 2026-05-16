@@ -1,49 +1,20 @@
 {
   "worktrees": {},
   "sessions": {
-    "ses_1d596e422ffeDdm9tfBCqEJ5uu": {
+    "ses_1d2c4af67ffeJ2V4WIYBJKmWGQ": {
       "worktreeId": null,
-      "createdAt": "2026-05-15T06:53:12.058Z"
+      "createdAt": "2026-05-15T20:02:02.552Z"
     }
   },
   "tabOrder": {
     "local": [
-      "ses_1dd7279a3ffeOsvAvGfxeHL897",
-      "ses_1dd70982fffez3s3sUmVpWHNaU",
-      "ses_1dd6ee810ffem140mJ6FJulVKI",
-      "ses_1dd673fe3ffeJo1ge49R6FjFt4",
-      "ses_1dd47202cffeoHYj4O4B37lwHY",
-      "ses_1dd408ea8ffe1DkoWCdM43oqtQ",
-      "ses_1dd3cfce7ffeVz3UFq4CttrkiV",
-      "ses_1dd3a16c5ffe4DDXJ6ipK7DQbj",
-      "ses_1dcf478c6ffeoKwncymMH3W0AV",
-      "ses_1dcbfcf89ffewc6QvbQG2TZVIs",
-      "ses_1dcaa1497ffe33FDtB36ITcHkb",
-      "ses_1d9e8c8d2ffetHptI8F6Os5vKm",
-      "ses_1d9e15195ffe3j7MCzF846hBdF",
-      "ses_1d9a4cf00ffe4EZ03YjWOrF6q2",
-      "ses_1d964fe73ffeqtSXNy4a7dQuXl",
-      "ses_1d8db8c10ffeH864iakn78XIzZ",
-      "ses_1d8cf72d9ffeB1BgmKr8IScA32",
-      "ses_1d8c7f837ffeI551r7F0wkIMBa",
-      "ses_1d8bd444effe9ZMQMweL2DPRzg",
-      "ses_1d8b350b2ffeX6Jep6M1TOpfVf",
-      "ses_1d8b176e7ffeQnPlL5Yppb5r3I",
-      "pending:11",
-      "ses_1d83b1bc3ffezcRK8DyVr7Ok2M",
-      "ses_1d82b8f34ffeEALTzAxGF9ZsuU",
-      "ses_1d7fe54b4ffebyx0F1JC9j1ggX",
-      "ses_1d7f213d3ffeP8yuP6QicMhV4c",
-      "ses_1d7ee03d9ffeG5uyNMLQ1rQta3",
-      "ses_1d7a874fdffea8K2HmhSFFQx31",
-      "ses_1d79e87daffeEeVmRSwBwHzp5v",
-      "ses_1d6391e95ffepoUy5xVRftVKtN",
-      "ses_1d62a33afffek5AZUBqjk17mrC",
-      "ses_1d6273d37ffeToAoQU2Jelj3FL",
-      "pending:4",
-      "ses_1d5ef1717ffemy35dgqKdlrvcM",
-      "ses_1d5b67658ffeBsiMiyDQv5IUBA",
-      "ses_1d596e422ffeDdm9tfBCqEJ5uu"
+      "ses_1d596e422ffeDdm9tfBCqEJ5uu",
+      "ses_1d4acdba9ffeh9mRN1YTUEJp68",
+      "ses_1d4a6ef6effeYiSgd51x64p1ih",
+      "ses_1d4a02de2ffehWUymS7sqdD6F9",
+      "ses_1d4999330ffeb4m4mV0mXeSIVK",
+      "ses_1d48015a8ffeBAXC5P02tWGbaE",
+      "ses_1d2c4af67ffeJ2V4WIYBJKmWGQ"
     ]
   }
 }

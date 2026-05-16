@@ -16,6 +16,8 @@ export function registerAddGroup(label, children) {
 }
 
 let _addNodeAt, _addArrowAt, _deleteSelectedNodes, _duplicateSelectedNodes;
+let _addImageContainerAt;
+let _deleteSelectedImageContainers;
 let _copySelectedNodes, _pasteNodesAt, _refreshSidePanel;
 let _addShapeAt, _addConnectorAt;
 let _deleteSelectedShapes, _deleteSelectedConnectors;
@@ -104,6 +106,7 @@ function isInSelection(type, index) {
     case 'arrow': return state.selectedArrows.has(index);
     case 'connector': return state.selectedConnectors.has(index);
     case 'connection': return state.selectedConnection === index;
+    case 'imageContainer': return state.selectedImageContainers.has(index);
   }
   return false;
 }
@@ -114,6 +117,8 @@ function selectSingle(type, index) {
   state.selectedArrows.clear();
   state.selectedShapes.clear();
   state.selectedConnectors.clear();
+  state.selectedImageContainers.clear();
+  state.selectedImageItems.clear();
   state.arrowDragTarget = null;
 
   switch (type) {
@@ -122,6 +127,7 @@ function selectSingle(type, index) {
     case 'arrow': state.selectedArrows.add(index); break;
     case 'connector': state.selectedConnectors.add(index); break;
     case 'connection': state.selectedConnection = index; break;
+    case 'imageContainer': state.selectedImageContainers.add(index); break;
   }
 }
 
@@ -148,7 +154,7 @@ export function openContextMenu(e) {
 
   const items = [];
 
-  if (hitType === 'textBox' || hitType === 'shape' || hitType === 'connector' || hitType === null) {
+  if (hitType === 'textBox' || hitType === 'shape' || hitType === 'connector' || hitType === 'imageContainer' || hitType === null) {
     items.push(buildAddSubmenu(world.x, world.y, hitType, hitIndex));
   }
 
@@ -173,6 +179,15 @@ export function openContextMenu(e) {
     }
   } else if (hitType === 'arrow') {
     items.push(makeMenuItem('Delete Arrow', _deleteSelectedArrows));
+  } else if (hitType === 'imageContainer') {
+    items.push(makeMenuItem('Delete Image Container', _deleteSelectedImageContainers));
+    if (state.selectedImageContainers.size > 0) {
+      items.push(makeMenuItem('Duplicate', _duplicateSelectedNodes));
+      items.push(makeMenuItem('Copy', _copySelectedNodes));
+    }
+    if (state.clipboard.length > 0) {
+      items.push(makeMenuItem('Paste', () => _pasteNodesAt(world.x, world.y)));
+    }
   } else if (hitType === 'connector') {
     items.push(makeMenuItem('Delete Connector', _deleteSelectedConnectors));
   } else if (hitType === 'connection') {
@@ -209,6 +224,7 @@ export function closeContextMenu() {
 }
 
 function registerDefaultAddItems() {
+  registerAddItem({ label: 'Image Container', create: (wx, wy) => _addImageContainerAt(wx, wy) });
   registerAddItem({ label: 'Text Box', create: (wx, wy) => _addNodeAt(wx, wy) });
   registerAddItem({ label: 'Arrow', create: (wx, wy, hitType, hitIndex) => {
     if (hitType === 'textBox') {
@@ -229,6 +245,8 @@ function registerDefaultAddItems() {
 export function initContextMenu(deps) {
   _addNodeAt = deps.addNodeAt;
   _addArrowAt = deps.addArrowAt;
+  _addImageContainerAt = deps.addImageContainerAt;
+  _deleteSelectedImageContainers = deps.deleteSelectedImageContainers;
   _deleteSelectedNodes = deps.deleteSelectedNodes;
   _duplicateSelectedNodes = deps.duplicateSelectedNodes;
   _copySelectedNodes = deps.copySelectedNodes;

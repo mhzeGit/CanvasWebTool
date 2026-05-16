@@ -16,6 +16,7 @@ let entityLayer;
 const domByTypeIdx = {
   shape: {},
   textBox: {},
+  imageContainer: {},
 };
 
 let prevDrawOrderKey = '';
@@ -32,8 +33,12 @@ export function destroyAllEntities() {
   for (const key in domByTypeIdx.textBox) {
     domByTypeIdx.textBox[key].remove();
   }
+  for (const key in domByTypeIdx.imageContainer) {
+    domByTypeIdx.imageContainer[key].remove();
+  }
   domByTypeIdx.shape = {};
   domByTypeIdx.textBox = {};
+  domByTypeIdx.imageContainer = {};
   prevDrawOrderKey = '';
   prevSelectionKey = '';
 }
@@ -67,6 +72,7 @@ function titleToHtml(title) {
 export function getEntityElement(type, idx) {
   if (type === 'textBox') return domByTypeIdx.textBox['t' + idx] || null;
   if (type === 'shape') return domByTypeIdx.shape['s' + idx] || null;
+  if (type === 'imageContainer') return domByTypeIdx.imageContainer['ic' + idx] || null;
   return null;
 }
 
@@ -231,6 +237,82 @@ function ensureTextBoxElement(idx) {
   return el;
 }
 
+function ensureImageContainerElement(idx) {
+  const c = state.imageContainers[idx];
+  if (!c) return null;
+  const key = 'ic' + idx;
+  let el = domByTypeIdx.imageContainer[key];
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'entity entity-image-container';
+    el.dataset.entityType = 'imageContainer';
+    el.dataset.entityIdx = idx;
+    el.innerHTML = '<div class="ic-drop-indicator">Drop images here</div><div class="ic-images-wrap"></div>' + makeHandlesHtml();
+    document.body.appendChild(el);
+    domByTypeIdx.imageContainer[key] = el;
+  }
+
+  placeEntity(el, c.x, c.y, c.w, c.h);
+
+  el.style.background = c.backgroundColor || '#1e1e1e';
+  el.style.outlineColor = c.borderColor || '#6bb5ff';
+  el.style.outlineWidth = Math.max(1, (c.borderWidth || 2) * state.scale) + 'px';
+  el.style.borderRadius = (6 * state.scale) + 'px';
+
+  // Render single image
+  const img = c.image;
+  if (img) {
+    let imgEl = el.querySelector('.ic-image');
+    if (!imgEl) {
+      imgEl = document.createElement('div');
+      imgEl.className = 'ic-image';
+      imgEl.dataset.imageId = img.id;
+      imgEl.draggable = false;
+      const innerImg = document.createElement('img');
+      innerImg.className = 'ic-image-img';
+      innerImg.draggable = false;
+      innerImg.alt = '';
+      imgEl.appendChild(innerImg);
+      el.querySelector('.ic-images-wrap').appendChild(imgEl);
+    }
+    const innerImg = imgEl.querySelector('.ic-image-img');
+    if (innerImg && innerImg.src !== img.src) innerImg.src = img.src;
+    const s = state.scale;
+    imgEl.style.position = 'absolute';
+    imgEl.style.left = (img.x * s) + 'px';
+    imgEl.style.top = (img.y * s) + 'px';
+    imgEl.style.width = (img.w * s) + 'px';
+    imgEl.style.height = (img.h * s) + 'px';
+    imgEl.style.borderRadius = (4 * s) + 'px';
+    imgEl.style.overflow = 'hidden';
+    imgEl.style.border = '1px solid rgba(255,255,255,0.15)';
+    imgEl.style.display = '';
+    if (innerImg) {
+      innerImg.style.width = '100%';
+      innerImg.style.height = '100%';
+      innerImg.style.objectFit = img.keepRatio ? 'contain' : 'fill';
+      innerImg.style.display = 'block';
+    }
+    // Selection highlight
+    const isSelected = Array.from(state.selectedImageItems).some(
+      sel => sel.containerIdx === idx && sel.imageId === img.id
+    );
+    imgEl.classList.toggle('selected-image-item', isSelected);
+    imgEl.dataset.imageId = img.id;
+  } else {
+    const existing = el.querySelector('.ic-image');
+    if (existing) existing.remove();
+  }
+
+  // Drop zone indicator visibility
+  const dropIndicator = el.querySelector('.ic-drop-indicator');
+  if (dropIndicator) {
+    dropIndicator.style.display = !c.image ? 'flex' : 'none';
+  }
+
+  return el;
+}
+
 function applyDrawOrder() {
   const order = state.getAllDrawOrder();
   for (let i = 0; i < order.length; i++) {
@@ -240,6 +322,8 @@ function applyDrawOrder() {
       el = domByTypeIdx.shape['s' + item.i];
     } else if (item.type === 'textBox') {
       el = domByTypeIdx.textBox['t' + item.i];
+    } else if (item.type === 'imageContainer') {
+      el = domByTypeIdx.imageContainer['ic' + item.i];
     }
     if (el) {
       el.style.zIndex = 2 + i * 2;
@@ -257,6 +341,11 @@ function applySelectionClasses() {
     const el = domByTypeIdx.textBox[key];
     const idx = parseInt(el.dataset.entityIdx);
     el.classList.toggle('selected', state.selectedTextBoxes.has(idx));
+  }
+  for (const key in domByTypeIdx.imageContainer) {
+    const el = domByTypeIdx.imageContainer[key];
+    const idx = parseInt(el.dataset.entityIdx);
+    el.classList.toggle('selected', state.selectedImageContainers.has(idx));
   }
 }
 
@@ -277,12 +366,22 @@ function cleanupStaleElements() {
       delete domByTypeIdx.textBox[key];
     }
   }
+  const aliveICKeys = new Set();
+  for (let i = 0; i < state.imageContainers.length; i++) aliveICKeys.add('ic' + i);
+  for (const key in domByTypeIdx.imageContainer) {
+    if (!aliveICKeys.has(key)) {
+      domByTypeIdx.imageContainer[key].remove();
+      delete domByTypeIdx.imageContainer[key];
+    }
+  }
 }
 
 export function syncAllEntities() {
   const order = state.getAllDrawOrder();
   const drawOrderKey = order.map(item => item.type[0] + item.i).join(',');
-  const selKey = [...state.selectedShapes].sort((a,b)=>a-b).join(',') + '|' + [...state.selectedTextBoxes].sort((a,b)=>a-b).join(',');
+  const selKey = [...state.selectedShapes].sort((a,b)=>a-b).join(',') + '|' +
+    [...state.selectedTextBoxes].sort((a,b)=>a-b).join(',') + '|' +
+    [...state.selectedImageContainers].sort((a,b)=>a-b).join(',');
 
   cleanupStaleElements();
 
@@ -291,6 +390,9 @@ export function syncAllEntities() {
   }
   for (let i = 0; i < state.textBoxes.length; i++) {
     ensureTextBoxElement(i);
+  }
+  for (let i = 0; i < state.imageContainers.length; i++) {
+    ensureImageContainerElement(i);
   }
 
   if (drawOrderKey !== prevDrawOrderKey) {

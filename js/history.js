@@ -1,4 +1,4 @@
-import { createHistoryManager, createResizeShapeCmd, createShapePropertyChangeCmd, createTextBoxPropertyChangeCmd, createArrowPropertyChangeCmd, createConnectionPropertyChangeCmd, createResizeTextBoxCmd } from './undo.js';
+import { createHistoryManager, createResizeShapeCmd, createShapePropertyChangeCmd, createTextBoxPropertyChangeCmd, createArrowPropertyChangeCmd, createConnectionPropertyChangeCmd, createResizeTextBoxCmd, createContainerPropertyChangeCmd } from './undo.js';
 import { state } from './state.js';
 
 export const history = createHistoryManager();
@@ -11,7 +11,7 @@ export function initHistory(refreshSidePanel) {
 
 export function flushPanelEdit() {
   if (!state.panelPendingEdit) return;
-  const { type, shapeId, tbId, arrowId, connId, property, oldValue, oldBounds } = state.panelPendingEdit;
+  const { type, shapeId, tbId, arrowId, connId, containerId, property, oldValue, oldBounds } = state.panelPendingEdit;
   state.panelPendingEdit = null;
 
   if (type === 'shape') {
@@ -65,6 +65,16 @@ export function flushPanelEdit() {
     }
     return;
   }
+
+  if (type === 'imageContainer') {
+    const c = state.imageContainers.find(ct => ct.id === containerId);
+    if (!c) return;
+    const newValue = c[property];
+    if (oldValue !== newValue) {
+      history.push(createContainerPropertyChangeCmd(state.imageContainers, state.selectedImageContainers, _refreshSidePanel, containerId, property, oldValue, newValue));
+    }
+    return;
+  }
 }
 
 export function startPanelEdit(nodeId, property, oldValue, oldBounds) {
@@ -90,6 +100,11 @@ export function startArrowPanelEdit(arrowId, property, oldValue) {
 export function startConnectionPanelEdit(connId, property, oldValue) {
   flushPanelEdit();
   state.panelPendingEdit = { type: 'connection', connId, property, oldValue };
+}
+
+export function startContainerPanelEdit(containerId, property, oldValue) {
+  flushPanelEdit();
+  state.panelPendingEdit = { type: 'imageContainer', containerId, property, oldValue };
 }
 
 export function performUndo() {

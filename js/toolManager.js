@@ -4,6 +4,7 @@ export const TOOLS = {
   CONNECTION_LINE: 'connectionLine',
   TEXT: 'text',
   SHAPES: 'shapes',
+  IMAGE_CONTAINER: 'imageContainer',
 };
 
 let activeTool = TOOLS.CURSOR;
