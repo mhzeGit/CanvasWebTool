@@ -558,7 +558,6 @@ export function refreshSidePanel() {
     const borderWidthMixed = isBatch && members.some(m => m.borderWidth !== s.borderWidth);
     const wMixed = isBatch && members.some(m => m.w !== s.w);
     const hMixed = isBatch && members.some(m => m.h !== s.h);
-    const radiusMixed = isRect && isBatch && members.some(m => m.cornerRadius !== s.cornerRadius);
 
     const title = isBatch ? indices.length + ' shapes selected' : 'Shape (' + state.escAttr(s.shapeType) + ')';
 
@@ -600,7 +599,6 @@ export function refreshSidePanel() {
       '<div class="panel-row"><label>Border W</label><input id="panelShapeBorderWidth" class="panel-input" type="number" min="0" max="20" step="0.5" value="' + (colorMixed || borderWidthMixed ? '' : (s.borderWidth ?? 2)) + '" placeholder="' + (borderWidthMixed ? '(mixed)' : '') + '" /></div>',
       '<div class="panel-row"><label>Width</label><input id="panelShapeW" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : s.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
       '<div class="panel-row"><label>Height</label><input id="panelShapeH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : s.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
-      (isRect ? '<div class="panel-row"><label>Radius</label><input id="panelShapeCornerRadius" class="panel-input" type="number" min="0" max="200" value="' + (radiusMixed ? '' : (s.cornerRadius ?? 4)) + '" placeholder="' + (radiusMixed ? '(mixed)' : '') + '" /></div>' : ''),
       shapeParentHtml,
       imageSectionHtml,
     ].join(''));
@@ -610,8 +608,6 @@ export function refreshSidePanel() {
     const borderWidthInput = document.getElementById('panelShapeBorderWidth');
     const wInput = document.getElementById('panelShapeW');
     const hInput = document.getElementById('panelShapeH');
-    const radiusInput = document.getElementById('panelShapeCornerRadius');
-
     if (colorSwatch) {
       initColorSwatch(colorSwatch, {
         onSelect: (v) => {
@@ -754,32 +750,6 @@ export function refreshSidePanel() {
           });
       }
     }
-    if (radiusInput) {
-      radiusInput.setAttribute('data-drag-number', 'true');
-      radiusInput.addEventListener('input', (ev) => {
-        const v = parseFloat(ev.target.value);
-        if (!Number.isNaN(v) && v >= 0) {
-          if (isBatch) { for (const m of members) m.cornerRadius = v; } else { s.cornerRadius = v; }
-        }
-      });
-      if (isBatch) {
-        radiusInput.addEventListener('focus', () => _captureShapeSnapshot('cornerRadius', members));
-        radiusInput.addEventListener('blur', () => _commitShapeSnapshot('cornerRadius'));
-        attachDragNumber(radiusInput,
-          (delta) => {
-            const v = Math.max(0, (members[0].cornerRadius ?? 4) + delta);
-            for (const m of members) m.cornerRadius = v;
-            radiusInput.value = String(Math.round(members[0].cornerRadius));
-          }, () => {}, () => {});
-      } else {
-        radiusInput.addEventListener('focus', () => { startShapePanelEdit(shapeId, 'cornerRadius', s.cornerRadius); });
-        radiusInput.addEventListener('blur', () => { flushPanelEdit(); });
-        attachDragNumber(radiusInput,
-          (delta) => { s.cornerRadius = Math.max(0, (s.cornerRadius ?? 4) + delta); radiusInput.value = String(Math.round(s.cornerRadius)); },
-          () => { flushPanelEdit(); }, () => {});
-      }
-    }
-
     if (!isBatch) {
       const addImgBtn = document.getElementById('panelShapeAddImage');
       if (addImgBtn) {
@@ -1159,19 +1129,16 @@ function renderMixedEditor() {
 }
 
 function appendShapeEditorHTML(parts, prefix, members, first) {
-  const isRect = first.shapeType === 'rectangle';
   const wMixed = members.some(m => m.w !== first.w);
   const hMixed = members.some(m => m.h !== first.h);
   const bwMixed = members.some(m => m.borderWidth !== first.borderWidth);
-  const rMixed = isRect && members.some(m => m.cornerRadius !== first.cornerRadius);
 
   parts.push(
     '<div class="panel-row"><label>Color</label>' + colorSwatchHTML(prefix + '_color', first.color ?? '#2b2b2b') + '</div>',
     '<div class="panel-row"><label>Border</label>' + colorSwatchHTML(prefix + '_borderColor', first.borderColor ?? '#6bb5ff') + '</div>',
     '<div class="panel-row"><label>Border W</label><input id="' + prefix + '_borderWidth" class="panel-input" type="number" min="0" max="20" step="0.5" value="' + (bwMixed ? '' : (first.borderWidth ?? 2)) + '" placeholder="' + (bwMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-row"><label>Width</label><input id="' + prefix + '_w" class="panel-input" type="number" min="10" value="' + (wMixed ? '' : first.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
-    '<div class="panel-row"><label>Height</label><input id="' + prefix + '_h" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : first.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
-    (isRect ? '<div class="panel-row"><label>Radius</label><input id="' + prefix + '_cornerRadius" class="panel-input" type="number" min="0" max="200" value="' + (rMixed ? '' : (first.cornerRadius ?? 4)) + '" placeholder="' + (rMixed ? '(mixed)' : '') + '" /></div>' : '')
+    '<div class="panel-row"><label>Height</label><input id="' + prefix + '_h" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : first.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>'
   );
 }
 
@@ -1207,7 +1174,6 @@ function wireMixedShapeGroup(prefix, members) {
   const borderWidthInput = document.getElementById(prefix + '_borderWidth');
   const wInput = document.getElementById(prefix + '_w');
   const hInput = document.getElementById(prefix + '_h');
-  const radiusInput = document.getElementById(prefix + '_cornerRadius');
 
   if (colorSwatch) {
     initColorSwatch(colorSwatch, {
@@ -1281,20 +1247,6 @@ function wireMixedShapeGroup(prefix, members) {
         }
         if (ch.length > 0) history.push(createBatchResizeShapeCmd(state.shapes, state.selectedShapes, refreshSidePanel, ch));
       });
-  }
-  if (radiusInput) {
-    radiusInput.addEventListener('input', (ev) => {
-      const v = parseFloat(ev.target.value);
-      if (!Number.isNaN(v) && v >= 0) for (const m of members) m.cornerRadius = v;
-    });
-    radiusInput.addEventListener('focus', () => _captureShapeSnapshot('cornerRadius', members));
-    radiusInput.addEventListener('blur', () => _commitShapeSnapshot('cornerRadius'));
-    attachDragNumber(radiusInput,
-      (delta) => {
-        const v = Math.max(0, (members[0].cornerRadius ?? 4) + delta);
-        for (const m of members) m.cornerRadius = v;
-        radiusInput.value = String(Math.round(members[0].cornerRadius));
-      }, () => {}, () => {});
   }
 }
 
@@ -1468,7 +1420,6 @@ const ID_PROP_MAP = {
   panelShapeBorderWidth: { entityType: 'shape', prop: 'borderWidth' },
   panelShapeW: { entityType: 'shape', prop: 'w' },
   panelShapeH: { entityType: 'shape', prop: 'h' },
-  panelShapeCornerRadius: { entityType: 'shape', prop: 'cornerRadius' },
   panelTBTitle: { entityType: 'textBox', prop: 'title' },
   panelTBTitleColor: { entityType: 'textBox', prop: 'titleColor' },
   panelTBColor: { entityType: 'textBox', prop: 'color' },
