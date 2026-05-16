@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { screenToWorld } from './utils.js';
-import { history, performUndo, performRedo, flushPanelEdit, startShapePanelEdit, startTextBoxPanelEdit, startArrowPanelEdit, startConnectionPanelEdit, startContainerPanelEdit } from './history.js';
+import { history, performUndo, performRedo, flushPanelEdit, startShapePanelEdit, startTextBoxPanelEdit, startArrowPanelEdit, startConnectionPanelEdit } from './history.js';
 import { refreshSidePanel } from './side-panel.js';
 import { cancelEditing } from './inline-editing.js';
 import { closeContextMenu } from './context-menu.js';
@@ -8,9 +8,7 @@ import {
   deleteSelectedNodes, deleteSelectedShapes, deleteSelectedTextBoxes, deleteSelectedConnectors,
   deleteSelectedArrows, deleteConnection,
   duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
-  deleteSelectedImageContainers, copySelectedImageContainers,
-  removeImageFromContainer,
-  saveDocument, saveDocumentAs,
+  removeImageFromShape, saveDocument, saveDocumentAs,
 } from './document.js';
 
 export function setupKeyboard() {
@@ -89,20 +87,6 @@ function onKeyDown(e) {
     return;
   }
   if (!isInput && (e.key === 'Delete' || e.key === 'Backspace')) {
-    if (state.selectedImageItems.size > 0) {
-      for (const sel of state.selectedImageItems) {
-        removeImageFromContainer(sel.containerIdx);
-      }
-      state.selectedImageItems.clear();
-      refreshSidePanel();
-      e.preventDefault();
-      return;
-    }
-    if (state.selectedImageContainers.size > 0) {
-      deleteSelectedImageContainers();
-      e.preventDefault();
-      return;
-    }
     if (state.selectedShapes.size > 0) {
       deleteSelectedShapes();
       e.preventDefault();
@@ -137,11 +121,7 @@ function onKeyDown(e) {
       e.preventDefault();
       return;
     }
-    if (state.selectedImageContainers.size > 0) {
-      copySelectedImageContainers();
-    } else {
-      copySelectedNodes();
-    }
+    copySelectedNodes();
     e.preventDefault();
   }
   if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'v')) {
@@ -178,12 +158,6 @@ function onKeyDown(e) {
       state.dragArrowBodySnapshots = [];
       state.dragArrowBodyStartWorld = null;
     }
-    if (state.selectedImageContainers.size > 0) {
-      state.selectedImageContainers.clear();
-      state.selectedImageItems.clear();
-      refreshSidePanel();
-      return;
-    }
     if (state.selectedArrows.size > 0 || state.arrowDragTarget !== null) {
       state.selectedArrows.clear();
       state.arrowDragTarget = null;
@@ -204,13 +178,11 @@ function copyHoveredProp() {
     : f.entityType === 'textBox' ? state.textBoxes
     : f.entityType === 'arrow' ? state.arrows
     : f.entityType === 'connection' ? state.connections
-    : f.entityType === 'imageContainer' ? state.imageContainers
     : null;
   const indices = f.entityType === 'shape' ? Array.from(state.selectedShapes)
     : f.entityType === 'textBox' ? Array.from(state.selectedTextBoxes)
     : f.entityType === 'arrow' ? Array.from(state.selectedArrows)
     : f.entityType === 'connection' ? (state.selectedConnection !== null ? [state.selectedConnection] : [])
-    : f.entityType === 'imageContainer' ? Array.from(state.selectedImageContainers)
     : [];
   if (!entities || indices.length === 0) return;
   state.propertyClipboard = { value: entities[indices[0]][f.propKey], entityType: f.entityType, propKey: f.propKey };
@@ -223,13 +195,11 @@ function pasteHoveredProp() {
     : f.entityType === 'textBox' ? state.textBoxes
     : f.entityType === 'arrow' ? state.arrows
     : f.entityType === 'connection' ? state.connections
-    : f.entityType === 'imageContainer' ? state.imageContainers
     : null;
   const indices = f.entityType === 'shape' ? Array.from(state.selectedShapes)
     : f.entityType === 'textBox' ? Array.from(state.selectedTextBoxes)
     : f.entityType === 'arrow' ? Array.from(state.selectedArrows)
     : f.entityType === 'connection' ? (state.selectedConnection !== null ? [state.selectedConnection] : [])
-    : f.entityType === 'imageContainer' ? Array.from(state.selectedImageContainers)
     : [];
   if (!entities || indices.length === 0) return;
   const oldVal = entities[indices[0]][f.propKey];
@@ -240,7 +210,6 @@ function pasteHoveredProp() {
   else if (f.entityType === 'textBox') startTextBoxPanelEdit(firstId, f.propKey, oldVal);
   else if (f.entityType === 'arrow') startArrowPanelEdit(firstId, f.propKey, oldVal);
   else if (f.entityType === 'connection') startConnectionPanelEdit(firstId, f.propKey, oldVal);
-  else if (f.entityType === 'imageContainer') startContainerPanelEdit(firstId, f.propKey, oldVal);
   for (const idx of indices) entities[idx][f.propKey] = newVal;
   flushPanelEdit();
   refreshSidePanel();

@@ -45,10 +45,3 @@ export const MAX_HISTORY_SIZE = 200;
 export const PLACEHOLDER_COLOR = '#777';
 export const TITLE_PLACEHOLDER = 'Add Title';
 export const TEXT_PLACEHOLDER = 'Add description...';
-
-export const IMAGE_CONTAINER_MIN_W = 100;
-export const IMAGE_CONTAINER_MIN_H = 100;
-export const IMAGE_ITEM_MIN_W = 20;
-export const IMAGE_ITEM_MIN_H = 20;
-export const DEFAULT_CONTAINER_BG = '#1e1e1e';
-export const DEFAULT_CONTAINER_BORDER = '#6bb5ff';

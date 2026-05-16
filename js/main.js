@@ -24,7 +24,6 @@ import {
   duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
   addShapeAt, addConnector,
   addImageContainerAt, addImageContainerAtCenter,
-  deleteSelectedImageContainers,
   newDocument, saveDocument, openDocument,
 } from './document.js';
 import { performUndo, performRedo } from './history.js';
@@ -36,14 +35,11 @@ function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
   const sideEl = document.getElementById('sidePanel');
   const toolbarEl = document.getElementById('leftToolbar');
-  const isMobile = window.innerWidth <= 768;
-  const sideVisible = sideEl && sideEl.classList.contains('mobile-visible');
-  const sideWidthPx = sideVisible ? sideEl.getBoundingClientRect().width : (isMobile ? 0 : (sideEl ? sideEl.getBoundingClientRect().width : Math.floor(window.innerWidth * 0.30)));
-  const toolbarWidthPx = isMobile ? 0 : (toolbarEl ? toolbarEl.getBoundingClientRect().width : 0);
-  const toolbarBottomPx = isMobile ? 52 : 0;
+  const sideWidthPx = sideEl ? sideEl.getBoundingClientRect().width : Math.floor(window.innerWidth * 0.30);
+  const toolbarWidthPx = toolbarEl ? toolbarEl.getBoundingClientRect().width : 0;
   const topBarPx = 40;
   const cssWidth = window.innerWidth - sideWidthPx - toolbarWidthPx;
-  const cssHeight = window.innerHeight - topBarPx - toolbarBottomPx;
+  const cssHeight = window.innerHeight - topBarPx;
   state.canvas.style.width = cssWidth + 'px';
   state.canvas.style.height = cssHeight + 'px';
   state.canvas.width = cssWidth * dpr;
@@ -71,7 +67,6 @@ function animate() {
 
   drawGrid(ctx, canvas, state.offsetX, state.offsetY, state.scale, dpr);
 
-  // Clear arrow canvas and set world transform
   const actx = state.arrowCtx;
   const acvs = state.arrowCanvas;
   actx.save();
@@ -82,7 +77,6 @@ function animate() {
   actx.translate(state.offsetX, state.offsetY);
   actx.scale(state.scale, state.scale);
 
-  // Clean up stale connections (where textBox was deleted)
   for (let ci = state.connections.length - 1; ci >= 0; ci--) {
     const conn = state.connections[ci];
     const fromNode = state.textBoxes[conn.from];
@@ -121,18 +115,7 @@ function animate() {
 
 function drawImageContainerPreview() {
   if (!state.drawingTool || state.drawingTool !== 'imageContainer') return;
-  const ctx = state.ctx;
-  const x = Math.min(state.drawingStartX, state.lastWorldMouse.x);
-  const y = Math.min(state.drawingStartY, state.lastWorldMouse.y);
-  const w = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
-  const h = Math.abs(state.lastWorldMouse.y - state.drawingStartY);
-
-  ctx.save();
-  ctx.strokeStyle = '#6bb5ff';
-  ctx.lineWidth = 2 / state.scale;
-  ctx.setLineDash([6 / state.scale, 4 / state.scale]);
-  ctx.strokeRect(x, y, w, h);
-  ctx.restore();
+  drawShapePreview();
 }
 
 function initTopBar() {
@@ -228,7 +211,6 @@ function setupMobileUI() {
     mobilePanelToggle.addEventListener('click', (e) => {
       e.stopPropagation();
       sidePanel.classList.toggle('mobile-visible');
-      resizeCanvas();
     });
 
     document.addEventListener('pointerdown', (e) => {
@@ -236,7 +218,6 @@ function setupMobileUI() {
         !sidePanel.contains(e.target) &&
         e.target !== mobilePanelToggle) {
         sidePanel.classList.remove('mobile-visible');
-        resizeCanvas();
       }
     });
   }
@@ -284,7 +265,6 @@ function init() {
     deleteSelectedConnectors,
     deleteSelectedArrows,
     deleteConnection,
-    deleteSelectedImageContainers,
   });
 
   document.addEventListener('pointerdown', (e) => {
@@ -312,14 +292,6 @@ function init() {
     }
     if (state.selectedConnectors.size > 0) {
       state.selectedConnectors.clear();
-      didClear = true;
-    }
-    if (state.selectedImageContainers.size > 0) {
-      state.selectedImageContainers.clear();
-      didClear = true;
-    }
-    if (state.selectedImageItems.size > 0) {
-      state.selectedImageItems.clear();
       didClear = true;
     }
     if (didClear) refreshSidePanel();

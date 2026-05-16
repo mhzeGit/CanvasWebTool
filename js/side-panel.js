@@ -1,12 +1,12 @@
 import { state } from './state.js';
-import { history, flushPanelEdit, startPanelEdit, startShapePanelEdit, startTextBoxPanelEdit, startArrowPanelEdit, startConnectionPanelEdit, startContainerPanelEdit } from './history.js';
+import { history, flushPanelEdit, startPanelEdit, startShapePanelEdit, startTextBoxPanelEdit, startArrowPanelEdit, startConnectionPanelEdit } from './history.js';
 import { colorSwatchHTML, initColorSwatch } from './color-palette.js';
 import {
   createResizeShapeCmd, createResizeTextBoxCmd,
   createBatchShapePropertyChangeCmd, createBatchResizeShapeCmd,
   createBatchTextBoxPropertyChangeCmd, createBatchResizeTextBoxCmd
 } from './undo.js';
-import { addImageToContainer, removeImageFromContainer, openImageInContainer, replaceImageInContainer, deleteSelectedImageContainers } from './document.js';
+import { addImageToShape, removeImageFromShape, openImageInShape } from './document.js';
 import { getArrowEndpoint } from './arrows.js';
 import { blocksToHtml, getOrCreateBlocks, htmlToBlocks, blocksToMarkdown, markdownToBlocks } from './rich-text.js';
 import { TITLE_PLACEHOLDER, TEXT_PLACEHOLDER } from './config.js';
@@ -480,7 +480,6 @@ export function refreshSidePanel() {
     return;
   }
 
-  // --- Mixed-type selection (check before single-type handlers) ---
   {
     let typeCount = 0;
     if (state.selectedShapes.size > 0) typeCount++;
@@ -488,8 +487,6 @@ export function refreshSidePanel() {
     if (state.selectedArrows.size > 0) typeCount++;
     if (state.selectedConnection !== null) typeCount++;
     if (state.selectedConnectors.size > 0) typeCount++;
-    if (state.selectedImageContainers.size > 0) typeCount++;
-    if (state.selectedImageItems.size > 0) typeCount++;
     if (typeCount > 1) {
       flushPanelEdit();
       renderMixedEditor();
@@ -546,7 +543,6 @@ export function refreshSidePanel() {
     return;
   }
 
-  // --- Shapes (single or multi, same UI) ---
   if (state.selectedShapes.size >= 1) {
     flushPanelEdit();
     const indices = Array.from(state.selectedShapes);
@@ -578,6 +574,24 @@ export function refreshSidePanel() {
       : null;
     const shapeParentHtml = shapeParentInfo ? '<div class="panel-row"><label>Parent</label><span class="panel-static">' + state.escAttr(shapeParentInfo) + '</span></div>' : '';
 
+    const hasImage = s.image != null;
+    const imageMixed = isBatch && members.some(m => (m.image != null) !== hasImage);
+    let imageSectionHtml = '';
+    if (!isBatch || imageMixed) {
+      if (hasImage) {
+        imageSectionHtml = '<div class="panel-section-title" style="margin-top:12px">Image</div>' +
+          '<div class="panel-row" style="flex-direction:row;align-items:center;gap:4px;"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;">' + state.escAttr(s.image.fileName || 'Image') + '</span>' +
+          '<button id="panelShapeRemoveImage" style="background:none;border:1px solid #555;color:#e74c3c;border-radius:3px;cursor:pointer;padding:0 6px;font-size:11px;line-height:1.4;">\u00d7</button></div>' +
+          '<div class="panel-row" style="flex-direction:row;gap:4px;"><button id="panelShapeAddImage" class="panel-input" style="cursor:pointer;flex:1">Replace...</button>' +
+          '<button id="panelShapeUrlAddBtn" class="panel-input" style="cursor:pointer;width:auto;">URL</button></div>';
+      } else {
+        imageSectionHtml = '<div class="panel-section-title" style="margin-top:12px">Image</div>' +
+          '<div class="panel-row" style="color:#777;font-size:11px;">No image</div>' +
+          '<div class="panel-row" style="flex-direction:row;gap:4px;"><button id="panelShapeAddImage" class="panel-input" style="cursor:pointer;flex:1">+ Add Image</button>' +
+          '<button id="panelShapeUrlAddBtn" class="panel-input" style="cursor:pointer;width:auto;">URL</button></div>';
+      }
+    }
+
     _sp( [
       '<div class="panel-section-title">' + title + '</div>',
       '<div class="panel-row"><label>Color</label>' + colorSwatchHTML('panelShapeColor', s.color ?? '#2b2b2b') + '</div>',
@@ -587,6 +601,7 @@ export function refreshSidePanel() {
       '<div class="panel-row"><label>Height</label><input id="panelShapeH" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : s.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
       (isRect ? '<div class="panel-row"><label>Radius</label><input id="panelShapeCornerRadius" class="panel-input" type="number" min="0" max="200" value="' + (radiusMixed ? '' : (s.cornerRadius ?? 4)) + '" placeholder="' + (radiusMixed ? '(mixed)' : '') + '" /></div>' : ''),
       shapeParentHtml,
+      imageSectionHtml,
     ].join(''));
 
     const colorSwatch = document.getElementById('panelShapeColor');
@@ -644,7 +659,6 @@ export function refreshSidePanel() {
           () => { flushPanelEdit(); }, () => {});
       }
     }
-    // w/h/radius input wiring remains same as before for shapes...
     if (wInput) {
       wInput.setAttribute('data-drag-number', 'true');
       wInput.addEventListener('input', (ev) => {
@@ -764,10 +778,33 @@ export function refreshSidePanel() {
           () => { flushPanelEdit(); }, () => {});
       }
     }
+
+    if (!isBatch) {
+      const addImgBtn = document.getElementById('panelShapeAddImage');
+      if (addImgBtn) {
+        addImgBtn.addEventListener('click', () => {
+          openImageInShape(firstIdx);
+        });
+      }
+      const urlAddBtn = document.getElementById('panelShapeUrlAddBtn');
+      if (urlAddBtn) {
+        urlAddBtn.addEventListener('click', () => {
+          const url = prompt('Enter image URL:');
+          if (url && url.trim()) {
+            addImageToShape(firstIdx, url.trim());
+          }
+        });
+      }
+      const removeBtn = document.getElementById('panelShapeRemoveImage');
+      if (removeBtn) {
+        removeBtn.addEventListener('click', () => {
+          removeImageFromShape(firstIdx);
+        });
+      }
+    }
     return;
   }
 
-  // --- TextBoxes (single or multi, same UI) ---
   if (state.selectedTextBoxes.size >= 1) {
     flushPanelEdit();
     const indices = Array.from(state.selectedTextBoxes);
@@ -1017,202 +1054,7 @@ export function refreshSidePanel() {
     return;
   }
 
-  // --- Image Items ---
-  if (state.selectedImageItems.size === 1 && state.selectedImageContainers.size === 0) {
-    flushPanelEdit();
-    const sel = Array.from(state.selectedImageItems)[0];
-    const c = state.imageContainers[sel.containerIdx];
-    if (!c) { /* fall through */ }
-    else if (c.image && c.image.id === sel.imageId) {
-      const img = c.image;
-      _sp( [
-        '<div class="panel-section-title">Image</div>',
-        '<div class="panel-row"><label>X</label><input id="panelIIX" class="panel-input" type="number" min="0" value="' + Math.round(img.x) + '" /></div>',
-        '<div class="panel-row"><label>Y</label><input id="panelIIY" class="panel-input" type="number" min="0" value="' + Math.round(img.y) + '" /></div>',
-        '<div class="panel-row"><label>Width</label><input id="panelIIW" class="panel-input" type="number" min="20" value="' + Math.round(img.w) + '" /></div>',
-        '<div class="panel-row"><label>Height</label><input id="panelIIH" class="panel-input" type="number" min="20" value="' + Math.round(img.h) + '" /></div>',
-        '<div class="panel-row"><label>Keep Ratio</label><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input id="panelIIKeepRatio" type="checkbox" ' + (img.keepRatio ? 'checked' : '') + ' /> <span>Lock aspect ratio</span></label></div>',
-        '<div class="panel-row"><label>File</label><span class="panel-static">' + state.escAttr(img.fileName || '') + '</span></div>',
-        '<div class="panel-row"><button id="panelIIChangeImage" class="panel-input" style="cursor:pointer">Change Image...</button></div>',
-        '<div class="panel-row"><button id="panelIIRemove" class="panel-input" style="cursor:pointer;color:#e74c3c">Remove Image</button></div>',
-      ].join(''));
-      const xInput = document.getElementById('panelIIX');
-      const yInput = document.getElementById('panelIIY');
-      const wInput = document.getElementById('panelIIW');
-      const hInput = document.getElementById('panelIIH');
-      const keepInput = document.getElementById('panelIIKeepRatio');
-      if (xInput) xInput.addEventListener('input', (e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 0) img.x = v; });
-      if (yInput) yInput.addEventListener('input', (e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 0) img.y = v; });
-      if (wInput) wInput.addEventListener('input', (e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 20) img.w = v; });
-      if (hInput) hInput.addEventListener('input', (e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 20) img.h = v; });
-      if (keepInput) keepInput.addEventListener('change', (e) => { img.keepRatio = e.target.checked; state.markDrawOrderDirty(); });
-      const changeBtn = document.getElementById('panelIIChangeImage');
-      if (changeBtn) changeBtn.addEventListener('click', () => openImageInContainer(sel.containerIdx));
-      const removeBtn = document.getElementById('panelIIRemove');
-      if (removeBtn) removeBtn.addEventListener('click', () => removeImageFromContainer(sel.containerIdx));
-    } else {
-      _sp( '<div class="panel-empty">Selected image not found</div>');
-    }
-    return;
-  }
-
-  // --- Image Containers ---
-  if (state.selectedImageContainers.size >= 1) {
-    flushPanelEdit();
-    const indices = Array.from(state.selectedImageContainers);
-    const isBatch = indices.length > 1;
-    const firstIdx = indices[0];
-    const c = state.imageContainers[firstIdx];
-    const containerId = c.id;
-
-    const members = indices.map(i => state.imageContainers[i]);
-    const titleMixed = isBatch && members.some(m => m.title !== c.title);
-    const bgMixed = isBatch && members.some(m => m.backgroundColor !== c.backgroundColor);
-    const borderColorMixed = isBatch && members.some(m => m.borderColor !== c.borderColor);
-    const borderWidthMixed = isBatch && members.some(m => m.borderWidth !== c.borderWidth);
-    const wMixed = isBatch && members.some(m => m.w !== c.w);
-    const hMixed = isBatch && members.some(m => m.h !== c.h);
-
-    const title = isBatch ? indices.length + ' image containers selected' : 'Image Container';
-
-    let imagesListHtml = '';
-    if (!isBatch) {
-      const hasImg = !!c.image;
-      imagesListHtml = '<div class="panel-section-title" style="margin-top:12px">Image</div>';
-      if (hasImg) {
-        imagesListHtml += '<div class="panel-row" style="flex-direction:row;align-items:center;gap:4px;"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;">' + state.escAttr(c.image.fileName || 'Image') + '</span>' +
-          '<button class="ic-img-remove-btn" data-container-idx="' + firstIdx + '" style="background:none;border:1px solid #555;color:#e74c3c;border-radius:3px;cursor:pointer;padding:0 6px;font-size:11px;line-height:1.4;">\u00d7</button></div>';
-      } else {
-        imagesListHtml += '<div class="panel-row" style="color:#777;font-size:11px;">No image</div>';
-      }
-      imagesListHtml += '<div class="panel-row" style="flex-direction:row;gap:4px;"><button id="panelICAddImage" class="panel-input" style="cursor:pointer;flex:1">' + (hasImg ? 'Replace...' : '+ Add Image') + '</button>' +
-        '<button id="panelICUrlAddBtn" class="panel-input" style="cursor:pointer;width:auto;">URL</button></div>';
-    }
-
-    _sp( [
-      '<div class="panel-section-title">' + title + '</div>',
-      '<div class="panel-row"><label>Title</label><input id="panelICTitle" class="panel-input" type="text" value="' + (titleMixed ? '' : state.escAttr(c.title ?? '')) + '" placeholder="' + (titleMixed ? '(mixed)' : 'Image Container') + '" /></div>',
-      '<div class="panel-row"><label>Background</label>' + colorSwatchHTML('panelICBgColor', c.backgroundColor ?? '#1e1e1e') + '</div>',
-      '<div class="panel-row"><label>Border Color</label>' + colorSwatchHTML('panelICBorderColor', c.borderColor ?? '#6bb5ff') + '</div>',
-      '<div class="panel-row"><label>Border W</label><input id="panelICBorderWidth" class="panel-input" type="number" min="0" max="20" step="0.5" value="' + (borderWidthMixed ? '' : (c.borderWidth ?? 2)) + '" placeholder="' + (borderWidthMixed ? '(mixed)' : '') + '" /></div>',
-      '<div class="panel-row"><label>Width</label><input id="panelICW" class="panel-input" type="number" min="100" value="' + (wMixed ? '' : c.w) + '" placeholder="' + (wMixed ? '(mixed)' : '') + '" /></div>',
-      '<div class="panel-row"><label>Height</label><input id="panelICH" class="panel-input" type="number" min="100" value="' + (hMixed ? '' : c.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
-      imagesListHtml,
-    ].join(''));
-
-    const titleInput = document.getElementById('panelICTitle');
-    const bgSwatch = document.getElementById('panelICBgColor');
-    const borderColorSwatch = document.getElementById('panelICBorderColor');
-    const borderWidthInput = document.getElementById('panelICBorderWidth');
-    const wInput = document.getElementById('panelICW');
-    const hInput = document.getElementById('panelICH');
-
-    if (titleInput) {
-      titleInput.addEventListener('input', (e) => {
-        const v = e.target.value;
-        if (isBatch) { for (const m of members) m.title = v; } else { c.title = v; }
-      });
-      if (!isBatch) {
-        titleInput.addEventListener('focus', () => { flushPanelEdit(); startContainerPanelEdit(containerId, 'title', c.title); });
-        titleInput.addEventListener('blur', () => { flushPanelEdit(); });
-      }
-    }
-    if (bgSwatch) {
-      initColorSwatch(bgSwatch, {
-        onSelect: (v) => { if (isBatch) { for (const m of members) m.backgroundColor = v; } else { c.backgroundColor = v; } },
-        onOpen: () => { if (!isBatch) { startContainerPanelEdit(containerId, 'backgroundColor', c.backgroundColor); } },
-        onClose: () => { if (!isBatch) { flushPanelEdit(); } },
-      });
-    }
-    if (borderColorSwatch) {
-      initColorSwatch(borderColorSwatch, {
-        onSelect: (v) => { if (isBatch) { for (const m of members) m.borderColor = v; } else { c.borderColor = v; } },
-        onOpen: () => { if (!isBatch) { startContainerPanelEdit(containerId, 'borderColor', c.borderColor); } },
-        onClose: () => { if (!isBatch) { flushPanelEdit(); } },
-      });
-    }
-    if (borderWidthInput) {
-      borderWidthInput.addEventListener('input', (e) => {
-        const v = parseFloat(e.target.value);
-        if (!isNaN(v) && v >= 0) {
-          if (isBatch) { for (const m of members) m.borderWidth = v; } else { c.borderWidth = v; }
-        }
-      });
-      if (!isBatch) {
-        borderWidthInput.addEventListener('focus', () => { startContainerPanelEdit(containerId, 'borderWidth', c.borderWidth); });
-        borderWidthInput.addEventListener('blur', () => { flushPanelEdit(); });
-      }
-    }
-    if (wInput) {
-      wInput.addEventListener('input', (e) => {
-        const v = parseFloat(e.target.value);
-        if (!isNaN(v) && v >= 100) {
-          if (isBatch) { for (const m of members) m.w = v; } else { c.w = v; }
-        }
-      });
-      if (!isBatch) {
-        wInput.addEventListener('focus', () => { startContainerPanelEdit(containerId, 'w', c.w); });
-        wInput.addEventListener('blur', () => { flushPanelEdit(); });
-      }
-    }
-    if (hInput) {
-      hInput.addEventListener('input', (e) => {
-        const v = parseFloat(e.target.value);
-        if (!isNaN(v) && v >= 100) {
-          if (isBatch) { for (const m of members) m.h = v; } else { c.h = v; }
-        }
-      });
-      if (!isBatch) {
-        hInput.addEventListener('focus', () => { startContainerPanelEdit(containerId, 'h', c.h); });
-        hInput.addEventListener('blur', () => { flushPanelEdit(); });
-      }
-    }
-
-    // Add/replace image button (file)
-    const addImgBtn = document.getElementById('panelICAddImage');
-    if (addImgBtn && !isBatch) {
-      addImgBtn.addEventListener('click', () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.onchange = (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            addImageToContainer(firstIdx, ev.target.result);
-          };
-          reader.readAsDataURL(file);
-        };
-        input.click();
-      });
-    }
-
-    // Add image from URL
-    const urlAddBtn = document.getElementById('panelICUrlAddBtn');
-    if (urlAddBtn && !isBatch) {
-      urlAddBtn.addEventListener('click', () => {
-        const url = prompt('Enter image URL:');
-        if (url && url.trim()) {
-          addImageToContainer(firstIdx, url.trim());
-        }
-      });
-    }
-
-    // Image remove buttons
-    if (!isBatch) {
-      document.querySelectorAll('.ic-img-remove-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const ci = parseInt(btn.dataset.containerIdx);
-          removeImageFromContainer(ci);
-        });
-      });
-    }
-
-    return;
-  }
-
-  if (state.selectedTextBoxes.size === 0 && state.selectedShapes.size === 0 && state.selectedConnectors.size === 0 && state.selectedImageContainers.size === 0 && state.selectedImageItems.size === 0) {
+  if (state.selectedTextBoxes.size === 0 && state.selectedShapes.size === 0 && state.selectedConnectors.size === 0) {
     flushPanelEdit();
     _sp( '<div class="panel-empty">Nothing selected</div>');
     return;
@@ -1619,8 +1461,6 @@ function attachDragNumber(inputEl, onDelta, onDragStart, onDragEnd) {
   inputEl.addEventListener('pointerup', up);
 }
 
-// --- Property clipboard (copy/paste individual fields between entities) ---
-
 const ID_PROP_MAP = {
   panelShapeColor: { entityType: 'shape', prop: 'color' },
   panelShapeBorderColor: { entityType: 'shape', prop: 'borderColor' },
@@ -1636,12 +1476,6 @@ const ID_PROP_MAP = {
   panelTBFontSize: { entityType: 'textBox', prop: 'fontSize' },
   panelTBW: { entityType: 'textBox', prop: 'w' },
   panelTBH: { entityType: 'textBox', prop: 'h' },
-  panelICTitle: { entityType: 'imageContainer', prop: 'title' },
-  panelICBgColor: { entityType: 'imageContainer', prop: 'backgroundColor' },
-  panelICBorderColor: { entityType: 'imageContainer', prop: 'borderColor' },
-  panelICBorderWidth: { entityType: 'imageContainer', prop: 'borderWidth' },
-  panelICW: { entityType: 'imageContainer', prop: 'w' },
-  panelICH: { entityType: 'imageContainer', prop: 'h' },
 };
 
 function parseMixedId(id) {
@@ -1654,7 +1488,6 @@ function parseMixedId(id) {
   if (state.selectedTextBoxes.size > 0) typeOrder.push('textBox');
   if (state.selectedArrows.size > 0) typeOrder.push('arrow');
   if (state.selectedConnection !== null) typeOrder.push('connection');
-  if (state.selectedImageContainers.size > 0) typeOrder.push('imageContainer');
   if (idx < typeOrder.length) return { entityType: typeOrder[idx], prop };
   return null;
 }
@@ -1669,7 +1502,6 @@ function getEntityArray(entityType) {
   if (entityType === 'textBox') return state.textBoxes;
   if (entityType === 'arrow') return state.arrows;
   if (entityType === 'connection') return state.connections;
-  if (entityType === 'imageContainer') return state.imageContainers;
   return null;
 }
 
@@ -1678,7 +1510,6 @@ function getSelectedIndices(entityType) {
   if (entityType === 'textBox') return Array.from(state.selectedTextBoxes);
   if (entityType === 'arrow') return Array.from(state.selectedArrows);
   if (entityType === 'connection') return state.selectedConnection !== null ? [state.selectedConnection] : [];
-  if (entityType === 'imageContainer') return Array.from(state.selectedImageContainers);
   return [];
 }
 
@@ -1708,9 +1539,6 @@ function setPropertyValue(entityType, propKey, value) {
     for (const idx of indices) entities[idx][propKey] = value;
   } else if (entityType === 'connection') {
     startConnectionPanelEdit(firstId, propKey, oldVal);
-    for (const idx of indices) entities[idx][propKey] = value;
-  } else if (entityType === 'imageContainer') {
-    startContainerPanelEdit(firstId, propKey, oldVal);
     for (const idx of indices) entities[idx][propKey] = value;
   }
   flushPanelEdit();
