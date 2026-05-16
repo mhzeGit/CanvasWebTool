@@ -391,6 +391,10 @@ canvas#gridCanvas {
   background: var(--bg-hover);
 }
 
+.topbar-btn svg {
+  pointer-events: none;
+}
+
 .save-indicator {
   font-size: 12px;
   color: var(--text-muted);

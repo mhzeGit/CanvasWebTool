@@ -155,10 +155,23 @@ function initTopBar() {
   if (openBtn) openBtn.addEventListener('click', (e) => { e.preventDefault(); openDocument(); });
   if (saveBtn) saveBtn.addEventListener('click', (e) => { e.preventDefault(); saveDocument(); });
   if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); openSettings(); });
-  if (mobileUndoBtn) mobileUndoBtn.addEventListener('click', (e) => { e.preventDefault(); performUndo(); });
-  if (mobileRedoBtn) mobileRedoBtn.addEventListener('click', (e) => { e.preventDefault(); performRedo(); });
-  if (mobileOpenBtn) mobileOpenBtn.addEventListener('click', (e) => { e.preventDefault(); openDocument(); });
-  if (mobileSaveBtn) mobileSaveBtn.addEventListener('click', (e) => { e.preventDefault(); saveDocument(); });
+  function addTouchGuard(btn, handler) {
+    if (!btn) return;
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') {
+        e.preventDefault();
+        handler();
+      }
+    });
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      handler();
+    });
+  }
+  addTouchGuard(mobileUndoBtn, performUndo);
+  addTouchGuard(mobileRedoBtn, performRedo);
+  addTouchGuard(mobileOpenBtn, openDocument);
+  addTouchGuard(mobileSaveBtn, saveDocument);
 }
 
 function setupAutoSave() {
