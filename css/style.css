@@ -1960,6 +1960,16 @@ canvas#arrowCanvas {
   }
 }
 
+.mobile-action-btn {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-action-btn {
+    display: inline-flex;
+  }
+}
+
 @media (min-width: 769px) {
   .hamburger-btn {
     display: none;

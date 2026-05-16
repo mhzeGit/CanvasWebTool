@@ -86,6 +86,21 @@ export async function saveToFile(jsonData, suggestedName) {
     }
   }
 
+  // Web Share API fallback (mobile — saves to Files app instead of downloading)
+  if (typeof navigator !== 'undefined' && navigator.canShare && navigator.share) {
+    const fileName = suggestedName || `document${FILE_EXTENSION}`;
+    const jsonString = JSON.stringify(jsonData, null, 2);
+    const file = new File([jsonString], fileName, { type: MIME_TYPE });
+    if (navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: fileName });
+        return { name: fileName, handle: null };
+      } catch (e) {
+        if (e.name === 'AbortError') return null;
+      }
+    }
+  }
+
   // Download fallback: embed data URIs as-is (no external assets)
   return saveViaDownload(JSON.stringify(jsonData, null, 2), suggestedName);
 }

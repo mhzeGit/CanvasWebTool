@@ -136,6 +136,10 @@ function initTopBar() {
   const openBtn = document.getElementById('actionOpen');
   const saveBtn = document.getElementById('actionSave');
   const settingsBtn = document.getElementById('actionSettings');
+  const mobileUndoBtn = document.getElementById('mobileUndoBtn');
+  const mobileRedoBtn = document.getElementById('mobileRedoBtn');
+  const mobileOpenBtn = document.getElementById('mobileOpenBtn');
+  const mobileSaveBtn = document.getElementById('mobileSaveBtn');
 
   if (addNodeBtn) addNodeBtn.addEventListener('click', (e) => { e.preventDefault(); addNodeAtCenter(); });
   if (addArrowBtn) addArrowBtn.addEventListener('click', (e) => { e.preventDefault(); addArrowAtCenter(); });
@@ -151,6 +155,10 @@ function initTopBar() {
   if (openBtn) openBtn.addEventListener('click', (e) => { e.preventDefault(); openDocument(); });
   if (saveBtn) saveBtn.addEventListener('click', (e) => { e.preventDefault(); saveDocument(); });
   if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); openSettings(); });
+  if (mobileUndoBtn) mobileUndoBtn.addEventListener('click', (e) => { e.preventDefault(); performUndo(); });
+  if (mobileRedoBtn) mobileRedoBtn.addEventListener('click', (e) => { e.preventDefault(); performRedo(); });
+  if (mobileOpenBtn) mobileOpenBtn.addEventListener('click', (e) => { e.preventDefault(); openDocument(); });
+  if (mobileSaveBtn) mobileSaveBtn.addEventListener('click', (e) => { e.preventDefault(); saveDocument(); });
 }
 
 function setupAutoSave() {

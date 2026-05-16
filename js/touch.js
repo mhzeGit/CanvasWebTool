@@ -31,10 +31,10 @@ function _clearLongPress() {
 function _startLongPressTimer(clientX, clientY) {
   _clearLongPress();
   _longPressTriggered = false;
-  _lastTapTime = null;
   _longPressTimer = setTimeout(() => {
     _longPressTimer = null;
     _longPressTriggered = true;
+    _lastTapTime = null;
     closeContextMenu();
     const rect = state.canvas.getBoundingClientRect();
     const sx = clientX - rect.left;
