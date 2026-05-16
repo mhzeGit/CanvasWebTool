@@ -9,7 +9,7 @@ import {
 import { addImageToShape, removeImageFromShape, openImageInShape } from './document.js';
 import { getArrowEndpoint } from './arrows.js';
 import { blocksToHtml, getOrCreateBlocks, htmlToBlocks, blocksToMarkdown, markdownToBlocks } from './rich-text.js';
-import { getNextNumber } from './inline-editing.js';
+import { handleEnter } from './inline-editing.js';
 import { TITLE_PLACEHOLDER, TEXT_PLACEHOLDER } from './config.js';
 
 function buildMarkdownToolbar() {
@@ -279,58 +279,9 @@ function setupMarkdownEditor(editorId, opts) {
   });
 
   rtDiv.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter') {
       e.preventDefault();
-      const sel = window.getSelection();
-      if (!sel.rangeCount) return;
-      let block = sel.anchorNode;
-      while (block && block !== rtDiv && !(block.classList && block.classList.contains('rt-block'))) {
-        block = block.parentNode;
-      }
-      if (!block || block === rtDiv) return;
-
-      const isHeading = block.classList.contains('rt-h1') || block.classList.contains('rt-h2') || block.classList.contains('rt-h3');
-      const isQuote = block.classList.contains('rt-quote');
-      const isList = block.classList.contains('rt-bullet') || block.classList.contains('rt-numbered') || block.classList.contains('rt-checkbox');
-      const isSpecial = isHeading || isQuote || isList;
-      const blockLevel = parseInt(block.dataset.l) || 0;
-
-      const trimmed = block.textContent.replace(/[\u2022\[\]xX\d.]/g, '').trim();
-      if (!trimmed && isSpecial) {
-        block.className = 'rt-block rt-paragraph';
-        const marker = block.querySelector('.rt-marker');
-        if (marker) marker.remove();
-        block.removeAttribute('data-l');
-        block.innerHTML = '<br>';
-        const r2 = document.createRange();
-        r2.selectNodeContents(block);
-        r2.collapse(false);
-        const s2 = window.getSelection();
-        s2.removeAllRanges();
-        s2.addRange(r2);
-      } else {
-        const newBlock = document.createElement('div');
-        if (isList || isQuote) {
-          newBlock.className = block.className;
-          if (blockLevel > 0) newBlock.dataset.l = blockLevel;
-          if (block.classList.contains('rt-bullet')) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span> <br>';
-          else if (block.classList.contains('rt-numbered')) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">' + getNextNumber(block) + '.</span> <br>';
-          else if (block.classList.contains('rt-checkbox')) newBlock.innerHTML = '<span class="rt-marker" data-checked="0" contenteditable="false"></span> <br>';
-          else newBlock.innerHTML = '<br>';
-        } else {
-          newBlock.className = 'rt-block rt-paragraph';
-          newBlock.innerHTML = '<br>';
-        }
-        block.insertAdjacentElement('afterend', newBlock);
-        newBlock.focus();
-        const cr = document.createRange();
-        cr.selectNodeContents(newBlock);
-        cr.collapse(false);
-        const cs = window.getSelection();
-        cs.removeAllRanges();
-        cs.addRange(cr);
-      }
-      rtDiv.dispatchEvent(new Event('input', { bubbles: true }));
+      handleEnter(rtDiv, e);
     }
   });
 
@@ -352,11 +303,12 @@ function setupMarkdownEditor(editorId, opts) {
     }
   }
   function onEditorBlur() {
+    clearTimeout(syncTimer);
+    syncToEntity();
     setTimeout(() => {
       if (!editorEl.contains(document.activeElement)) {
         if (hasFocus) {
           hasFocus = false;
-          syncToEntity();
           if (opts.onBlur) opts.onBlur();
         }
       }
