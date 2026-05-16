@@ -204,7 +204,7 @@ function loadViaFileInput() {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = `${FILE_EXTENSION},.json`;
+    input.accept = `${FILE_EXTENSION},.json,application/json,text/*`;
     input.style.position = 'fixed';
     input.style.top = '-100px';
     input.style.left = '-100px';
