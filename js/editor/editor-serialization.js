@@ -30,7 +30,8 @@ function nodeTypeToBlockType(type, attrs) {
 }
 
 function spanToMark(span) {
-  const result = { type: 'text', text: span.t || '' };
+  if (!span.t) return null;
+  const result = { type: 'text', text: span.t };
   const marks = [];
   if (span.b) marks.push({ type: 'bold' });
   if (span.i) marks.push({ type: 'italic' });
@@ -119,7 +120,6 @@ function extractSpansFromNode(node, parentBlockType, parentAttrs) {
     walk(child, []);
   }
 
-  if (spans.length === 0) spans.push({ t: '' });
   return spans;
 }
 
@@ -195,11 +195,12 @@ export function blocksToTiptap(blocks) {
     if (bl.t === 'bul') {
       const items = [];
       while (i < blocks.length && blocks[i].t === 'bul') {
+        const itemContent = (blocks[i].s || []).map(spanToMark).filter(Boolean);
         const listItem = {
           type: 'listItem',
           content: [{
             type: 'paragraph',
-            content: (blocks[i].s || []).map(spanToMark),
+            ...(itemContent.length ? { content: itemContent } : {}),
           }],
         };
         items.push(listItem);
@@ -213,11 +214,12 @@ export function blocksToTiptap(blocks) {
       const items = [];
       const start = bl.n || 1;
       while (i < blocks.length && blocks[i].t === 'num') {
+        const itemContent = (blocks[i].s || []).map(spanToMark).filter(Boolean);
         const listItem = {
           type: 'listItem',
           content: [{
             type: 'paragraph',
-            content: (blocks[i].s || []).map(spanToMark),
+            ...(itemContent.length ? { content: itemContent } : {}),
           }],
         };
         items.push(listItem);
@@ -229,31 +231,30 @@ export function blocksToTiptap(blocks) {
 
     if (bl.t === 'h1' || bl.t === 'h2' || bl.t === 'h3') {
       const level = parseInt(bl.t.charAt(1), 10);
+      const headingContent = (bl.s || []).map(spanToMark).filter(Boolean);
       content.push({
         type: 'heading',
         attrs: { level },
-        content: (bl.s || []).map(spanToMark),
+        ...(headingContent.length ? { content: headingContent } : {}),
       });
       i++;
       continue;
     }
 
     if (bl.t === 'qt') {
+      const qtContent = (bl.s || []).map(spanToMark).filter(Boolean);
       content.push({
         type: 'blockquote',
         content: [{
           type: 'paragraph',
-          content: (bl.s || []).map(spanToMark),
+          ...(qtContent.length ? { content: qtContent } : {}),
         }],
       });
       i++;
       continue;
     }
 
-    const paraContent = (bl.s || []).map(spanToMark);
-    if (paraContent.length === 0) {
-      paraContent.push({ type: 'text', text: '' });
-    }
+    const paraContent = (bl.s || []).map(spanToMark).filter(Boolean);
     const attrs = {};
     if (bl.al && bl.al !== 'l') {
       attrs.textAlign = bl.al === 'c' ? 'center' : 'right';
@@ -348,8 +349,10 @@ export function markdownToTiptap(text) {
     }
 
     const paraContent = spansToTiptapContent(line.spans || []);
-    if (paraContent.length === 0) paraContent.push({ type: 'text', text: '' });
-    content.push({ type: 'paragraph', content: paraContent });
+    content.push({
+      type: 'paragraph',
+      ...(paraContent.length ? { content: paraContent } : {}),
+    });
     i++;
   }
 
@@ -358,19 +361,21 @@ export function markdownToTiptap(text) {
 }
 
 function spansToTiptapContent(spans) {
-  return spans.map(sp => {
-    const result = { type: 'text', text: sp.text || '' };
-    const marks = [];
-    if (sp.bold) marks.push({ type: 'bold' });
-    if (sp.italic) marks.push({ type: 'italic' });
-    if (sp.code) marks.push({ type: 'code' });
-    if (sp.strike) marks.push({ type: 'strike' });
-    if (sp.fc) {
-      marks.push({ type: 'textStyle', attrs: { color: sp.fc } });
-    }
-    if (marks.length > 0) result.marks = marks;
-    return result;
-  });
+  return spans
+    .filter(sp => sp.text)
+    .map(sp => {
+      const result = { type: 'text', text: sp.text };
+      const marks = [];
+      if (sp.bold) marks.push({ type: 'bold' });
+      if (sp.italic) marks.push({ type: 'italic' });
+      if (sp.code) marks.push({ type: 'code' });
+      if (sp.strike) marks.push({ type: 'strike' });
+      if (sp.fc) {
+        marks.push({ type: 'textStyle', attrs: { color: sp.fc } });
+      }
+      if (marks.length > 0) result.marks = marks;
+      return result;
+    });
 }
 
 export function tiptapToMarkdown(content) {
@@ -448,6 +453,18 @@ function tiptapContentToMarkdownInline(content) {
     }
   }
   return result;
+}
+
+export function stripEmptyTextNodes(doc) {
+  if (!doc || typeof doc !== 'object') return doc;
+  if (doc.type === 'text' && !doc.text) return null;
+  if (doc.content && Array.isArray(doc.content)) {
+    const filtered = doc.content.map(stripEmptyTextNodes).filter(Boolean);
+    if (filtered.length !== doc.content.length) {
+      return { ...doc, content: filtered.length ? filtered : undefined };
+    }
+  }
+  return doc;
 }
 
 export { EMPTY_DOC };

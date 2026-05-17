@@ -230,6 +230,8 @@ function startBodyEditing(tbIdx) {
     content._tiptapEditor = null;
   }
 
+  content.innerHTML = '';
+
   const originalValue = tb.text;
   let lastCommittedValue = originalValue;
   let initializing = true;

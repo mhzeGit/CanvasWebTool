@@ -3,6 +3,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import { TextStyle, Color, FontSize } from '@tiptap/extension-text-style';
+import { stripEmptyTextNodes } from './editor-serialization.js';
 
 const BASE_EXTENSIONS = [
   StarterKit.configure({
@@ -30,10 +31,12 @@ export function createEditorExtensions(options = {}) {
 export function createEditor({ element, content, editable = true, onUpdate, onFocus, onBlur, excludeHistory = false }) {
   const extensions = createEditorExtensions({ excludeHistory });
 
+  const safeContent = stripEmptyTextNodes(content);
+
   const editor = new Editor({
     element,
     extensions,
-    content,
+    content: safeContent,
     editable,
     autofocus: false,
     onUpdate: ({ editor: ed }) => {
