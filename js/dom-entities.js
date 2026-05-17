@@ -239,52 +239,35 @@ function ensureTextBoxElement(idx) {
   const titlebar = el.querySelector('.entity-textbox-titlebar');
   const content = el.querySelector('.entity-textbox-content');
 
-  const s = isEditing ? state.scale : 1;
-
-  if (isEditing) {
-    placeEntity(el, tb.x, tb.y, tb.w, tb.h);
-    el.style.transform = 'none';
-    el.style.borderWidth = (1.5 * state.scale) + 'px';
-    el.style.borderRadius = (6 * state.scale) + 'px';
-  } else {
-    placeEntity(el, tb.x, tb.y, tb.w, tb.h, true);
-    el.style.transform = `scale(${state.scale})`;
-    el.style.transformOrigin = '0 0';
-    el.style.borderWidth = '1.5px';
-    el.style.borderRadius = '6px';
-  }
+  placeEntity(el, tb.x, tb.y, tb.w, tb.h);
+  el.style.transform = 'none';
+  el.style.borderWidth = (1.5 * state.scale) + 'px';
+  el.style.borderRadius = (6 * state.scale) + 'px';
 
   if (hasTitle) {
     titlebar.style.display = '';
     titlebar.style.background = getDarkerColor(baseColor, 0.6);
     titlebar.style.color = tb.titleColor || DEFAULT_TITLE_COLOR;
     titlebar.style.lineHeight = 1.2;
-    if (isEditing) {
-      const tbRadius = 6 * state.scale;
-      titlebar.style.borderRadius = tbRadius + 'px ' + tbRadius + 'px 0 0';
-      titlebar.style.fontSize = (15 * state.scale) + 'px';
-      titlebar.style.padding = (4 * state.scale) + 'px ' + (8 * state.scale) + 'px';
-      titlebar.style.minHeight = ((15 * 1.2 * state.scale) + (4 * state.scale) + (4 * state.scale)) + 'px';
-    } else {
-      titlebar.style.borderRadius = '6px 6px 0 0';
-      titlebar.style.fontSize = '15px';
-      titlebar.style.padding = '4px 8px';
-      titlebar.style.minHeight = '26px';
-    }
+    const tbRadius = 6 * state.scale;
+    titlebar.style.borderRadius = tbRadius + 'px ' + tbRadius + 'px 0 0';
+    titlebar.style.fontSize = (15 * state.scale) + 'px';
+    titlebar.style.padding = (4 * state.scale) + 'px ' + (8 * state.scale) + 'px';
+    titlebar.style.minHeight = ((15 * 1.2 * state.scale) + (4 * state.scale) + (4 * state.scale)) + 'px';
     if (!isEditingEntity('textBox', idx, 'title')) {
       titlebar.innerHTML = titleToHtml(tb.title);
     }
-    content.style.paddingTop = (4 * s) + 'px';
+    content.style.paddingTop = (4 * state.scale) + 'px';
   } else {
     titlebar.style.display = 'none';
-    content.style.paddingTop = (8 * s) + 'px';
+    content.style.paddingTop = (8 * state.scale) + 'px';
   }
 
   content.style.color = tb.textColor || DEFAULT_TEXT_COLOR;
-  content.style.fontSize = ((tb.fontSize || 14) * s) + 'px';
-  content.style.paddingLeft = (8 * s) + 'px';
-  content.style.paddingRight = (8 * s) + 'px';
-  content.style.paddingBottom = (8 * s) + 'px';
+  content.style.fontSize = ((tb.fontSize || 14) * state.scale) + 'px';
+  content.style.paddingLeft = (8 * state.scale) + 'px';
+  content.style.paddingRight = (8 * state.scale) + 'px';
+  content.style.paddingBottom = (8 * state.scale) + 'px';
   content.style.lineHeight = 1.25;
   content.style.overflowY = 'hidden';
 
