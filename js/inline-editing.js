@@ -5,7 +5,7 @@ import { hitTestConnection } from './connections.js';
 import { hitTestTextBox } from './textboxes.js';
 import { createPropertyChangeCmd } from './undo.js';
 import { refreshSidePanel } from './side-panel.js';
-import { history } from './history.js';
+import { history, performUndo, performRedo } from './history.js';
 import { blocksToHtml, blocksToEditorHtml, htmlToBlocks, markdownToBlocks, blocksToMarkdown } from './rich-text.js';
 import { parseInlineSpans } from './markdown.js';
 import { TITLE_PLACEHOLDER } from './config.js';
@@ -365,7 +365,22 @@ function startTextBoxEditing(tbIdx) {
       pendingWordBoundary = true;
     } else if (ev.ctrlKey || ev.metaKey) {
       const k = ev.key.toLowerCase();
-      if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); pendingWordBoundary = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
+      if (k === 'z') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (ev.shiftKey) {
+          performRedo();
+        } else {
+          performUndo();
+        }
+        const tb = state.textBoxes[tbIdx];
+        ensureBlocks(tb);
+        content.innerHTML = blocksToEditorHtml(tb.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
+        const lastBlock = content.querySelector('.rt-block:last-of-type');
+        placeCursorAtEnd(lastBlock || content);
+        lastCommittedValue = tb.text;
+        pendingWordBoundary = false;
+      } else if (k === 'b') { ev.preventDefault(); document.execCommand('bold', false, null); pendingWordBoundary = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
       else if (k === 'i') { ev.preventDefault(); document.execCommand('italic', false, null); pendingWordBoundary = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
       else if (k === 'u') { ev.preventDefault(); document.execCommand('underline', false, null); pendingWordBoundary = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
       else if (k === 'x' && ev.shiftKey) { ev.preventDefault(); document.execCommand('strikeThrough', false, null); pendingWordBoundary = true; content.dispatchEvent(new Event('input', { bubbles: true })); }
@@ -485,8 +500,21 @@ function handleEnter(editor, ev) {
   }
 
   block.insertAdjacentElement('afterend', newBlock);
-  placeCursorAtEnd(newBlock);
+
+  const hadContent = afterCursor.childNodes.length > 0;
+
   editor.dispatchEvent(new Event('input', { bubbles: true }));
+
+  const placeTarget = newBlock.querySelector('.rt-content') || newBlock;
+  if (hadContent) {
+    const cursorRange = document.createRange();
+    cursorRange.setStart(placeTarget, 0);
+    cursorRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(cursorRange);
+  } else {
+    placeCursorAtEnd(placeTarget);
+  }
 }
 
 function getNextNumber(block) {
