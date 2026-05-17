@@ -133,6 +133,10 @@ function setupMarkdownEditor(editorId, opts) {
     if (isRichText) {
       rawTa.focus();
     }
+
+    if (toolbarEl) {
+      wireToolbar(toolbarEl, null, () => switchMode(!isRichText));
+    }
   }
 
   function switchMode(toRich) {
@@ -171,9 +175,17 @@ function setupMarkdownEditor(editorId, opts) {
 }
 
 function wireToolbar(toolbarEl, editor, onToggle) {
-  if (!toolbarEl || !editor) return;
+  if (!toolbarEl) return;
 
-  const actions = getToolbarActions(editor);
+  if (toolbarEl._wireCleanup) {
+    toolbarEl._wireCleanup.off();
+    toolbarEl._wireCleanup = null;
+  }
+
+  let actions = null;
+  if (editor && !editor.isDestroyed) {
+    actions = getToolbarActions(editor);
+  }
 
   const clickHandler = (e) => {
     const btn = e.target.closest('[data-tb-cmd]');
@@ -188,6 +200,8 @@ function wireToolbar(toolbarEl, editor, onToggle) {
       return;
     }
 
+    if (!actions) return;
+
     if (cmd === 'link') {
       const url = prompt('Enter URL:', 'https://');
       if (url) actions.setLink(url);
@@ -201,31 +215,35 @@ function wireToolbar(toolbarEl, editor, onToggle) {
 
   toolbarEl.addEventListener('click', clickHandler);
 
-  const updateActive = () => {
-    const state = actions.getState();
-    for (const btn of toolbarEl.querySelectorAll('[data-tb-cmd]')) {
-      const cmd = btn.dataset.tbCmd;
-      const activeKeyMap = {
-        bold: 'isBold', italic: 'isItalic', underline: 'isUnderline',
-        strikethrough: 'isStrike', code: 'isCode',
-        h1: 'isH1', h2: 'isH2', h3: 'isH3',
-        bulletList: 'isBulletList', orderedList: 'isOrderedList',
-        blockquote: 'isBlockquote',
-      };
-      const key = activeKeyMap[cmd];
-      if (key && state[key] !== undefined) {
-        btn.classList.toggle('active', state[key]);
+  let updateActive;
+  if (editor && !editor.isDestroyed) {
+    updateActive = () => {
+      const state = actions.getState();
+      for (const btn of toolbarEl.querySelectorAll('[data-tb-cmd]')) {
+        const cmd = btn.dataset.tbCmd;
+        const activeKeyMap = {
+          bold: 'isBold', italic: 'isItalic', underline: 'isUnderline',
+          strikethrough: 'isStrike', code: 'isCode',
+          h1: 'isH1', h2: 'isH2', h3: 'isH3',
+          bulletList: 'isBulletList', orderedList: 'isOrderedList',
+          blockquote: 'isBlockquote',
+        };
+        const key = activeKeyMap[cmd];
+        if (key && state[key] !== undefined) {
+          btn.classList.toggle('active', state[key]);
+        }
       }
-    }
-  };
-
-  editor.on('selectionUpdate', updateActive);
-  editor.on('transaction', updateActive);
+    };
+    editor.on('selectionUpdate', updateActive);
+    editor.on('transaction', updateActive);
+  }
 
   toolbarEl._wireCleanup = { clickHandler, off: () => {
     toolbarEl.removeEventListener('click', clickHandler);
-    editor.off('selectionUpdate', updateActive);
-    editor.off('transaction', updateActive);
+    if (editor && !editor.isDestroyed && updateActive) {
+      editor.off('selectionUpdate', updateActive);
+      editor.off('transaction', updateActive);
+    }
   }};
 }
 
