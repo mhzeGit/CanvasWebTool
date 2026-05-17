@@ -451,6 +451,15 @@ function handleEnter(editor, ev) {
     return;
   }
 
+  const range = sel.getRangeAt(0);
+  if (!range.collapsed) range.deleteContents();
+
+  const contentContainer = block.querySelector('.rt-content') || block;
+  const toEnd = document.createRange();
+  toEnd.selectNodeContents(contentContainer);
+  toEnd.setStart(range.startContainer, range.startOffset);
+  const afterCursor = toEnd.extractContents();
+
   const newBlock = document.createElement('div');
   if (isList || isQuote) {
     newBlock.className = block.className;
@@ -462,6 +471,17 @@ function handleEnter(editor, ev) {
   } else {
     newBlock.className = 'rt-block rt-paragraph';
     newBlock.innerHTML = '<br>';
+  }
+
+  if (afterCursor.childNodes.length > 0) {
+    const newContent = newBlock.querySelector('.rt-content') || newBlock;
+    const br = newContent.querySelector('br');
+    if (br) br.remove();
+    newContent.insertBefore(afterCursor, newContent.firstChild);
+  }
+
+  if (!contentContainer.textContent.trim() && !contentContainer.querySelector('br')) {
+    contentContainer.innerHTML = '<br>';
   }
 
   block.insertAdjacentElement('afterend', newBlock);
