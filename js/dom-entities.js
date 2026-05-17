@@ -1,7 +1,9 @@
 import { state } from './state.js';
 import { getDarkerColor, getBorderColor, getDividerColor, worldToScreen } from './utils.js';
-import { blocksToHtml, getOrCreateBlocks } from './rich-text.js';
 import { parseInlineSpans } from './markdown.js';
+import { blocksToHtml } from './rich-text.js';
+import { tiptapToBlocks } from './editor/editor-serialization.js';
+import { getOrCreateTiptapContent } from './editor/editor-content-bridge.js';
 import {
   DEFAULT_TITLE_COLOR, DEFAULT_TEXT_COLOR, TITLE_PLACEHOLDER, TEXT_PLACEHOLDER,
 } from './config.js';
@@ -282,7 +284,8 @@ function ensureTextBoxElement(idx) {
   content.style.overflowY = isEditing ? 'auto' : 'hidden';
 
   if (!isEditing) {
-    const blocks = getOrCreateBlocks(tb);
+    const tiptapContent = getOrCreateTiptapContent(tb);
+    const blocks = tiptapToBlocks(tiptapContent);
     const hasContent = blocks && blocks.length > 0 && blocks.some(b => b.t !== 'p' || (b.s && b.s.length > 0 && b.s.some(s => s.t)));
     if (hasContent) {
       content.innerHTML = blocksToHtml(blocks);

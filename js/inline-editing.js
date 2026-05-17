@@ -1,14 +1,14 @@
 import { state } from './state.js';
-import { screenToWorld, worldToScreen, getNodeEdgePoint, getPointOnBezier, wrapTextLines } from './utils.js';
+import { screenToWorld } from './utils.js';
 import { hitTestTextBox } from './textboxes.js';
 import { hitTestConnection } from './connections.js';
 import { createPropertyChangeCmd } from './undo.js';
 import { refreshSidePanel } from './side-panel.js';
 import { history, performUndo, performRedo } from './history.js';
-import { blocksToHtml, htmlToBlocks, blocksToMarkdown, getOrCreateBlocks } from './rich-text.js';
 import { getEntityElement } from './dom-entities.js';
-
-// ── Public API ──
+import { createEditor, emptyDoc } from './editor/editor-core.js';
+import { tiptapToMarkdown } from './editor/editor-serialization.js';
+import { migrateEntityToTiptap } from './editor/editor-content-bridge.js';
 
 export function setupInlineEditing() {
   state.canvas.addEventListener('dblclick', onDblClick);
@@ -17,43 +17,53 @@ export function setupInlineEditing() {
 export function commitEditing() {
   if (!state.editingState) return;
   const es = state.editingState;
-
   removeHandlers(es);
-  const { type, idx, field, el, originalValue, isRichText } = es;
+
+  const { type, idx, field, originalValue, isRichText } = es;
 
   if (type === 'connection') {
-    state.connections[idx].text = el.value;
-    try { document.body.removeChild(el); } catch (_) {}
+    state.connections[idx].text = es.el.value;
+    try { document.body.removeChild(es.el); } catch (_) {}
     state.editingState = null;
     refreshSidePanel();
     return;
   }
 
   if (isRichText) {
-    const newBlocks = htmlToBlocks(el);
-    const newText = blocksToMarkdown(newBlocks);
     const tb = state.textBoxes[idx];
-    tb.text = newText;
-    tb.blocks = newBlocks;
 
-    if (es.lastCommittedValue !== newText && originalValue !== newText && tb.id !== undefined) {
-      history.push(createPropertyChangeCmd(
-        state.textBoxes, state.selectedTextBoxes, refreshSidePanel,
-        tb.id, field, es.lastCommittedValue, newText
-      ));
-    }
-  } else {
-    if (type === 'textBox') {
-      const tb = state.textBoxes[idx];
-      const newValue = el.textContent || '';
-      tb[field] = newValue;
-      if (originalValue !== newValue && tb.id !== undefined) {
-        history.push(createPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tb.id, field, originalValue, newValue));
+    if (es.editor && !es.editor.isDestroyed) {
+      const content = es.editor.getJSON();
+      tb.content = content;
+      tb.text = tiptapToMarkdown(content);
+      tb.blocks = null;
+
+      if (es.lastCommittedValue !== tb.text && originalValue !== tb.text && tb.id !== undefined) {
+        history.push(createPropertyChangeCmd(
+          state.textBoxes, state.selectedTextBoxes, refreshSidePanel,
+          tb.id, field, es.lastCommittedValue, tb.text
+        ));
       }
+
+      es.editor.destroy();
+    }
+
+    es.el.contentEditable = 'false';
+    state.editingState = null;
+    refreshSidePanel();
+    return;
+  }
+
+  if (type === 'textBox') {
+    const tb = state.textBoxes[idx];
+    const newValue = es.el.textContent || '';
+    tb[field] = newValue;
+    if (originalValue !== newValue && tb.id !== undefined) {
+      history.push(createPropertyChangeCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tb.id, field, originalValue, newValue));
     }
   }
 
-  el.contentEditable = 'false';
+  es.el.contentEditable = 'false';
   state.editingState = null;
   refreshSidePanel();
 }
@@ -62,11 +72,12 @@ export function cancelEditing() {
   if (!state.editingState) return;
   const es = state.editingState;
   removeHandlers(es);
-  const { type, idx, field, el, originalValue, isRichText } = es;
+
+  const { type, idx, field, originalValue, isRichText } = es;
 
   if (type === 'connection') {
     state.connections[idx].text = originalValue;
-    try { document.body.removeChild(el); } catch (_) {}
+    try { document.body.removeChild(es.el); } catch (_) {}
     state.editingState = null;
     refreshSidePanel();
     return;
@@ -76,18 +87,18 @@ export function cancelEditing() {
     const tb = state.textBoxes[idx];
     tb.text = originalValue;
     tb.blocks = null;
+    tb.content = null;
+    if (es.editor && !es.editor.isDestroyed) es.editor.destroy();
   } else {
     if (type === 'textBox') {
       state.textBoxes[idx][field] = originalValue;
     }
   }
 
-  el.contentEditable = 'false';
+  es.el.contentEditable = 'false';
   state.editingState = null;
   refreshSidePanel();
 }
-
-// ── Double-click entry point ──
 
 function onDblClick(e) {
   const rect = state.canvas.getBoundingClientRect();
@@ -134,7 +145,25 @@ function onDblClick(e) {
   }
 }
 
-// ── Title editing ──
+function wrapTextLines(ctx, font, text, maxWidth) {
+  ctx.save();
+  ctx.font = font;
+  const words = (text || '').split(/\s+/);
+  const lines = [];
+  let current = '';
+  for (let i = 0; i < words.length; i++) {
+    const candidate = current ? current + ' ' + words[i] : words[i];
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+    } else {
+      if (current) lines.push(current); else lines.push(words[i]);
+      current = '';
+    }
+  }
+  if (current) lines.push(current);
+  ctx.restore();
+  return lines;
+}
 
 function startTitleEditing(tbIdx) {
   cancelEditing();
@@ -184,8 +213,6 @@ function startTitleEditing(tbIdx) {
   };
 }
 
-// ── Body editing ──
-
 function startBodyEditing(tbIdx) {
   cancelEditing();
 
@@ -196,158 +223,84 @@ function startBodyEditing(tbIdx) {
   const content = el.querySelector('.entity-textbox-content');
   if (!content) return;
 
-  getOrCreateBlocks(tb);
+  migrateEntityToTiptap(tb);
 
-  content.contentEditable = 'true';
-  content.spellcheck = true;
-  content.innerHTML = blocksToHtml(tb.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
-  patchEmptyBlocks(content);
-  content.focus();
-
-  const lastBlock = content.querySelector('.rt-block:last-of-type');
-  placeCursorAtEndSafe(lastBlock || content);
+  if (content._tiptapEditor) {
+    content._tiptapEditor.destroy();
+    content._tiptapEditor = null;
+  }
 
   const originalValue = tb.text;
   let lastCommittedValue = originalValue;
+  let initializing = true;
 
-  state.editingState = {
-    type: 'textBox', idx: tbIdx, field: 'text',
-    el: content, originalValue, lastCommittedValue, isRichText: true
-  };
+  const editor = createEditor({
+    element: content,
+    content: tb.content || { ...emptyDoc },
+    editable: true,
+    excludeHistory: true,
+    onUpdate: ({ editor: ed }) => {
+      if (initializing) return;
+      const doc = ed.getJSON();
+      tb.content = doc;
+      tb.text = tiptapToMarkdown(doc);
+      tb.blocks = null;
 
-  const syncAndPushUndo = () => {
-    const newBlocks = htmlToBlocks(content);
-    tb.blocks = newBlocks;
-    tb.text = blocksToMarkdown(newBlocks);
-    if (lastCommittedValue !== tb.text) {
-      const oldVal = lastCommittedValue;
-      lastCommittedValue = tb.text;
-      state.editingState.lastCommittedValue = tb.text;
-      history.push(createPropertyChangeCmd(
-        state.textBoxes, state.selectedTextBoxes, refreshSidePanel,
-        tb.id, 'text', oldVal, tb.text
-      ));
-    }
-  };
+      if (lastCommittedValue !== tb.text) {
+        const oldVal = lastCommittedValue;
+        lastCommittedValue = tb.text;
+        if (state.editingState) {
+          state.editingState.lastCommittedValue = tb.text;
+        }
+        history.push(createPropertyChangeCmd(
+          state.textBoxes, state.selectedTextBoxes, refreshSidePanel,
+          tb.id, 'text', oldVal, tb.text
+        ));
+      }
+    },
+    onBlur: ({ editor: ed }) => {
+      setTimeout(() => {
+        if (state.editingState && state.editingState.editor === ed) {
+          commitEditing();
+        }
+      }, 0);
+    },
+  });
 
-  const onInput = () => {
-    syncAndPushUndo();
-    patchEmptyBlocks(content);
-  };
+  content._tiptapEditor = editor;
 
   const onKeyDown = (ev) => {
     if (ev.key === 'Escape') {
-      cancelEditing();
-    } else if (ev.key === 'Enter') {
       ev.preventDefault();
-      handleEnter(content, ev);
-      syncAndPushUndo();
-    } else if (ev.key === 'Backspace') {
-      handleBackspace(content, ev);
-    } else if (ev.ctrlKey || ev.metaKey) {
-      const k = ev.key.toLowerCase();
-      if (k === 'z') {
-        ev.preventDefault();
-        ev.stopPropagation();
-        if (ev.shiftKey) performRedo(); else performUndo();
-        getOrCreateBlocks(tb);
-        content.innerHTML = blocksToHtml(tb.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
-        patchEmptyBlocks(content);
-        const lb = content.querySelector('.rt-block:last-of-type');
-        placeCursorAtEndSafe(lb || content);
-        lastCommittedValue = tb.text;
-        state.editingState.lastCommittedValue = tb.text;
-      } else if (k === 'b') {
-        ev.preventDefault(); document.execCommand('bold', false, null);
-        content.dispatchEvent(new Event('input', { bubbles: true }));
-      } else if (k === 'i') {
-        ev.preventDefault(); document.execCommand('italic', false, null);
-        content.dispatchEvent(new Event('input', { bubbles: true }));
-      } else if (k === 'u') {
-        ev.preventDefault(); document.execCommand('underline', false, null);
-        content.dispatchEvent(new Event('input', { bubbles: true }));
-      } else if (k === 'x' && ev.shiftKey) {
-        ev.preventDefault(); document.execCommand('strikeThrough', false, null);
-        content.dispatchEvent(new Event('input', { bubbles: true }));
+      cancelEditing();
+    } else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (ev.shiftKey) {
+        performRedo();
+      } else {
+        performUndo();
+      }
+      const tb = state.textBoxes[tbIdx];
+      if (tb.content && tb.content.type === 'doc') {
+        editor.commands.setContent(tb.content);
       }
     }
   };
 
-  const onPaste = (e) => {
-    e.preventDefault();
-    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-    if (!text) return;
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return;
-    const range = sel.getRangeAt(0);
-    range.deleteContents();
-    let block = range.startContainer;
-    while (block && block !== content && !(block.classList && block.classList.contains('rt-block'))) {
-      block = block.parentNode;
-    }
-    if (!block || block === content) {
-      block = document.createElement('div');
-      block.className = 'rt-block rt-paragraph';
-      range.insertNode(block);
-      range.setStart(block, 0);
-      range.collapse(true);
-    }
-    const lines = text.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      if (i > 0) {
-        range.insertNode(document.createElement('br'));
-        range.collapse(false);
-      }
-      range.insertNode(document.createTextNode(lines[i]));
-      range.collapse(false);
-    }
-    sel.removeAllRanges();
-    sel.addRange(range);
-    content.dispatchEvent(new Event('input', { bubbles: true }));
-  };
-
-  const onBlur = () => {
-    setTimeout(() => {
-      if (!content.contains(document.activeElement)) commitEditing();
-    }, 0);
-  };
-
-  const onClick = () => {
-    requestAnimationFrame(() => {
-      const sel = window.getSelection();
-      if (!sel.rangeCount) return;
-      const r = sel.getRangeAt(0);
-      if (!r.collapsed) return;
-      let node = r.startContainer;
-      let block = null;
-      while (node && node !== content) {
-        if (node.nodeType === Node.ELEMENT_NODE && node.classList && node.classList.contains('rt-block')) {
-          block = node;
-          break;
-        }
-        node = node.parentNode;
-      }
-      if (!block) return;
-      const marker = block.querySelector('.rt-marker');
-      if (marker && marker.contains(r.startContainer)) {
-        const contentEl = block.querySelector('.rt-content');
-        if (contentEl) {
-          placeCursorAtEndSafe(contentEl);
-        }
-      }
-    });
-  };
-
-  content.addEventListener('input', onInput);
   content.addEventListener('keydown', onKeyDown);
-  content.addEventListener('paste', onPaste);
-  content.addEventListener('blur', onBlur);
-  content.addEventListener('click', onClick);
 
-  state.editingState._handlers = { onInput, onKeyDown, onPaste, onBlur, onClick };
+  editor.commands.focus('end');
+
+  initializing = false;
+
+  state.editingState = {
+    type: 'textBox', idx: tbIdx, field: 'text',
+    el: content, originalValue, lastCommittedValue, isRichText: true,
+    editor,
+    _handlers: { onKeyDown }
+  };
 }
-
-// ── Connection editing ──
 
 function startConnectionEditing(connIdx) {
   cancelEditing();
@@ -428,199 +381,53 @@ function startConnectionEditing(connIdx) {
   };
 }
 
-// ── Shared helpers ──
-
-export function handleEnter(editor, ev) {
-  const sel = window.getSelection();
-  if (!sel.rangeCount) return;
-  let block = sel.anchorNode;
-  while (block && block !== editor && !(block.classList && block.classList.contains('rt-block'))) {
-    block = block.parentNode;
-  }
-  if (!block || block === editor) return;
-
-  const typeClasses = ['rt-h1', 'rt-h2', 'rt-h3', 'rt-quote', 'rt-bullet', 'rt-numbered', 'rt-checkbox'];
-  const isSpecial = typeClasses.some(c => block.classList.contains(c));
-  const isEmpty = !block.textContent.replace(/[\u2022\u200B\[\]xX\d.\s]/g, '').trim();
-
-  if (isSpecial && isEmpty) {
-    block.className = 'rt-block rt-paragraph';
-    const marker = block.querySelector('.rt-marker');
-    if (marker) marker.remove();
-    block.removeAttribute('data-l');
-    block.innerHTML = '<br>';
-    placeCursorAtEndSafe(block);
-    editor.dispatchEvent(new Event('input', { bubbles: true }));
-    return;
-  }
-
-  const range = sel.getRangeAt(0);
-  if (!range.collapsed) range.deleteContents();
-
-  const contentContainer = block.querySelector('.rt-content') || block;
-  const toEnd = document.createRange();
-  toEnd.selectNodeContents(contentContainer);
-  toEnd.setStart(range.startContainer, range.startOffset);
-  const afterCursor = toEnd.extractContents();
-
-  const newBlock = document.createElement('div');
-  if (isSpecial) {
-    newBlock.className = block.className;
-    if (block.dataset.l) newBlock.dataset.l = block.dataset.l;
-
-    if (block.classList.contains('rt-bullet')) {
-      newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span><span class="rt-content"><br></span>';
-    } else if (block.classList.contains('rt-numbered')) {
-      newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">' + getNextNumber(block) + '.</span><span class="rt-content"><br></span>';
-    } else if (block.classList.contains('rt-checkbox')) {
-      newBlock.innerHTML = '<span class="rt-marker" data-checked="0" contenteditable="false"></span><span class="rt-content"><br></span>';
-    } else {
-      newBlock.innerHTML = '<br>';
+function getNodeEdgePoint(node, targetX, targetY) {
+  const cx = node.x + node.w / 2;
+  const cy = node.y + node.h / 2;
+  const dx = targetX - cx;
+  const dy = targetY - cy;
+  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return { x: cx, y: cy };
+  const hw = node.w / 2;
+  const hh = node.h / 2;
+  if (dx !== 0) {
+    const t = dx > 0 ? hw / dx : -hw / dx;
+    const yAtEdge = cy + dy * t;
+    if (yAtEdge >= node.y && yAtEdge <= node.y + node.h) {
+      const side = dx > 0 ? 'right' : 'left';
+      return { x: cx + (dx > 0 ? hw : -hw), y: yAtEdge, side };
     }
-  } else {
-    newBlock.className = 'rt-block rt-paragraph';
-    newBlock.innerHTML = '<br>';
   }
-
-  if (afterCursor.childNodes.length > 0) {
-    const newContent = newBlock.querySelector('.rt-content') || newBlock;
-    const br = newContent.querySelector('br');
-    if (br) br.remove();
-    newContent.appendChild(afterCursor);
-  }
-
-  if (!contentContainer.querySelector('br')) {
-    contentContainer.appendChild(document.createElement('br'));
-  }
-
-  block.insertAdjacentElement('afterend', newBlock);
-
-  const hadContent = afterCursor.childNodes.length > 0;
-  patchEmptyBlocks(newBlock);
-
-  const placeTarget = newBlock.querySelector('.rt-content') || newBlock;
-  if (hadContent) {
-    const cursorRange = document.createRange();
-    cursorRange.setStart(placeTarget.firstChild || placeTarget, 0);
-    cursorRange.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(cursorRange);
-  } else {
-    placeCursorAtEndSafe(placeTarget);
-  }
-
-  editor.dispatchEvent(new Event('input', { bubbles: true }));
+  const t = dy > 0 ? hh / dy : -hh / dy;
+  const xAtEdge = cx + dx * t;
+  const side = dy > 0 ? 'bottom' : 'top';
+  return { x: xAtEdge, y: cy + (dy > 0 ? hh : -hh), side };
 }
 
-export function getNextNumber(block) {
-  const marker = block.querySelector('.rt-marker');
-  if (marker) {
-    const num = parseInt(marker.textContent, 10);
-    if (!isNaN(num)) return num + 1;
-  }
-  return 1;
+function getPointOnBezier(x1, y1, cx1, cy1, cx2, cy2, x2, y2, t) {
+  const mt = 1 - t;
+  const mt2 = mt * mt;
+  const t2 = t * t;
+  return {
+    x: mt2 * mt * x1 + 3 * mt2 * t * cx1 + 3 * mt * t2 * cx2 + t2 * t * x2,
+    y: mt2 * mt * y1 + 3 * mt2 * t * cy1 + 3 * mt * t2 * cy2 + t2 * t * y2,
+  };
 }
 
-function handleBackspace(editor, ev) {
-  const sel = window.getSelection();
-  if (!sel.rangeCount) return;
-  const range = sel.getRangeAt(0);
-  if (!range.collapsed) return;
-
-  const node = range.startContainer;
-  const offset = range.startOffset;
-  if (offset > 0 || (node.nodeType === Node.ELEMENT_NODE && node.textContent.length > 0)) return;
-
-  let block = node;
-  while (block && block !== editor && !(block.classList && block.classList.contains('rt-block'))) {
-    block = block.parentNode;
-  }
-  if (!block || block === editor) return;
-
-  const prev = block.previousElementSibling;
-  if (!prev || !prev.classList || !prev.classList.contains('rt-block')) return;
-
-  ev.preventDefault();
-
-  const typeClasses = ['rt-h1', 'rt-h2', 'rt-h3', 'rt-bullet', 'rt-numbered', 'rt-checkbox', 'rt-quote'];
-  const isSpecial = typeClasses.some(c => block.classList.contains(c));
-  const trimmed = block.textContent.replace(/[\u2022\u200B\[\]xX\d.\s]/g, '').trim();
-
-  if (trimmed === '' && isSpecial) {
-    block.className = 'rt-block rt-paragraph';
-    const marker = block.querySelector('.rt-marker');
-    if (marker) marker.remove();
-    block.innerHTML = '<br>';
-    placeCursorAtEndSafe(block);
-    editor.dispatchEvent(new Event('input', { bubbles: true }));
-    return;
-  }
-
-  if (trimmed === '') {
-    block.remove();
-    const r = document.createRange();
-    const prevContent = prev.querySelector('.rt-content') || prev;
-    if (prevContent.lastChild) {
-      r.setStartAfter(prevContent.lastChild);
-    } else {
-      r.setStart(prevContent, 0);
-    }
-    r.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(r);
-    editor.dispatchEvent(new Event('input', { bubbles: true }));
-    return;
-  }
-
-  while (block.firstChild) {
-    prev.appendChild(block.firstChild);
-  }
-  block.remove();
-  prev.normalize();
-  const r = document.createRange();
-  const prevContent = prev.querySelector('.rt-content') || prev;
-  if (prevContent.lastChild) {
-    r.setStartAfter(prevContent.lastChild);
-  } else {
-    r.setStart(prevContent, 0);
-  }
-  r.collapse(true);
-  sel.removeAllRanges();
-  sel.addRange(r);
-  editor.dispatchEvent(new Event('input', { bubbles: true }));
+function worldToScreen(wx, wy, offsetX, offsetY, scale) {
+  return { x: wx * scale + offsetX, y: wy * scale + offsetY };
 }
 
-function placeCursorAtEndSafe(el) {
-  const content = el.querySelector('.rt-content') || el;
+function placeCursorAtEnd(el) {
   const range = document.createRange();
-  if (content.lastChild) {
-    range.setStartAfter(content.lastChild);
+  if (el.lastChild) {
+    range.setStartAfter(el.lastChild);
   } else {
-    range.setStart(content, 0);
+    range.setStart(el, 0);
   }
   range.collapse(true);
   const sel = window.getSelection();
   sel.removeAllRanges();
   sel.addRange(range);
-}
-
-function placeCursorAtEnd(el) {
-  placeCursorAtEndSafe(el);
-}
-
-function patchEmptyBlocks(container) {
-  if (!container) return;
-  const contents = container.querySelectorAll('.rt-content');
-  for (const c of contents) {
-    for (const child of Array.from(c.childNodes)) {
-      if (child.nodeType === Node.TEXT_NODE && child.textContent === '\u200B') {
-        child.remove();
-      }
-    }
-    if (!c.textContent.trim() && c.querySelector('br')) {
-      c.appendChild(document.createTextNode('\u200B'));
-    }
-  }
 }
 
 function removeHandlers(es) {
@@ -631,4 +438,7 @@ function removeHandlers(es) {
   if (es._handlers.onPaste) el.removeEventListener('paste', es._handlers.onPaste);
   if (es._handlers.onBlur) el.removeEventListener('blur', es._handlers.onBlur);
   if (es._handlers.onClick) el.removeEventListener('click', es._handlers.onClick);
+  if (es.editor && es.editor.off) {
+    es.editor.off('update');
+  }
 }

@@ -8,327 +8,225 @@ import {
 } from './undo.js';
 import { addImageToShape, removeImageFromShape, openImageInShape } from './document.js';
 import { getArrowEndpoint } from './arrows.js';
-import { blocksToHtml, getOrCreateBlocks, htmlToBlocks, blocksToMarkdown, markdownToBlocks } from './rich-text.js';
-import { handleEnter } from './inline-editing.js';
+import { tiptapToMarkdown, markdownToTiptap } from './editor/editor-serialization.js';
+import { createEditor } from './editor/editor-core.js';
+import { getToolbarActions, buildToolbarHtml } from './editor/editor-toolbar.js';
 import { TITLE_PLACEHOLDER, TEXT_PLACEHOLDER } from './config.js';
 
 function buildMarkdownToolbar() {
-  return '<div class="panel-md-toolbar">' +
-    '<button class="panel-md-btn" data-cmd="bold" title="Bold (Ctrl+B)"><strong>B</strong></button>' +
-    '<button class="panel-md-btn" data-cmd="italic" title="Italic (Ctrl+I)"><em>I</em></button>' +
-    '<button class="panel-md-btn" data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>' +
-    '<button class="panel-md-btn" data-cmd="strikethrough" title="Strikethrough (Ctrl+Shift+S)"><s>S</s></button>' +
-    '<span class="panel-md-sep"></span>' +
-    '<button class="panel-md-btn" data-cmd="h1" title="Heading 1">H1</button>' +
-    '<button class="panel-md-btn" data-cmd="h2" title="Heading 2">H2</button>' +
-    '<button class="panel-md-btn" data-cmd="h3" title="Heading 3">H3</button>' +
-    '<span class="panel-md-sep"></span>' +
-    '<button class="panel-md-btn" data-cmd="ul" title="Bullet List">UL</button>' +
-    '<button class="panel-md-btn" data-cmd="ol" title="Numbered List">OL</button>' +
-    '<span class="panel-md-sep"></span>' +
-    '<button class="panel-md-btn" data-cmd="blockquote" title="Blockquote"><span style="font-family:serif;">\u275D</span></button>' +
-    '<button class="panel-md-btn" data-cmd="code" title="Inline Code">&lt;/&gt;</button>' +
-    '<button class="panel-md-btn" data-cmd="hr" title="Horizontal Rule">\u2014</button>' +
-    '<button class="panel-md-btn" data-cmd="link" title="Insert Link">\uD83D\uDD17</button>' +
-    '<span class="panel-md-sep"></span>' +
-    '<button class="panel-md-btn panel-md-toggle" data-cmd="toggle" title="Toggle raw markdown/rich text">M</button>' +
-    '</div>';
+  return buildToolbarHtml();
 }
 
 function _sp(html) {
   const panel = state.sidePanelContent;
+  _cleanupPanelEditors();
   panel.innerHTML = html;
 }
 
-function _getSelectedRtBlock(root) {
-  const sel = window.getSelection();
-  if (!sel.rangeCount) return null;
-  let node = sel.getRangeAt(0).startContainer;
-  while (node && node !== root) {
-    if (node.nodeType === Node.ELEMENT_NODE && node.classList && node.classList.contains('rt-block')) {
-      return node;
-    }
-    node = node.parentNode;
-  }
-  return null;
-}
-
-function _setBlockClass(block, cls) {
-  const typeClasses = ['rt-paragraph', 'rt-h1', 'rt-h2', 'rt-h3', 'rt-bullet', 'rt-numbered', 'rt-checkbox', 'rt-quote'];
-  for (const c of typeClasses) block.classList.remove(c);
-  block.classList.add(cls);
-}
-
-function _removeBlockMarker(block) {
-  const marker = block.querySelector('.rt-marker');
-  if (marker) marker.remove();
-}
-
-function _addBlockMarker(block, type) {
-  _removeBlockMarker(block);
-  const marker = document.createElement('span');
-  marker.className = 'rt-marker';
-  marker.contentEditable = 'false';
-  if (type === 'bul') {
-    marker.textContent = '\u2022';
-  } else if (type === 'num') {
-    marker.textContent = '1.';
-  }
-  block.insertBefore(marker, block.firstChild);
-  if (block.firstChild === marker && marker.nextSibling && marker.nextSibling.nodeType === Node.TEXT_NODE) {
-  } else if (block.firstChild === marker) {
-    marker.after(document.createTextNode(' '));
-  }
-}
-
-function _handleRichTextCommand(cmd, root) {
-  const inlineMap = { bold: 'bold', italic: 'italic', underline: 'underline', strikethrough: 'strikeThrough' };
-  if (inlineMap[cmd]) {
-    document.execCommand(inlineMap[cmd], false, null);
-    return;
-  }
-  if (cmd === 'code') {
-    const sel = window.getSelection().toString() || 'code';
-    document.execCommand('insertHTML', false, '<code>' + state.escAttr(sel) + '</code>');
-    return;
-  }
-  if (cmd === 'link') {
-    const sel = window.getSelection().toString() || 'link';
-    const url = prompt('Enter URL:', 'https://');
-    if (url) {
-      document.execCommand('insertHTML', false, '<a href="' + state.escAttr(url) + '" target="_blank">' + state.escAttr(sel) + '</a>');
-    }
-    return;
-  }
-  if (cmd === 'hr') {
-    document.execCommand('insertHTML', false, '<div class="rt-block rt-divider" contenteditable="false"><hr></div><div class="rt-block rt-paragraph"><br></div>');
-    return;
-  }
-  const typeMap = { h1: 'rt-h1', h2: 'rt-h2', h3: 'rt-h3', ul: 'rt-bullet', ol: 'rt-numbered', blockquote: 'rt-quote' };
-  const targetClass = typeMap[cmd];
-  if (!targetClass) return;
-  const block = _getSelectedRtBlock(root);
-  if (!block) return;
-  if (block.classList.contains(targetClass)) {
-    _setBlockClass(block, 'rt-paragraph');
-    _removeBlockMarker(block);
-  } else {
-    _setBlockClass(block, targetClass);
-    if (cmd === 'ul' || cmd === 'ol') {
-      _addBlockMarker(block, cmd === 'ul' ? 'bul' : 'num');
-    } else {
-      _removeBlockMarker(block);
+function _cleanupPanelEditors() {
+  const panel = state.sidePanelContent;
+  if (!panel) return;
+  const editors = panel.querySelectorAll('.panel-md-richtext');
+  for (const el of editors) {
+    if (el._tiptapEditor) {
+      try { el._tiptapEditor.destroy(); } catch (_) {}
+      el._tiptapEditor = null;
     }
   }
-}
-
-function _handleRawTextCommand(cmd, ta) {
-  const mdPairs = {
-    bold: ['**', '**'],
-    italic: ['*', '*'],
-    underline: ['<u>', '</u>'],
-    strikethrough: ['~~', '~~'],
-    code: ['`', '`'],
-    h1: ['# ', ''],
-    h2: ['## ', ''],
-    h3: ['### ', ''],
-    ul: ['\n- ', ''],
-    ol: ['\n1. ', ''],
-    blockquote: ['\n> ', ''],
-    hr: ['\n___\n', ''],
-    link: ['[', '](https://)'],
-  };
-  const pair = mdPairs[cmd];
-  if (!pair) return;
-  const start = ta.selectionStart;
-  const end = ta.selectionEnd;
-  const sel = ta.value.substring(start, end) || 'text';
-  const mdPrefix = pair[0];
-  const suffix = pair[1];
-  const insertText = (mdPrefix.startsWith('\n') && start > 0 && ta.value[start - 1] !== '\n' ? '\n' : '') +
-    mdPrefix.replace(/^\n+/, '') + sel + suffix;
-  ta.value = ta.value.substring(0, start) + insertText + ta.value.substring(end);
-  const cursorPos = start + insertText.length;
-  ta.selectionStart = ta.selectionEnd = cursorPos;
-  ta.focus();
+  const toolbars = panel.querySelectorAll('.panel-md-toolbar');
+  for (const tb of toolbars) {
+    if (tb._wireCleanup) {
+      try { tb._wireCleanup.off(); } catch (_) {}
+      tb._wireCleanup = null;
+    }
+  }
 }
 
 function setupMarkdownEditor(editorId, opts) {
   const editorEl = document.getElementById(editorId + 'Editor');
-  const rtDiv = document.getElementById(editorId + 'RT');
-  const rawTa = document.getElementById(editorId + 'Raw');
-  if (!editorEl || !rtDiv || !rawTa) return;
+  if (!editorEl) return;
 
+  const editorBody = editorEl.querySelector('.panel-md-editor-body');
+  if (!editorBody) return;
+
+  const toolbarEl = editorEl.querySelector('.panel-md-toolbar');
+
+  let editor = null;
+  let rawTa = null;
   let isRichText = (state.panelTextMode !== 'raw');
-  let syncTimer = 0;
-  let isSyncing = false;
+  let isDestroyed = false;
 
-  function richToText() {
-    return blocksToMarkdown(htmlToBlocks(rtDiv));
+  function getTextFromEntity() {
+    return opts.getText ? opts.getText() : '';
   }
 
-  function textToRich(text) {
-    rtDiv.innerHTML = blocksToHtml(markdownToBlocks(text));
+  function setTextOnEntity(v) {
+    if (opts.setText) opts.setText(v);
   }
 
   function syncToEntity() {
-    if (isSyncing) return;
-    if (!document.contains(editorEl)) return;
-    isSyncing = true;
-    try {
-      if (isRichText) {
-        opts.setText(richToText());
-      } else {
-        opts.setText(rawTa.value);
-      }
-      if (opts.onChange) opts.onChange();
-    } finally {
-      isSyncing = false;
+    if (isDestroyed) return;
+    if (isRichText && editor && !editor.isDestroyed) {
+      const doc = editor.getJSON();
+      const md = tiptapToMarkdown(doc);
+      setTextOnEntity(md);
+    } else if (!isRichText && rawTa) {
+      setTextOnEntity(rawTa.value);
+    }
+    if (opts.onChange) opts.onChange();
+  }
+
+  function buildRichMode() {
+    editorBody.innerHTML = '';
+    rawTa = null;
+
+    const editorDiv = document.createElement('div');
+    editorDiv.className = 'panel-md-richtext';
+    editorBody.appendChild(editorDiv);
+
+    editor = createEditor({
+      element: editorDiv,
+      content: markdownToTiptap(getTextFromEntity()),
+      editable: true,
+      onUpdate: () => {
+        syncToEntity();
+      },
+      onFocus: () => {
+        if (opts.onFocus) opts.onFocus();
+      },
+      onBlur: () => {
+        if (opts.onBlur) opts.onBlur();
+      },
+    });
+
+    editorDiv._tiptapEditor = editor;
+
+    if (toolbarEl) {
+      wireToolbar(toolbarEl, editor, () => switchMode(false));
     }
   }
 
-  function scheduleSync(ms) {
-    clearTimeout(syncTimer);
-    syncTimer = setTimeout(syncToEntity, ms);
+  function buildRawMode(text) {
+    editorBody.innerHTML = '';
+    if (editor && !editor.isDestroyed) editor.destroy();
+    editor = null;
+
+    rawTa = document.createElement('textarea');
+    rawTa.className = 'panel-input panel-textarea panel-md-raw';
+    rawTa.placeholder = TEXT_PLACEHOLDER;
+    rawTa.value = text || '';
+    editorBody.appendChild(rawTa);
+
+    rawTa.addEventListener('input', () => {
+      syncToEntity();
+    });
+
+    rawTa.addEventListener('focus', () => {
+      if (opts.onFocus) opts.onFocus();
+    });
+
+    rawTa.addEventListener('blur', () => {
+      syncToEntity();
+      if (opts.onBlur) opts.onBlur();
+    });
+
+    if (isRichText) {
+      rawTa.focus();
+    }
   }
 
   function switchMode(toRich) {
     if (toRich === isRichText) return;
-    isSyncing = true;
-    try {
-      if (toRich) {
-        const blocks = markdownToBlocks(rawTa.value || opts.getText());
-        rtDiv.innerHTML = blocksToHtml(blocks);
-        rtDiv.style.display = '';
-        rawTa.style.display = 'none';
-        isRichText = true;
-        rtDiv.focus();
-      } else {
-        const text = richToText();
-        rawTa.value = text;
-        rtDiv.style.display = 'none';
-        rawTa.style.display = '';
-        isRichText = false;
-        rawTa.focus();
-      }
-      state.panelTextMode = toRich ? 'rich' : 'raw';
-      opts.setText(isRichText ? richToText() : rawTa.value);
-    } finally {
-      isSyncing = false;
-    }
-  }
+    const text = isRichText
+      ? (editor && !editor.isDestroyed ? tiptapToMarkdown(editor.getJSON()) : getTextFromEntity())
+      : (rawTa ? rawTa.value : getTextFromEntity());
 
-  rtDiv.addEventListener('paste', (e) => {
-    e.preventDefault();
-    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-    if (!text) return;
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return;
-    const range = sel.getRangeAt(0);
-    range.deleteContents();
-    let block = range.startContainer;
-    while (block && block !== rtDiv && !(block.classList && block.classList.contains('rt-block'))) {
-      block = block.parentNode;
-    }
-    if (!block || block === rtDiv) {
-      block = document.createElement('div');
-      block.className = 'rt-block rt-paragraph';
-      range.insertNode(block);
-      range.setStart(block, 0);
-      range.collapse(true);
-    }
-    const lines = text.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      if (i > 0) {
-        range.insertNode(document.createElement('br'));
-        range.collapse(false);
-      }
-      range.insertNode(document.createTextNode(lines[i]));
-      range.collapse(false);
-    }
-    sel.removeAllRanges();
-    sel.addRange(range);
-    rtDiv.dispatchEvent(new Event('input', { bubbles: true }));
-    scheduleSync(10);
-  });
+    isRichText = toRich;
+    state.panelTextMode = toRich ? 'rich' : 'raw';
+    setTextOnEntity(text);
 
-  editorEl.addEventListener('keydown', (e) => {
-    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'v') return;
-    const active = document.activeElement;
-    if (active !== rtDiv) return;
-    e.stopPropagation();
-  });
-
-  editorEl.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-cmd]');
-    if (!btn) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const cmd = btn.dataset.cmd;
-    if (cmd === 'toggle') {
-      switchMode(!isRichText);
-      return;
-    }
-    if (isRichText) {
-      rtDiv.focus();
-      _handleRichTextCommand(cmd, rtDiv);
+    if (toRich) {
+      buildRichMode();
     } else {
-      _handleRawTextCommand(cmd, rawTa);
-    }
-    scheduleSync(50);
-  });
-
-  rtDiv.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleEnter(rtDiv, e);
-    }
-  });
-
-  rtDiv.addEventListener('input', () => {
-    scheduleSync(50);
-  });
-
-  rawTa.addEventListener('input', () => {
-    if (isSyncing) return;
-    opts.setText(rawTa.value);
-    if (opts.onChange) opts.onChange();
-  });
-
-  let hasFocus = false;
-  function onEditorFocus() {
-    if (!hasFocus) {
-      hasFocus = true;
-      if (opts.onFocus) opts.onFocus();
+      buildRawMode(text);
     }
   }
-  function onEditorBlur() {
-    clearTimeout(syncTimer);
-    syncToEntity();
-    setTimeout(() => {
-      if (!editorEl.contains(document.activeElement)) {
-        if (hasFocus) {
-          hasFocus = false;
-          if (opts.onBlur) opts.onBlur();
-        }
-      }
-    }, 0);
-  }
-  rtDiv.addEventListener('focus', onEditorFocus);
-  rawTa.addEventListener('focus', onEditorFocus);
-  rtDiv.addEventListener('blur', onEditorBlur);
-  rawTa.addEventListener('blur', onEditorBlur);
 
-  if (!isRichText) {
-    rtDiv.style.display = 'none';
-    rawTa.style.display = '';
+  if (isRichText) {
+    buildRichMode();
+  } else {
+    buildRawMode(getTextFromEntity());
   }
 
   return {
     switchMode,
     sync: syncToEntity,
     isRichMode: () => isRichText,
+    destroy: () => {
+      isDestroyed = true;
+      if (editor && !editor.isDestroyed) editor.destroy();
+      editor = null;
+    },
   };
+}
+
+function wireToolbar(toolbarEl, editor, onToggle) {
+  if (!toolbarEl || !editor) return;
+
+  const actions = getToolbarActions(editor);
+
+  const clickHandler = (e) => {
+    const btn = e.target.closest('[data-tb-cmd]');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const cmd = btn.dataset.tbCmd;
+
+    if (cmd === 'toggle') {
+      if (onToggle) onToggle();
+      return;
+    }
+
+    if (cmd === 'link') {
+      const url = prompt('Enter URL:', 'https://');
+      if (url) actions.setLink(url);
+      return;
+    }
+
+    if (typeof actions[cmd] === 'function') {
+      actions[cmd]();
+    }
+  };
+
+  toolbarEl.addEventListener('click', clickHandler);
+
+  const updateActive = () => {
+    const state = actions.getState();
+    for (const btn of toolbarEl.querySelectorAll('[data-tb-cmd]')) {
+      const cmd = btn.dataset.tbCmd;
+      const activeKeyMap = {
+        bold: 'isBold', italic: 'isItalic', underline: 'isUnderline',
+        strikethrough: 'isStrike', code: 'isCode',
+        h1: 'isH1', h2: 'isH2', h3: 'isH3',
+        bulletList: 'isBulletList', orderedList: 'isOrderedList',
+        blockquote: 'isBlockquote',
+      };
+      const key = activeKeyMap[cmd];
+      if (key && state[key] !== undefined) {
+        btn.classList.toggle('active', state[key]);
+      }
+    }
+  };
+
+  editor.on('selectionUpdate', updateActive);
+  editor.on('transaction', updateActive);
+
+  toolbarEl._wireCleanup = { clickHandler, off: () => {
+    toolbarEl.removeEventListener('click', clickHandler);
+    editor.off('selectionUpdate', updateActive);
+    editor.off('transaction', updateActive);
+  }};
 }
 
 const _tbBatchSnapshots = new Map();
@@ -775,10 +673,7 @@ export function refreshSidePanel() {
       parentHtml,
       '<div class="panel-md-editor" id="panelTBTextEditor">' +
         buildMarkdownToolbar() +
-        '<div class="panel-md-editor-body">' +
-          '<div id="panelTBTextRT" class="panel-md-richtext" contenteditable="true">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(tb))) + '</div>' +
-          '<textarea id="panelTBTextRaw" class="panel-input panel-textarea panel-md-raw" style="display:none" placeholder="' + (textMixed ? '(mixed)' : state.escAttr(TEXT_PLACEHOLDER)) + '">' + (textMixed ? '' : state.escAttr(tb.text ?? '')) + '</textarea>' +
-        '</div>' +
+        '<div class="panel-md-editor-body"></div>' +
       '</div>',
     ].join(''));
 
@@ -957,7 +852,7 @@ export function refreshSidePanel() {
     setupMarkdownEditor('panelTBText', {
       getText: () => tb.text ?? '',
       setText: (v) => {
-        if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; } } else { tb.text = v; tb.blocks = null; }
+        if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; m.content = null; } } else { tb.text = v; tb.blocks = null; tb.content = null; }
       },
       onFocus: isBatch ? (() => _captureTbSnapshot('text', members)) : (() => { startTextBoxPanelEdit(tbId, 'text', tb.text); }),
       onBlur: isBatch ? (() => _commitTbSnapshot('text')) : (() => { flushPanelEdit(); }),
@@ -1113,10 +1008,7 @@ function appendTextBoxEditorHTML(parts, prefix, members, first) {
     '<div class="panel-row"><label>Height</label><input id="' + prefix + '_h" class="panel-input" type="number" min="10" value="' + (hMixed ? '' : first.h) + '" placeholder="' + (hMixed ? '(mixed)' : '') + '" /></div>',
     '<div class="panel-md-editor" id="' + prefix + '_textEditor">' +
       buildMarkdownToolbar() +
-      '<div class="panel-md-editor-body">' +
-        '<div id="' + prefix + '_textRT" class="panel-md-richtext" contenteditable="true">' + (textMixed ? '' : blocksToHtml(getOrCreateBlocks(first))) + '</div>' +
-        '<textarea id="' + prefix + '_textRaw" class="panel-input panel-textarea panel-md-raw" style="display:none" placeholder="' + (textMixed ? '(mixed)' : state.escAttr(TEXT_PLACEHOLDER)) + '">' + (textMixed ? '' : state.escAttr(first.text ?? '')) + '</textarea>' +
-      '</div>' +
+      '<div class="panel-md-editor-body"></div>' +
     '</div>'
   );
 }
@@ -1305,7 +1197,7 @@ function wireMixedTBGroup(prefix, members) {
   }
   setupMarkdownEditor(prefix + '_text', {
     getText: () => members[0]?.text ?? '',
-    setText: (v) => { for (const m of members) { m.text = v; m.blocks = null; } },
+    setText: (v) => { for (const m of members) { m.text = v; m.blocks = null; m.content = null; } },
     onFocus: () => _captureTbSnapshot('text', members),
     onBlur: () => _commitTbSnapshot('text'),
     onChange: () => {},

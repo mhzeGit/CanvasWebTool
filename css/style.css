@@ -1005,6 +1005,50 @@ canvas#gridCanvas {
   box-shadow: inset 0 0 0 1px var(--text-muted);
 }
 
+.panel-md-richtext .ProseMirror {
+  min-height: 148px;
+  max-height: 288px;
+  overflow-y: auto;
+  outline: none;
+  word-break: break-word;
+}
+
+.panel-md-richtext .ProseMirror p { margin: 2px 0; }
+
+.panel-md-richtext .ProseMirror h1 { font-size: 1.5em; font-weight: 700; margin: 6px 0 4px; }
+.panel-md-richtext .ProseMirror h2 { font-size: 1.3em; font-weight: 700; margin: 5px 0 3px; }
+.panel-md-richtext .ProseMirror h3 { font-size: 1.15em; font-weight: 700; margin: 4px 0 2px; }
+
+.panel-md-richtext .ProseMirror blockquote {
+  border-left: 3px solid var(--text-muted);
+  padding-left: 12px;
+  margin: 4px 0;
+  color: var(--text-muted);
+}
+
+.panel-md-richtext .ProseMirror ul,
+.panel-md-richtext .ProseMirror ol { padding-left: 18px; margin: 2px 0; }
+
+.panel-md-richtext .ProseMirror li { margin: 1px 0; }
+
+.panel-md-richtext .ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--text-muted);
+  margin: 8px 0;
+  opacity: 0.35;
+}
+
+.panel-md-richtext .ProseMirror code {
+  font-family: Consolas, "Cascadia Code", "Fira Code", monospace;
+  background: rgba(128,128,128,0.15);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.panel-md-richtext .ProseMirror pre { background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px; overflow-x: auto; }
+.panel-md-richtext .ProseMirror pre code { background: none; padding: 0; }
+
 .panel-md-raw {
   display: block;
   width: 100%;
@@ -1316,6 +1360,36 @@ canvas#arrowCanvas {
   font-size: 0.9em;
 }
 .entity-textbox-content a { color: #6bb5ff; text-decoration: underline; }
+
+.entity-textbox-content .ProseMirror {
+  outline: none;
+  min-height: 100%;
+  word-break: break-word;
+}
+
+.entity-textbox-content .ProseMirror p { margin: 0.2em 0; }
+
+.entity-textbox-content .ProseMirror h1 { font-size: 1.5em; font-weight: 700; margin: 0.3em 0 0.2em; }
+.entity-textbox-content .ProseMirror h2 { font-size: 1.3em; font-weight: 700; margin: 0.25em 0 0.15em; }
+.entity-textbox-content .ProseMirror h3 { font-size: 1.15em; font-weight: 700; margin: 0.2em 0 0.1em; }
+
+.entity-textbox-content .ProseMirror blockquote {
+  border-left: 3px solid var(--text-muted);
+  padding-left: 10px;
+  margin: 0.2em 0;
+}
+
+.entity-textbox-content .ProseMirror ul,
+.entity-textbox-content .ProseMirror ol { padding-left: 16px; margin: 0.15em 0; }
+
+.entity-textbox-content .ProseMirror li { margin: 0.1em 0; }
+
+.entity-textbox-content .ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--text-muted);
+  margin: 0.4em 0;
+  opacity: 0.35;
+}
 
 .entity-textbox-placeholder {
   color: var(--text-placeholder);
