@@ -427,9 +427,9 @@ export function renderMarkdownToHtml(text) {
       case 'h2': html += '<div class="md-block md-h2"><strong>' + inner + '</strong></div>'; break;
       case 'h3': html += '<div class="md-block md-h3"><strong>' + inner + '</strong></div>'; break;
       case 'blockquote': html += '<div class="md-block md-blockquote"' + levelAttr + '>' + inner + '</div>'; break;
-      case 'bullet': html += '<div class="md-block md-bullet"' + levelAttr + '><span class="md-marker" contenteditable="false">\u2022</span> ' + inner + '</div>'; break;
-      case 'numbered': html += '<div class="md-block md-numbered"' + levelAttr + '><span class="md-marker" contenteditable="false">' + escHtml(line.prefix.trimEnd()) + '</span> ' + inner + '</div>'; break;
-      case 'checkbox': html += '<div class="md-block md-checkbox"' + levelAttr + '><span class="md-marker" contenteditable="false">' + (line.checked ? '[x]' : '[ ]') + '</span> ' + inner + '</div>'; break;
+      case 'bullet': html += '<div class="md-block md-bullet"' + levelAttr + '><span class="md-marker" contenteditable="false">\u2022</span><span class="md-content">' + inner + '</span></div>'; break;
+      case 'numbered': html += '<div class="md-block md-numbered"' + levelAttr + '><span class="md-marker" contenteditable="false">' + escHtml(line.prefix.trimEnd()) + '</span><span class="md-content">' + inner + '</span></div>'; break;
+      case 'checkbox': html += '<div class="md-block md-checkbox"' + levelAttr + '><span class="md-marker" contenteditable="false">' + (line.checked ? '[x]' : '[ ]') + '</span><span class="md-content">' + inner + '</span></div>'; break;
       default: html += '<div class="md-block md-paragraph">' + (inner || '<br>') + '</div>'; break;
     }
   }

@@ -129,14 +129,14 @@ export function blocksToHtml(blocks) {
       inner += t;
     }
     let prefix = '';
-    if (bl.t === 'chk') prefix = '<span class="rt-marker" data-checked="' + (bl.c ? '1' : '0') + '" contenteditable="false"></span> ';
-    else if (bl.t === 'bul') prefix = '<span class="rt-marker" contenteditable="false">\u2022</span> ';
-    else if (bl.t === 'num') prefix = '<span class="rt-marker" contenteditable="false">' + (bl.n || 1) + '.</span> ';
+    if (bl.t === 'chk') prefix = '<span class="rt-marker" data-checked="' + (bl.c ? '1' : '0') + '" contenteditable="false"></span>';
+    else if (bl.t === 'bul') prefix = '<span class="rt-marker" contenteditable="false">\u2022</span>';
+    else if (bl.t === 'num') prefix = '<span class="rt-marker" contenteditable="false">' + (bl.n || 1) + '.</span>';
     let extraStyle = '';
     if (bl.al && bl.al !== 'l' && bl.al !== 'left') extraStyle = 'text-align:' + (bl.al === 'c' || bl.al === 'center' ? 'center' : 'right') + ';';
     const levelAttr = bl.l ? ' data-l="' + bl.l + '"' : '';
     const styleAttr = extraStyle ? ' style="' + extraStyle + '"' : '';
-    html += '<div class="' + cls + '"' + levelAttr + styleAttr + '>' + prefix + (inner || '<br>') + '</div>';
+    html += '<div class="' + cls + '"' + levelAttr + styleAttr + '>' + prefix + '<span class="rt-content">' + (inner || '<br>') + '</span></div>';
   }
   return html;
 }
@@ -195,14 +195,14 @@ export function blocksToEditorHtml(blocks) {
       i++;
     }
     let prefix = '';
-    if (bl.t === 'chk') prefix = '<span class="rt-marker" data-checked="' + (bl.c ? '1' : '0') + '" contenteditable="false"></span> ';
-    else if (bl.t === 'bul') prefix = '<span class="rt-marker" contenteditable="false">\u2022</span> ';
-    else if (bl.t === 'num') prefix = '<span class="rt-marker" contenteditable="false">' + (bl.n || 1) + '.</span> ';
+    if (bl.t === 'chk') prefix = '<span class="rt-marker" data-checked="' + (bl.c ? '1' : '0') + '" contenteditable="false"></span>';
+    else if (bl.t === 'bul') prefix = '<span class="rt-marker" contenteditable="false">\u2022</span>';
+    else if (bl.t === 'num') prefix = '<span class="rt-marker" contenteditable="false">' + (bl.n || 1) + '.</span>';
     let extraStyle = '';
     if (bl.al && bl.al !== 'l' && bl.al !== 'left') extraStyle = 'text-align:' + (bl.al === 'c' || bl.al === 'center' ? 'center' : 'right') + ';';
     const levelAttr = bl.l ? ' data-l="' + bl.l + '"' : '';
     const styleAttr = extraStyle ? ' style="' + extraStyle + '"' : '';
-    html += '<div class="' + cls + '"' + levelAttr + styleAttr + '>' + prefix + (inner || '<br>') + '</div>';
+    html += '<div class="' + cls + '"' + levelAttr + styleAttr + '>' + prefix + '<span class="rt-content">' + (inner || '<br>') + '</span></div>';
   }
   return html;
 }

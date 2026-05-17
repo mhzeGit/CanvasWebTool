@@ -665,35 +665,41 @@ canvas#gridCanvas {
 .md-block.md-bullet,
 .md-block.md-numbered,
 .md-block.md-checkbox {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
   margin: 1px 0;
-  padding-left: 1em;
-  text-indent: -1em;
+  padding-left: 0;
+  text-indent: 0;
 }
 
 .md-block.md-bullet[data-l="1"],
 .md-block.md-numbered[data-l="1"],
 .md-block.md-checkbox[data-l="1"] {
-  padding-left: 2em;
-  text-indent: -2em;
+  padding-left: 1em;
 }
 .md-block.md-bullet[data-l="2"],
 .md-block.md-numbered[data-l="2"],
 .md-block.md-checkbox[data-l="2"] {
-  padding-left: 3em;
-  text-indent: -3em;
+  padding-left: 2em;
 }
 .md-block.md-bullet[data-l="3"],
 .md-block.md-numbered[data-l="3"],
 .md-block.md-checkbox[data-l="3"] {
-  padding-left: 4em;
-  text-indent: -4em;
+  padding-left: 3em;
 }
 
 .md-marker {
+  flex-shrink: 0;
   color: var(--text-muted);
   font-weight: 600;
   user-select: none;
   -webkit-user-select: none;
+}
+
+.rt-content, .md-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .panel-markdown-preview strong,
@@ -787,38 +793,36 @@ canvas#gridCanvas {
 }
 
 .rt-bullet, .rt-numbered {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
   margin: 1px 0;
-  padding-left: 1.05em;
+  padding-left: 0;
 }
 
 .rt-bullet .rt-marker, .rt-numbered .rt-marker {
   display: inline-block;
-  margin-left: -1.05em;
+  margin-left: 0;
+  flex-shrink: 0;
 }
 
 .rt-bullet[data-l="1"], .rt-numbered[data-l="1"] {
-  padding-left: 2.1em;
-}
-.rt-bullet[data-l="1"] .rt-marker, .rt-numbered[data-l="1"] .rt-marker {
-  margin-left: -1.05em;
+  padding-left: 1.05em;
 }
 .rt-bullet[data-l="2"], .rt-numbered[data-l="2"] {
-  padding-left: 3.15em;
-}
-.rt-bullet[data-l="2"] .rt-marker, .rt-numbered[data-l="2"] .rt-marker {
-  margin-left: -1.05em;
+  padding-left: 2.1em;
 }
 .rt-bullet[data-l="3"], .rt-numbered[data-l="3"] {
-  padding-left: 4.2em;
-}
-.rt-bullet[data-l="3"] .rt-marker, .rt-numbered[data-l="3"] .rt-marker {
-  margin-left: -1.05em;
+  padding-left: 3.15em;
 }
 
 .rt-checkbox {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
   margin: 1px 0;
-  padding-left: 1.5em;
-  text-indent: -1.5em;
+  padding-left: 0;
+  text-indent: 0;
 }
 
 .rt-checkbox .rt-marker {
@@ -829,7 +833,7 @@ canvas#gridCanvas {
   height: 1em;
   border: 1.5px solid var(--text-muted);
   border-radius: 3px;
-  margin-right: 0.3em;
+  flex-shrink: 0;
   vertical-align: middle;
   color: transparent;
 }
@@ -1250,11 +1254,14 @@ canvas#arrowCanvas {
   pointer-events: none;
 }
 .entity-textbox-content .rt-checkbox .rt-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 1em;
   height: 1em;
   border: 1.5px solid var(--text-muted);
   border-radius: 3px;
-  margin-right: 0.3em;
+  flex-shrink: 0;
   color: transparent;
 }
 .entity-textbox-content .rt-divider hr {
@@ -1263,37 +1270,35 @@ canvas#arrowCanvas {
   margin: 0.3em 0;
 }
 .entity-textbox-content .rt-bullet, .entity-textbox-content .rt-numbered, .entity-textbox-content .rt-checkbox {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
   margin: 0.05em 0;
-  padding-left: 1.05em;
+  padding-left: 0;
 }
 
 .entity-textbox-content .rt-bullet .rt-marker, .entity-textbox-content .rt-numbered .rt-marker {
   display: inline-block;
-  margin-left: -1.05em;
+  margin-left: 0;
+  flex-shrink: 0;
 }
 
 .entity-textbox-content .rt-bullet[data-l="1"], .entity-textbox-content .rt-numbered[data-l="1"] {
-  padding-left: 2.1em;
-}
-.entity-textbox-content .rt-bullet[data-l="1"] .rt-marker, .entity-textbox-content .rt-numbered[data-l="1"] .rt-marker {
-  margin-left: -1.05em;
+  padding-left: 1.05em;
 }
 .entity-textbox-content .rt-bullet[data-l="2"], .entity-textbox-content .rt-numbered[data-l="2"] {
-  padding-left: 3.15em;
-}
-.entity-textbox-content .rt-bullet[data-l="2"] .rt-marker, .entity-textbox-content .rt-numbered[data-l="2"] .rt-marker {
-  margin-left: -1.05em;
+  padding-left: 2.1em;
 }
 .entity-textbox-content .rt-bullet[data-l="3"], .entity-textbox-content .rt-numbered[data-l="3"] {
-  padding-left: 4.2em;
-}
-.entity-textbox-content .rt-bullet[data-l="3"] .rt-marker, .entity-textbox-content .rt-numbered[data-l="3"] .rt-marker {
-  margin-left: -1.05em;
+  padding-left: 3.15em;
 }
 
 .entity-textbox-content .rt-checkbox {
-  padding-left: 1.5em;
-  text-indent: -1.5em;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
+  padding-left: 0;
+  text-indent: 0;
 }
 .entity-textbox-content strong { color: var(--text-heading); font-weight: 700; }
 .entity-textbox-content em { color: var(--text-color); }

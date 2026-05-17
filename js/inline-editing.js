@@ -434,9 +434,9 @@ function handleEnter(editor, ev) {
   if (isList || isQuote) {
     newBlock.className = block.className;
     if (blockLevel > 0) newBlock.dataset.l = blockLevel;
-    if (isBullet) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span> <br>';
-    else if (isNumbered) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">' + getNextNumber(block) + '.</span> <br>';
-    else if (isCheckbox) newBlock.innerHTML = '<span class="rt-marker" data-checked="0" contenteditable="false"></span> <br>';
+    if (isBullet) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span><span class="rt-content"><br></span>';
+    else if (isNumbered) newBlock.innerHTML = '<span class="rt-marker" contenteditable="false">' + getNextNumber(block) + '.</span><span class="rt-content"><br></span>';
+    else if (isCheckbox) newBlock.innerHTML = '<span class="rt-marker" data-checked="0" contenteditable="false"></span><span class="rt-content"><br></span>';
     else newBlock.innerHTML = '<br>';
   } else {
     newBlock.className = 'rt-block rt-paragraph';
@@ -586,7 +586,7 @@ function _applyBlockMarkdown(block) {
     const checked = chkMatch[1].toLowerCase() === 'x';
     block.classList.remove('rt-paragraph');
     block.classList.add('rt-checkbox');
-    block.innerHTML = '<span class="rt-marker" data-checked="' + (checked ? '1' : '0') + '" contenteditable="false"></span> ' + _renderInlineMarkdown(chkMatch[2]);
+    block.innerHTML = '<span class="rt-marker" data-checked="' + (checked ? '1' : '0') + '" contenteditable="false"></span><span class="rt-content">' + _renderInlineMarkdown(chkMatch[2]) + '</span>';
     if (indent > 0) block.dataset.l = indent; else block.removeAttribute('data-l');
     placeCursorAtEnd(block);
     return true;
@@ -596,7 +596,7 @@ function _applyBlockMarkdown(block) {
   if (bulMatch) {
     block.classList.remove('rt-paragraph');
     block.classList.add('rt-bullet');
-    block.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span> ' + _renderInlineMarkdown(bulMatch[2]);
+    block.innerHTML = '<span class="rt-marker" contenteditable="false">\u2022</span><span class="rt-content">' + _renderInlineMarkdown(bulMatch[2]) + '</span>';
     if (indent > 0) block.dataset.l = indent; else block.removeAttribute('data-l');
     placeCursorAtEnd(block);
     return true;
@@ -616,7 +616,7 @@ function _applyBlockMarkdown(block) {
   if (numMatch) {
     block.classList.remove('rt-paragraph');
     block.classList.add('rt-numbered');
-    block.innerHTML = '<span class="rt-marker" contenteditable="false">' + numMatch[1] + '.</span> ' + _renderInlineMarkdown(numMatch[2]);
+    block.innerHTML = '<span class="rt-marker" contenteditable="false">' + numMatch[1] + '.</span><span class="rt-content">' + _renderInlineMarkdown(numMatch[2]) + '</span>';
     if (indent > 0) block.dataset.l = indent; else block.removeAttribute('data-l');
     placeCursorAtEnd(block);
     return true;
