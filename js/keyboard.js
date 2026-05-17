@@ -10,6 +10,10 @@ import {
   duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
   removeImageFromShape, saveDocument, saveDocumentAs,
 } from './document.js';
+import {
+  createMoveShapesCmd, createMoveTextBoxesCmd, createMoveConnectorsCmd, createMoveArrowEndCmd, createBatchCmd,
+} from './undo.js';
+import { getSnapIncrement } from './snap.js';
 
 export function setupKeyboard() {
   window.addEventListener('keydown', onKeyDown);
@@ -115,6 +119,20 @@ function onKeyDown(e) {
     deleteSelectedNodes();
     e.preventDefault();
   }
+  if (!isInput && (e.key.startsWith('Arrow'))) {
+    if (state.drawingTool || state.connectingFrom !== null) return;
+    if (state.selectedShapes.size === 0 && state.selectedTextBoxes.size === 0 &&
+        state.selectedConnectors.size === 0 && state.selectedArrows.size === 0) return;
+    e.preventDefault();
+    const inc = e.shiftKey ? 1 : getSnapIncrement(state.scale);
+    switch (e.key) {
+      case 'ArrowUp': nudgeSelected(0, -inc); break;
+      case 'ArrowDown': nudgeSelected(0, inc); break;
+      case 'ArrowLeft': nudgeSelected(-inc, 0); break;
+      case 'ArrowRight': nudgeSelected(inc, 0); break;
+    }
+    return;
+  }
   if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c')) {
     if (state.hoveredPropField) {
       copyHoveredProp();
@@ -169,6 +187,118 @@ function onKeyDown(e) {
       refreshSidePanel();
     }
   }
+}
+
+function nudgeSelected(dx, dy) {
+  const movedIds = new Set();
+  const shapeMoves = [];
+  const tbMoves = [];
+  const connectorMoves = [];
+  const arrowMoves = [];
+
+  function addChildren(parentId, parentType) {
+    for (let i = 0; i < state.shapes.length; i++) {
+      const s = state.shapes[i];
+      if (s.parentId === parentId && s.parentType === parentType && !movedIds.has(`s:${s.id}`)) {
+        movedIds.add(`s:${s.id}`);
+        shapeMoves.push({ id: s.id, fromX: s.x, fromY: s.y, toX: s.x + dx, toY: s.y + dy });
+        addChildren(s.id, 'shape');
+      }
+    }
+    for (let i = 0; i < state.textBoxes.length; i++) {
+      const tb = state.textBoxes[i];
+      if (tb.parentId === parentId && tb.parentType === parentType && !movedIds.has(`tb:${tb.id}`)) {
+        movedIds.add(`tb:${tb.id}`);
+        tbMoves.push({ id: tb.id, fromX: tb.x, fromY: tb.y, toX: tb.x + dx, toY: tb.y + dy });
+        addChildren(tb.id, 'textBox');
+      }
+    }
+  }
+
+  for (const idx of state.selectedShapes) {
+    const s = state.shapes[idx];
+    if (!s || movedIds.has(`s:${s.id}`)) continue;
+    movedIds.add(`s:${s.id}`);
+    shapeMoves.push({ id: s.id, fromX: s.x, fromY: s.y, toX: s.x + dx, toY: s.y + dy });
+    addChildren(s.id, 'shape');
+  }
+
+  for (const idx of state.selectedTextBoxes) {
+    const tb = state.textBoxes[idx];
+    if (!tb || movedIds.has(`tb:${tb.id}`)) continue;
+    movedIds.add(`tb:${tb.id}`);
+    tbMoves.push({ id: tb.id, fromX: tb.x, fromY: tb.y, toX: tb.x + dx, toY: tb.y + dy });
+    addChildren(tb.id, 'textBox');
+  }
+
+  for (const idx of state.selectedConnectors) {
+    const c = state.connectors[idx];
+    if (!c || movedIds.has(`c:${c.id}`)) continue;
+    movedIds.add(`c:${c.id}`);
+    connectorMoves.push({
+      id: c.id,
+      fromX1: c.x1, fromY1: c.y1, fromX2: c.x2, fromY2: c.y2,
+      toX1: c.x1 + dx, toY1: c.y1 + dy, toX2: c.x2 + dx, toY2: c.y2 + dy,
+    });
+  }
+
+  for (const idx of state.selectedArrows) {
+    const a = state.arrows[idx];
+    if (!a || a.connectedFrom !== null || a.connectedTo !== null) continue;
+    if (movedIds.has(`a:${a.id}`)) continue;
+    movedIds.add(`a:${a.id}`);
+    arrowMoves.push({
+      idx,
+      fromState: {
+        x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2,
+        connectedFrom: a.connectedFrom, connectedTo: a.connectedTo,
+        connectedFromType: a.connectedFromType, connectedToType: a.connectedToType,
+      },
+      toState: {
+        x1: a.x1 + dx, y1: a.y1 + dy, x2: a.x2 + dx, y2: a.y2 + dy,
+        connectedFrom: a.connectedFrom, connectedTo: a.connectedTo,
+        connectedFromType: a.connectedFromType, connectedToType: a.connectedToType,
+      },
+    });
+  }
+
+  const cmds = [];
+  if (shapeMoves.length > 0) {
+    for (const m of shapeMoves) {
+      const s = state.shapes.find(sh => sh.id === m.id);
+      if (s) { s.x = m.toX; s.y = m.toY; }
+    }
+    cmds.push(createMoveShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, shapeMoves));
+  }
+  if (tbMoves.length > 0) {
+    for (const m of tbMoves) {
+      const tb = state.textBoxes.find(t => t.id === m.id);
+      if (tb) { tb.x = m.toX; tb.y = m.toY; }
+    }
+    cmds.push(createMoveTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbMoves));
+  }
+  if (connectorMoves.length > 0) {
+    for (const m of connectorMoves) {
+      const c = state.connectors.find(co => co.id === m.id);
+      if (c) { c.x1 = m.toX1; c.y1 = m.toY1; c.x2 = m.toX2; c.y2 = m.toY2; }
+    }
+    cmds.push(createMoveConnectorsCmd(state.connectors, state.selectedConnectors, connectorMoves));
+  }
+  for (const m of arrowMoves) {
+    const a = state.arrows[m.idx];
+    if (a) { a.x1 = m.toState.x1; a.y1 = m.toState.y1; a.x2 = m.toState.x2; a.y2 = m.toState.y2; }
+    cmds.push(createMoveArrowEndCmd(state.arrows, m.idx, m.fromState, m.toState));
+  }
+
+  if (cmds.length === 1) {
+    history.push(cmds[0]);
+  } else if (cmds.length > 1) {
+    history.push(createBatchCmd(cmds, 'Nudge Items'));
+  }
+
+  state.markDrawOrderDirty();
+  state.reparentAll();
+  refreshSidePanel();
 }
 
 function copyHoveredProp() {

@@ -401,12 +401,6 @@ function onPointerDown(e) {
         if (topHit.type === 'textBox') {
           state.selectedConnection = null;
           state.arrowDragTarget = null;
-          if (!e.shiftKey && !e.ctrlKey) {
-            state.selectedTextBoxes.clear();
-            state.selectedArrows.clear();
-            state.selectedShapes.clear();
-            state.selectedConnectors.clear();
-          }
           hit = topHit.i;
           state.pointerDownScreenX = sx;
           state.pointerDownScreenY = sy;
@@ -431,8 +425,11 @@ function onPointerDown(e) {
           }
           if (e.shiftKey) {
             state.selectedTextBoxes.add(hit);
-          } else {
+          } else if (!state.selectedTextBoxes.has(hit)) {
             state.selectedTextBoxes.clear();
+            state.selectedArrows.clear();
+            state.selectedShapes.clear();
+            state.selectedConnectors.clear();
             state.selectedTextBoxes.add(hit);
           }
           refreshSidePanel();
@@ -441,14 +438,6 @@ function onPointerDown(e) {
           return;
         }
         if (topHit.type === 'shape') {
-          if (!e.shiftKey && !e.ctrlKey) {
-            state.selectedTextBoxes.clear();
-            state.selectedConnection = null;
-            state.selectedArrows.clear();
-            state.selectedShapes.clear();
-            state.selectedConnectors.clear();
-            state.arrowDragTarget = null;
-          }
           if (e.ctrlKey) {
             if (state.selectedShapes.has(topHit.i)) {
               state.pendingClickIndex = -3;
@@ -469,7 +458,12 @@ function onPointerDown(e) {
           if (e.shiftKey) {
             state.selectedShapes.add(topHit.i);
           } else if (!state.selectedShapes.has(topHit.i)) {
+            state.selectedTextBoxes.clear();
+            state.selectedConnection = null;
+            state.selectedArrows.clear();
             state.selectedShapes.clear();
+            state.selectedConnectors.clear();
+            state.arrowDragTarget = null;
             state.selectedShapes.add(topHit.i);
           }
           state.pendingClickIndex = -3;
@@ -490,11 +484,7 @@ function onPointerDown(e) {
     {
       const connHit = hitTestConnector(world.x, world.y);
       if (connHit !== -1) {
-        state.selectedTextBoxes.clear();
         state.selectedConnection = null;
-        state.selectedArrows.clear();
-        state.selectedShapes.clear();
-        state.selectedConnectors.clear();
         if (e.ctrlKey) {
           if (state.selectedConnectors.has(connHit)) state.selectedConnectors.delete(connHit);
           refreshSidePanel();
@@ -504,12 +494,16 @@ function onPointerDown(e) {
         if (e.shiftKey) {
           state.selectedConnectors.add(connHit);
         } else if (!state.selectedConnectors.has(connHit)) {
+          state.selectedTextBoxes.clear();
+          state.selectedArrows.clear();
+          state.selectedShapes.clear();
           state.selectedConnectors.clear();
           state.selectedConnectors.add(connHit);
         }
         state.pointerDownScreenX = sx;
         state.pointerDownScreenY = sy;
         state.pendingClickIndex = -5;
+        state.pendingClickItemIdx = connHit;
         state.pendingShiftKey = e.shiftKey;
         state.pendingCtrlKey = e.ctrlKey;
         state.didDragSincePointerDown = false;
@@ -523,7 +517,6 @@ function onPointerDown(e) {
     {
       const bodyHit = hitTestArrowBody(world.x, world.y);
       if (bodyHit !== -1) {
-        state.selectedTextBoxes.clear();
         state.selectedConnection = null;
         if (e.ctrlKey) {
           if (state.selectedArrows.has(bodyHit)) state.selectedArrows.delete(bodyHit);
@@ -534,12 +527,11 @@ function onPointerDown(e) {
         }
         if (e.shiftKey) {
           state.selectedArrows.add(bodyHit);
-        } else {
-          if (!state.selectedArrows.has(bodyHit)) {
-            state.selectedArrows.clear();
-            state.arrowDragTarget = null;
-            state.selectedArrows.add(bodyHit);
-          }
+        } else if (!state.selectedArrows.has(bodyHit)) {
+          state.selectedTextBoxes.clear();
+          state.selectedArrows.clear();
+          state.arrowDragTarget = null;
+          state.selectedArrows.add(bodyHit);
         }
         if (state.selectedArrows.size === 0) state.arrowDragTarget = null;
         state.pointerDownScreenX = sx;
@@ -1580,17 +1572,31 @@ function onPointerUp(e) {
       }
     } else if (!state.pendingShiftKey) {
       if (state.pendingClickIndex >= 0) {
-        if (state.selectedTextBoxes.has(state.pendingClickIndex) && state.selectedTextBoxes.size > 1) {
+        const hasOthers = state.selectedShapes.size > 0 || state.selectedArrows.size > 0 || state.selectedConnectors.size > 0;
+        if (hasOthers || state.selectedTextBoxes.size > 1) {
           state.selectedTextBoxes.clear();
-          state.selectedTextBoxes.add(state.pendingClickIndex);
-        } else if (!state.selectedTextBoxes.has(state.pendingClickIndex)) {
-          state.selectedTextBoxes.clear();
+          state.selectedShapes.clear();
+          state.selectedArrows.clear();
+          state.selectedConnectors.clear();
           state.selectedTextBoxes.add(state.pendingClickIndex);
         }
-      } else if (state.pendingClickIndex === -3 && state.selectedShapes.size > 1) {
-        if (state.selectedShapes.has(state.pendingClickItemIdx)) {
+      } else if (state.pendingClickIndex === -3) {
+        const hasOthers = state.selectedTextBoxes.size > 0 || state.selectedArrows.size > 0 || state.selectedConnectors.size > 0;
+        if (hasOthers || state.selectedShapes.size > 1) {
+          state.selectedTextBoxes.clear();
           state.selectedShapes.clear();
+          state.selectedArrows.clear();
+          state.selectedConnectors.clear();
           state.selectedShapes.add(state.pendingClickItemIdx);
+        }
+      } else if (state.pendingClickIndex === -5) {
+        const hasOthers = state.selectedTextBoxes.size > 0 || state.selectedShapes.size > 0 || state.selectedArrows.size > 0;
+        if (hasOthers || state.selectedConnectors.size > 1) {
+          state.selectedTextBoxes.clear();
+          state.selectedShapes.clear();
+          state.selectedArrows.clear();
+          state.selectedConnectors.clear();
+          state.selectedConnectors.add(state.pendingClickItemIdx);
         }
       }
     }

@@ -97,6 +97,7 @@ export function startEditing(idx, field) {
     if (!body) return;
 
     body.contentEditable = 'true';
+    body.spellcheck = true;
     body.innerHTML = blocksToEditorHtml(n.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
 
     body.focus();
@@ -181,15 +182,22 @@ export function startEditing(idx, field) {
     };
     body.addEventListener('paste', onPaste);
 
-    const commit = () => { commitEditing(); };
-    body.addEventListener('blur', commit);
+    const onBlur = () => {
+      setTimeout(() => {
+        if (!body.contains(document.activeElement)) {
+          commitEditing();
+        }
+      }, 0);
+    };
+    body.addEventListener('blur', onBlur);
 
-    state.editingState._handlers = { onInput, onKeyDown, onPaste, commit };
+    state.editingState._handlers = { onInput, onKeyDown, onPaste, onBlur };
   } else {
     const titlebar = el.querySelector('.entity-node-titlebar');
     if (!titlebar) return;
 
     titlebar.contentEditable = 'true';
+    titlebar.spellcheck = true;
     titlebar.textContent = n.title || '';
 
     titlebar.focus();
@@ -214,10 +222,16 @@ export function startEditing(idx, field) {
     titlebar.addEventListener('input', onInput);
     titlebar.addEventListener('keydown', onKeyDown);
 
-    const commit = () => { commitEditing(); };
-    titlebar.addEventListener('blur', commit);
+    const onBlur = () => {
+      setTimeout(() => {
+        if (!titlebar.contains(document.activeElement)) {
+          commitEditing();
+        }
+      }, 0);
+    };
+    titlebar.addEventListener('blur', onBlur);
 
-    state.editingState._handlers = { onInput, onKeyDown, commit };
+    state.editingState._handlers = { onInput, onKeyDown, onBlur };
   }
 }
 
@@ -312,6 +326,7 @@ function startTextBoxEditing(tbIdx) {
   if (!content) return;
 
   content.contentEditable = 'true';
+  content.spellcheck = true;
   content.innerHTML = blocksToEditorHtml(tb.blocks) || '<div class="rt-block rt-paragraph"><br></div>';
 
   content.focus();
@@ -396,10 +411,16 @@ function startTextBoxEditing(tbIdx) {
   };
   content.addEventListener('paste', onPaste);
 
-  const commit = () => { commitEditing(); };
-  content.addEventListener('blur', commit);
+  const onBlur = () => {
+    setTimeout(() => {
+      if (!content.contains(document.activeElement)) {
+        commitEditing();
+      }
+    }, 0);
+  };
+  content.addEventListener('blur', onBlur);
 
-  state.editingState._handlers = { onInput, onKeyDown, onPaste, commit };
+  state.editingState._handlers = { onInput, onKeyDown, onPaste, onBlur };
 }
 
 function handleEnter(editor, ev) {
@@ -679,7 +700,7 @@ export function commitEditing() {
     el.removeEventListener('input', state.editingState._handlers.onInput);
     el.removeEventListener('keydown', state.editingState._handlers.onKeyDown);
     el.removeEventListener('paste', state.editingState._handlers.onPaste);
-    el.removeEventListener('blur', state.editingState._handlers.commit);
+    el.removeEventListener('blur', state.editingState._handlers.onBlur);
   }
 
   if (isRichText) {
@@ -730,7 +751,7 @@ export function cancelEditing() {
     el.removeEventListener('input', state.editingState._handlers.onInput);
     el.removeEventListener('keydown', state.editingState._handlers.onKeyDown);
     el.removeEventListener('paste', state.editingState._handlers.onPaste);
-    el.removeEventListener('blur', state.editingState._handlers.commit);
+    el.removeEventListener('blur', state.editingState._handlers.onBlur);
   }
 
   if (isRichText) {

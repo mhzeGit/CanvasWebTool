@@ -82,18 +82,22 @@ function makeHandlesHtml() {
   ].join('');
 }
 
-function placeEntity(el, wx, wy, ww, wh) {
+function placeEntity(el, wx, wy, ww, wh, useWorldSize) {
   const canvasRect = state.canvas.getBoundingClientRect();
   const tl = worldToScreen(wx, wy, state.offsetX, state.offsetY, state.scale);
-  const br = worldToScreen(wx + ww, wy + wh, state.offsetX, state.offsetY, state.scale);
-  const screenW = br.x - tl.x;
-  const screenH = br.y - tl.y;
 
   el.style.position = 'fixed';
   el.style.left = (tl.x + canvasRect.left) + 'px';
   el.style.top = (tl.y + canvasRect.top) + 'px';
-  el.style.width = Math.max(1, screenW) + 'px';
-  el.style.height = Math.max(1, screenH) + 'px';
+
+  if (useWorldSize) {
+    el.style.width = ww + 'px';
+    el.style.height = wh + 'px';
+  } else {
+    const br = worldToScreen(wx + ww, wy + wh, state.offsetX, state.offsetY, state.scale);
+    el.style.width = Math.max(1, br.x - tl.x) + 'px';
+    el.style.height = Math.max(1, br.y - tl.y) + 'px';
+  }
 }
 
 function ensureShapeElement(idx) {
@@ -111,12 +115,14 @@ function ensureShapeElement(idx) {
     domByTypeIdx.shape[key] = el;
   }
 
-  placeEntity(el, s.x, s.y, s.w, s.h);
+  placeEntity(el, s.x, s.y, s.w, s.h, true);
+  el.style.transform = `scale(${state.scale})`;
+  el.style.transformOrigin = '0 0';
 
   const borderEl = el.querySelector('.entity-shape-border');
   const fillEl = el.querySelector('.entity-shape-fill');
   const imageWrap = el.querySelector('.entity-shape-image-wrap');
-  const bw = (s.borderWidth || 2) * state.scale;
+  const bw = (s.borderWidth || 2);
   const borderColor = s.borderColor || '#6bb5ff';
   const fillColor = s.color || '#2b2b2b';
 
@@ -132,9 +138,9 @@ function ensureShapeElement(idx) {
     case 'rectangle':
       borderEl.classList.add('entity-shape-rect');
       fillEl.classList.add('entity-shape-rect');
-      borderEl.style.borderRadius = ((s.cornerRadius ?? 4) * state.scale) + 'px';
-      fillEl.style.borderRadius = Math.max(0, ((s.cornerRadius ?? 4) - (s.borderWidth || 2)) * state.scale) + 'px';
-      el.style.borderRadius = ((s.cornerRadius ?? 4) * state.scale) + 'px';
+      borderEl.style.borderRadius = (s.cornerRadius ?? 4) + 'px';
+      fillEl.style.borderRadius = Math.max(0, (s.cornerRadius ?? 4) - (s.borderWidth || 2)) + 'px';
+      el.style.borderRadius = (s.cornerRadius ?? 4) + 'px';
       break;
     case 'circle':
       borderEl.classList.add('entity-shape-circle');
@@ -161,9 +167,9 @@ function ensureShapeElement(idx) {
 
   imageWrap.style.position = 'absolute';
   imageWrap.style.overflow = 'hidden';
-  const corner = (s.cornerRadius ?? 4) * state.scale;
+  const corner = (s.cornerRadius ?? 4);
   const inset = Math.max(0.5, bw);
-  imageWrap.style.borderRadius = Math.max(0, corner - (s.borderWidth || 2) * state.scale) + 'px';
+  imageWrap.style.borderRadius = Math.max(0, corner - (s.borderWidth || 2)) + 'px';
   imageWrap.style.inset = inset + 'px';
 
   if (s.image) {
@@ -217,45 +223,64 @@ function ensureTextBoxElement(idx) {
   const baseColor = tb.color || '#1a1a1a';
   const borderColor = tb.borderColor || '#444';
   const hasTitle = tb.title && tb.title.length > 0;
-
-  placeEntity(el, tb.x, tb.y, tb.w, tb.h);
+  const isEditing = isEditingEntity('textBox', idx);
 
   el.style.background = baseColor;
   el.style.borderColor = borderColor;
-  el.style.borderWidth = (1.5 * state.scale) + 'px';
-  el.style.borderRadius = (6 * state.scale) + 'px';
   el.style.setProperty('--node-divider-color', getDividerColor(baseColor));
 
   const titlebar = el.querySelector('.entity-textbox-titlebar');
   const content = el.querySelector('.entity-textbox-content');
 
+  const s = isEditing ? state.scale : 1;
+
+  if (isEditing) {
+    placeEntity(el, tb.x, tb.y, tb.w, tb.h);
+    el.style.transform = 'none';
+    el.style.borderWidth = (1.5 * state.scale) + 'px';
+    el.style.borderRadius = (6 * state.scale) + 'px';
+  } else {
+    placeEntity(el, tb.x, tb.y, tb.w, tb.h, true);
+    el.style.transform = `scale(${state.scale})`;
+    el.style.transformOrigin = '0 0';
+    el.style.borderWidth = '1.5px';
+    el.style.borderRadius = '6px';
+  }
+
   if (hasTitle) {
     titlebar.style.display = '';
-    const tbRadius = 6 * state.scale;
     titlebar.style.background = getDarkerColor(baseColor, 0.6);
-    titlebar.style.borderRadius = tbRadius + 'px ' + tbRadius + 'px 0 0';
     titlebar.style.color = tb.titleColor || DEFAULT_TITLE_COLOR;
-    titlebar.style.fontSize = (15 * state.scale) + 'px';
-    titlebar.style.padding = (4 * state.scale) + 'px ' + (8 * state.scale) + 'px';
     titlebar.style.lineHeight = 1.2;
-    titlebar.style.minHeight = ((15 * 1.2 * state.scale) + (4 * state.scale) + (4 * state.scale)) + 'px';
+    if (isEditing) {
+      const tbRadius = 6 * state.scale;
+      titlebar.style.borderRadius = tbRadius + 'px ' + tbRadius + 'px 0 0';
+      titlebar.style.fontSize = (15 * state.scale) + 'px';
+      titlebar.style.padding = (4 * state.scale) + 'px ' + (8 * state.scale) + 'px';
+      titlebar.style.minHeight = ((15 * 1.2 * state.scale) + (4 * state.scale) + (4 * state.scale)) + 'px';
+    } else {
+      titlebar.style.borderRadius = '6px 6px 0 0';
+      titlebar.style.fontSize = '15px';
+      titlebar.style.padding = '4px 8px';
+      titlebar.style.minHeight = '26px';
+    }
     if (!isEditingEntity('textBox', idx, 'title')) {
       titlebar.innerHTML = titleToHtml(tb.title);
     }
-    content.style.paddingTop = (4 * state.scale) + 'px';
+    content.style.paddingTop = (4 * s) + 'px';
   } else {
     titlebar.style.display = 'none';
-    content.style.paddingTop = (8 * state.scale) + 'px';
+    content.style.paddingTop = (8 * s) + 'px';
   }
 
   content.style.color = tb.textColor || DEFAULT_TEXT_COLOR;
-  content.style.fontSize = ((tb.fontSize || 14) * state.scale) + 'px';
-  content.style.paddingLeft = (8 * state.scale) + 'px';
-  content.style.paddingRight = (8 * state.scale) + 'px';
-  content.style.paddingBottom = (8 * state.scale) + 'px';
+  content.style.fontSize = ((tb.fontSize || 14) * s) + 'px';
+  content.style.paddingLeft = (8 * s) + 'px';
+  content.style.paddingRight = (8 * s) + 'px';
+  content.style.paddingBottom = (8 * s) + 'px';
   content.style.lineHeight = 1.25;
 
-  if (!isEditingEntity('textBox', idx)) {
+  if (!isEditing) {
     const blocks = getOrCreateBlocks(tb);
     const hasContent = blocks && blocks.length > 0 && blocks.some(b => b.t !== 'p' || (b.s && b.s.length > 0 && b.s.some(s => s.t)));
     if (hasContent) {
@@ -265,7 +290,7 @@ function ensureTextBoxElement(idx) {
       const placeholder = document.createElement('span');
       placeholder.className = 'entity-textbox-placeholder';
       placeholder.textContent = hasTitle ? 'Double-click to edit' : 'Double-click to edit';
-      placeholder.style.fontSize = ((tb.fontSize || 14) * state.scale) + 'px';
+      placeholder.style.fontSize = ((tb.fontSize || 14) * s) + 'px';
       content.appendChild(placeholder);
     }
   }
