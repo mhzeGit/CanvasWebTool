@@ -45,7 +45,7 @@ export function commitEditing() {
         ));
       }
 
-      es.editor.destroy();
+      es.editor.setEditable(false);
     }
 
     es.el.contentEditable = 'false';
@@ -88,7 +88,11 @@ export function cancelEditing() {
     tb.text = originalValue;
     tb.blocks = null;
     tb.content = null;
-    if (es.editor && !es.editor.isDestroyed) es.editor.destroy();
+    if (es.editor && !es.editor.isDestroyed) {
+      migrateEntityToTiptap(tb);
+      es.editor.commands.setContent(tb.content || { ...emptyDoc }, { emitUpdate: false });
+      es.editor.setEditable(false);
+    }
   } else {
     if (type === 'textBox') {
       state.textBoxes[idx][field] = originalValue;
@@ -223,53 +227,60 @@ function startBodyEditing(tbIdx) {
   const content = el.querySelector('.entity-textbox-content');
   if (!content) return;
 
-  migrateEntityToTiptap(tb);
-
-  if (content._tiptapEditor) {
-    content._tiptapEditor.destroy();
-    content._tiptapEditor = null;
-  }
-
-  content.innerHTML = '';
-
   const originalValue = tb.text;
   let lastCommittedValue = originalValue;
   let initializing = true;
 
-  const editor = createEditor({
-    element: content,
-    content: tb.content || { ...emptyDoc },
-    editable: true,
-    excludeHistory: true,
-    onUpdate: ({ editor: ed }) => {
-      if (initializing) return;
-      const doc = ed.getJSON();
-      tb.content = doc;
-      tb.text = tiptapToMarkdown(doc);
-      tb.blocks = null;
+  const onUpdate = ({ editor: ed }) => {
+    if (initializing) return;
+    const doc = ed.getJSON();
+    tb.content = doc;
+    tb.text = tiptapToMarkdown(doc);
+    tb.blocks = null;
 
-      if (lastCommittedValue !== tb.text) {
-        const oldVal = lastCommittedValue;
-        lastCommittedValue = tb.text;
-        if (state.editingState) {
-          state.editingState.lastCommittedValue = tb.text;
-        }
-        history.push(createPropertyChangeCmd(
-          state.textBoxes, state.selectedTextBoxes, refreshSidePanel,
-          tb.id, 'text', oldVal, tb.text
-        ));
+    if (lastCommittedValue !== tb.text) {
+      const oldVal = lastCommittedValue;
+      lastCommittedValue = tb.text;
+      if (state.editingState) {
+        state.editingState.lastCommittedValue = tb.text;
       }
-    },
-    onBlur: ({ editor: ed }) => {
-      setTimeout(() => {
-        if (state.editingState && state.editingState.editor === ed) {
-          commitEditing();
-        }
-      }, 0);
-    },
-  });
+      history.push(createPropertyChangeCmd(
+        state.textBoxes, state.selectedTextBoxes, refreshSidePanel,
+        tb.id, 'text', oldVal, tb.text
+      ));
+    }
+  };
 
-  content._tiptapEditor = editor;
+  const onBlur = ({ editor: ed }) => {
+    setTimeout(() => {
+      if (state.editingState && state.editingState.editor === ed) {
+        commitEditing();
+      }
+    }, 0);
+  };
+
+  let editor;
+
+  if (content._tiptapEditor && !content._tiptapEditor.isDestroyed) {
+    editor = content._tiptapEditor;
+    editor.setEditable(true);
+    editor.on('update', onUpdate);
+    editor.on('blur', onBlur);
+  } else {
+    migrateEntityToTiptap(tb);
+    content.innerHTML = '';
+
+    editor = createEditor({
+      element: content,
+      content: tb.content || { ...emptyDoc },
+      editable: true,
+      excludeHistory: true,
+      onUpdate,
+      onBlur,
+    });
+
+    content._tiptapEditor = editor;
+  }
 
   const onKeyDown = (ev) => {
     if (ev.key === 'Escape') {
@@ -300,7 +311,7 @@ function startBodyEditing(tbIdx) {
     type: 'textBox', idx: tbIdx, field: 'text',
     el: content, originalValue, lastCommittedValue, isRichText: true,
     editor,
-    _handlers: { onKeyDown }
+    _handlers: { onKeyDown, _onUpdate: onUpdate, _onBlur: onBlur }
   };
 }
 
@@ -442,5 +453,6 @@ function removeHandlers(es) {
   if (es._handlers.onClick) el.removeEventListener('click', es._handlers.onClick);
   if (es.editor && es.editor.off) {
     es.editor.off('update');
+    es.editor.off('blur');
   }
 }

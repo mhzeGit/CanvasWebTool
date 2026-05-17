@@ -102,7 +102,7 @@ function setupMarkdownEditor(editorId, opts) {
     editorDiv._tiptapEditor = editor;
 
     if (toolbarEl) {
-      wireToolbar(toolbarEl, editor, () => switchMode(false));
+      wireToolbar(toolbarEl, editor, () => switchMode(!isRichText));
     }
   }
 
@@ -852,7 +852,7 @@ export function refreshSidePanel() {
     setupMarkdownEditor('panelTBText', {
       getText: () => tb.text ?? '',
       setText: (v) => {
-        if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; m.content = null; } } else { tb.text = v; tb.blocks = null; tb.content = null; }
+        if (isBatch) { for (const m of members) { m.text = v; m.blocks = null; m.content = null; m._contentVersion = (m._contentVersion || 0) + 1; } } else { tb.text = v; tb.blocks = null; tb.content = null; tb._contentVersion = (tb._contentVersion || 0) + 1; }
       },
       onFocus: isBatch ? (() => _captureTbSnapshot('text', members)) : (() => { startTextBoxPanelEdit(tbId, 'text', tb.text); }),
       onBlur: isBatch ? (() => _commitTbSnapshot('text')) : (() => { flushPanelEdit(); }),

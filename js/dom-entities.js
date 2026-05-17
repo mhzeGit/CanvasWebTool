@@ -1,9 +1,8 @@
 import { state } from './state.js';
 import { getDarkerColor, getBorderColor, getDividerColor, worldToScreen } from './utils.js';
 import { parseInlineSpans } from './markdown.js';
-import { blocksToHtml } from './rich-text.js';
-import { tiptapToBlocks } from './editor/editor-serialization.js';
 import { getOrCreateTiptapContent } from './editor/editor-content-bridge.js';
+import { createEditor, emptyDoc } from './editor/editor-core.js';
 import {
   DEFAULT_TITLE_COLOR, DEFAULT_TEXT_COLOR, TITLE_PLACEHOLDER, TEXT_PLACEHOLDER,
 } from './config.js';
@@ -32,7 +31,13 @@ export function destroyAllEntities() {
     domByTypeIdx.shape[key].remove();
   }
   for (const key in domByTypeIdx.textBox) {
-    domByTypeIdx.textBox[key].remove();
+    const el = domByTypeIdx.textBox[key];
+    const contentEl = el.querySelector('.entity-textbox-content');
+    if (contentEl && contentEl._tiptapEditor && !contentEl._tiptapEditor.isDestroyed) {
+      contentEl._tiptapEditor.destroy();
+      contentEl._tiptapEditor = null;
+    }
+    el.remove();
   }
   domByTypeIdx.shape = {};
   domByTypeIdx.textBox = {};
@@ -281,21 +286,23 @@ function ensureTextBoxElement(idx) {
   content.style.paddingRight = (8 * s) + 'px';
   content.style.paddingBottom = (8 * s) + 'px';
   content.style.lineHeight = 1.25;
-  content.style.overflowY = isEditing ? 'auto' : 'hidden';
+  content.style.overflowY = 'hidden';
 
   if (!isEditing) {
     const tiptapContent = getOrCreateTiptapContent(tb);
-    const blocks = tiptapToBlocks(tiptapContent);
-    const hasContent = blocks && blocks.length > 0 && blocks.some(b => b.t !== 'p' || (b.s && b.s.length > 0 && b.s.some(s => s.t)));
-    if (hasContent) {
-      content.innerHTML = blocksToHtml(blocks);
-    } else {
-      content.innerHTML = '';
-      const placeholder = document.createElement('span');
-      placeholder.className = 'entity-textbox-placeholder';
-      placeholder.textContent = hasTitle ? 'Double-click to edit' : 'Double-click to edit';
-      placeholder.style.fontSize = ((tb.fontSize || 14) * s) + 'px';
-      content.appendChild(placeholder);
+    const contentJson = JSON.stringify(tiptapContent);
+
+    if (!content._tiptapEditor || content._tiptapEditor.isDestroyed) {
+      content._tiptapEditor = createEditor({
+        element: content,
+        content: tiptapContent,
+        editable: false,
+        excludeHistory: true,
+      });
+      content._tiptapEditor._lastContentJson = contentJson;
+    } else if (contentJson !== content._tiptapEditor._lastContentJson) {
+      content._tiptapEditor.commands.setContent(tiptapContent, { emitUpdate: false });
+      content._tiptapEditor._lastContentJson = contentJson;
     }
   }
 
@@ -344,7 +351,13 @@ function cleanupStaleElements() {
   for (let i = 0; i < state.textBoxes.length; i++) aliveTBKeys.add('t' + i);
   for (const key in domByTypeIdx.textBox) {
     if (!aliveTBKeys.has(key)) {
-      domByTypeIdx.textBox[key].remove();
+      const el = domByTypeIdx.textBox[key];
+      const contentEl = el.querySelector('.entity-textbox-content');
+      if (contentEl && contentEl._tiptapEditor && !contentEl._tiptapEditor.isDestroyed) {
+        contentEl._tiptapEditor.destroy();
+        contentEl._tiptapEditor = null;
+      }
+      el.remove();
       delete domByTypeIdx.textBox[key];
     }
   }

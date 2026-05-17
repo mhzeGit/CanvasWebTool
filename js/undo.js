@@ -61,7 +61,11 @@ export function createPropertyChangeCmd(nodes, selected, refreshPanelFn, nodeId,
       const found = nodes.find(n => n.id === nodeId);
       if (found) {
         found[property] = oldValue;
-        if (property === 'text') found.blocks = null;
+        if (property === 'text') {
+          found.blocks = null;
+          found.content = null;
+          found._contentVersion = (found._contentVersion || 0) + 1;
+        }
       }
       if (refreshPanelFn) refreshPanelFn();
     },
@@ -69,7 +73,11 @@ export function createPropertyChangeCmd(nodes, selected, refreshPanelFn, nodeId,
       const found = nodes.find(n => n.id === nodeId);
       if (found) {
         found[property] = newValue;
-        if (property === 'text') found.blocks = null;
+        if (property === 'text') {
+          found.blocks = null;
+          found.content = null;
+          found._contentVersion = (found._contentVersion || 0) + 1;
+        }
       }
       if (refreshPanelFn) refreshPanelFn();
     },
@@ -419,7 +427,11 @@ export function createTextBoxPropertyChangeCmd(textBoxes, selectedTextBoxes, ref
       const found = textBoxes.find(t => t.id === tbId);
       if (found) {
         found[property] = oldValue;
-        if (property === 'text') found.blocks = null;
+        if (property === 'text') {
+          found.blocks = null;
+          found.content = null;
+          found._contentVersion = (found._contentVersion || 0) + 1;
+        }
       }
       if (refreshPanelFn) refreshPanelFn();
     },
@@ -427,7 +439,11 @@ export function createTextBoxPropertyChangeCmd(textBoxes, selectedTextBoxes, ref
       const found = textBoxes.find(t => t.id === tbId);
       if (found) {
         found[property] = newValue;
-        if (property === 'text') found.blocks = null;
+        if (property === 'text') {
+          found.blocks = null;
+          found.content = null;
+          found._contentVersion = (found._contentVersion || 0) + 1;
+        }
       }
       if (refreshPanelFn) refreshPanelFn();
     },
@@ -498,7 +514,11 @@ export function createBatchTextBoxPropertyChangeCmd(textBoxes, selectedTextBoxes
         const found = textBoxes.find(t => t.id === c.tbId);
         if (found) {
           found[c.property] = c.oldValue;
-          if (c.property === 'text') found.blocks = null;
+          if (c.property === 'text') {
+            found.blocks = null;
+            found.content = null;
+            found._contentVersion = (found._contentVersion || 0) + 1;
+          }
         }
       }
       if (refreshPanelFn) refreshPanelFn();
@@ -508,7 +528,11 @@ export function createBatchTextBoxPropertyChangeCmd(textBoxes, selectedTextBoxes
         const found = textBoxes.find(t => t.id === c.tbId);
         if (found) {
           found[c.property] = c.newValue;
-          if (c.property === 'text') found.blocks = null;
+          if (c.property === 'text') {
+            found.blocks = null;
+            found.content = null;
+            found._contentVersion = (found._contentVersion || 0) + 1;
+          }
         }
       }
       if (refreshPanelFn) refreshPanelFn();
