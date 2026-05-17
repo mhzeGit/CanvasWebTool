@@ -1171,7 +1171,7 @@ canvas#arrowCanvas {
 /* ===== Text Boxes (primary container) ===== */
 .entity-textbox {
   border-radius: 6px;
-  overflow: visible;
+  overflow: hidden;
   border: 1.5px solid;
   box-shadow:
     0 1px 2px rgba(0,0,0,0.06),
@@ -1180,6 +1180,8 @@ canvas#arrowCanvas {
     0 24px 48px rgba(0,0,0,0.08),
     0 48px 64px rgba(0,0,0,0.04);
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  display: flex;
+  flex-direction: column;
 }
 
 .entity-textbox.selected {
@@ -1220,7 +1222,8 @@ canvas#arrowCanvas {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
   overflow: hidden;
   word-break: break-word;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   box-sizing: border-box;
 }
 

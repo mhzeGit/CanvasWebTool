@@ -279,6 +279,7 @@ function ensureTextBoxElement(idx) {
   content.style.paddingRight = (8 * s) + 'px';
   content.style.paddingBottom = (8 * s) + 'px';
   content.style.lineHeight = 1.25;
+  content.style.overflowY = isEditing ? 'auto' : 'hidden';
 
   if (!isEditing) {
     const blocks = getOrCreateBlocks(tb);
