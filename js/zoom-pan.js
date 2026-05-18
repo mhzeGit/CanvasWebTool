@@ -2,6 +2,8 @@ import { state } from './state.js';
 import { GRID, TOUCHPAD_ZOOM_FACTOR } from './config.js';
 import { commitEditing } from './inline-editing.js';
 
+const TOUCHPAD_DELTA_THRESHOLD = 30;
+
 let _wheelAccX = 0;
 let _wheelAccY = 0;
 let _wheelAccPending = false;
@@ -16,6 +18,23 @@ function _flushWheelAcc() {
   _wheelAccPending = false;
 }
 
+function _zoom(e, factor) {
+  const zoomDir = e.deltaY < 0 ? 1 : -1;
+  const zoomFactor = Math.pow(factor, zoomDir);
+  const newScale = state.targetScale * zoomFactor;
+
+  if (newScale < GRID.minScale || newScale > GRID.maxScale) return;
+
+  const rect = state.canvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+
+  state.targetOffsetX -= (mouseX - state.targetOffsetX) * (zoomFactor - 1);
+  state.targetOffsetY -= (mouseY - state.targetOffsetY) * (zoomFactor - 1);
+
+  state.targetScale = newScale;
+}
+
 export function setupZoomPan() {
   state.canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -24,38 +43,22 @@ export function setupZoomPan() {
     }
 
     if (e.ctrlKey || e.metaKey) {
-      const zoomDir = e.deltaY < 0 ? 1 : -1;
       const factor = (e.deltaMode === 0) ? TOUCHPAD_ZOOM_FACTOR : GRID.zoomFactor;
-      const zoomFactor = Math.pow(factor, zoomDir);
-      const newScale = state.targetScale * zoomFactor;
+      _zoom(e, factor);
+      return;
+    }
 
-      if (newScale < GRID.minScale || newScale > GRID.maxScale) return;
+    if (e.deltaMode === 1 || Math.abs(e.deltaY) > TOUCHPAD_DELTA_THRESHOLD) {
+      _zoom(e, GRID.zoomFactor);
+      return;
+    }
 
-      const rect = state.canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      state.targetOffsetX -= (mouseX - state.targetOffsetX) * (zoomFactor - 1);
-      state.targetOffsetY -= (mouseY - state.targetOffsetY) * (zoomFactor - 1);
-
-      state.targetScale = newScale;
-    } else {
-      let panX = e.deltaX;
-      let panY = e.deltaY;
-      if (e.deltaMode === 1) {
-        panX *= 40;
-        panY *= 40;
-      } else if (e.deltaMode === 2) {
-        panX *= state.canvas.clientWidth;
-        panY *= state.canvas.clientHeight;
-      }
-      _wheelAccX += panX;
-      _wheelAccY += panY;
-      state.isSelectingBox = false;
-      if (!_wheelAccPending) {
-        _wheelAccPending = true;
-        requestAnimationFrame(_flushWheelAcc);
-      }
+    _wheelAccX += e.deltaX;
+    _wheelAccY += e.deltaY;
+    state.isSelectingBox = false;
+    if (!_wheelAccPending) {
+      _wheelAccPending = true;
+      requestAnimationFrame(_flushWheelAcc);
     }
   }, { passive: false });
 }
