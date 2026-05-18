@@ -172,7 +172,9 @@ export function addArrowAt(worldX, worldY, connectTextBoxIdx) {
     connectedTo,
     connectedFromType: connectedFrom !== null ? 'textBox' : null,
     connectedToType: null,
-    color: '#6bb5ff'
+    color: '#6bb5ff',
+    lineWidth: 2,
+    headSize: 14,
   };
 
   const idx = state.arrows.length;
@@ -284,6 +286,8 @@ export function addArrowFromPoints(x1, y1, x2, y2, connectedFrom, connectedTo, c
     connectedFromType: connectedFromType ?? null,
     connectedToType: connectedToType ?? null,
     color: '#6bb5ff',
+    lineWidth: 2,
+    headSize: 14,
   };
   const idx = state.arrows.length;
   state.arrows.push(arrow);

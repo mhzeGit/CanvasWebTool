@@ -375,11 +375,39 @@ export function refreshSidePanel() {
       '<div class="panel-row"><label>From</label><span class="panel-static">' + state.escAttr(fromLabel) + '</span></div>',
       '<div class="panel-row"><label>To</label><span class="panel-static">' + state.escAttr(toLabel) + '</span></div>',
       '<div class="panel-row"><label>Color</label>' + colorSwatchHTML('panelArrowColor', arrow.color || '#6bb5ff') + '</div>',
+      '<div class="panel-row"><label>Thickness</label><input id="panelArrowThickness" class="panel-input" type="number" min="0.5" max="20" step="0.5" value="' + (arrow.lineWidth ?? 2) + '" /></div>',
+      '<div class="panel-row"><label>Head Size</label><input id="panelArrowHeadSize" class="panel-input" type="number" min="4" max="60" step="1" value="' + (arrow.headSize ?? 14) + '" /></div>',
     ].join(''));
     const colorSwatch = document.getElementById('panelArrowColor');
     initColorSwatch(colorSwatch, {
       onSelect: (color) => { arrow.color = color; },
     });
+    const thicknessInput = document.getElementById('panelArrowThickness');
+    const headSizeInput = document.getElementById('panelArrowHeadSize');
+    if (thicknessInput) {
+      thicknessInput.addEventListener('input', (ev) => {
+        const v = parseFloat(ev.target.value);
+        if (!Number.isNaN(v) && v > 0) arrow.lineWidth = v;
+      });
+      thicknessInput.addEventListener('focus', () => { startArrowPanelEdit(arrow.id, 'lineWidth', arrow.lineWidth); });
+      thicknessInput.addEventListener('blur', () => { flushPanelEdit(); });
+      attachDragNumber(thicknessInput,
+        (delta) => { arrow.lineWidth = Math.max(0.5, (arrow.lineWidth ?? 2) + delta * 0.5); thicknessInput.value = String(arrow.lineWidth); },
+        () => { flushPanelEdit(); },
+        () => {});
+    }
+    if (headSizeInput) {
+      headSizeInput.addEventListener('input', (ev) => {
+        const v = parseFloat(ev.target.value);
+        if (!Number.isNaN(v) && v >= 4) arrow.headSize = v;
+      });
+      headSizeInput.addEventListener('focus', () => { startArrowPanelEdit(arrow.id, 'headSize', arrow.headSize); });
+      headSizeInput.addEventListener('blur', () => { flushPanelEdit(); });
+      attachDragNumber(headSizeInput,
+        (delta) => { arrow.headSize = Math.max(4, (arrow.headSize ?? 14) + delta); headSizeInput.value = String(Math.round(arrow.headSize)); },
+        () => { flushPanelEdit(); },
+        () => {});
+    }
     return;
   }
 
@@ -931,8 +959,12 @@ function renderMixedEditor() {
     if (parts.length > 0) parts.push('<hr class="panel-group-divider" />');
     parts.push('<div class="panel-section-title">' + members.length + ' arrow' + (members.length > 1 ? 's' : '') + '</div>');
     const colorMixed = members.some(m => m.color !== members[0].color);
+    const thickMixed = members.some(m => m.lineWidth !== members[0].lineWidth);
+    const headMixed = members.some(m => m.headSize !== members[0].headSize);
     parts.push(
-      '<div class="panel-row"><label>Color</label>' + colorSwatchHTML(prefix + '_color', members[0].color || '#6bb5ff') + '</div>'
+      '<div class="panel-row"><label>Color</label>' + colorSwatchHTML(prefix + '_color', members[0].color || '#6bb5ff') + '</div>',
+      '<div class="panel-row"><label>Thickness</label><input id="' + prefix + '_thickness" class="panel-input" type="number" min="0.5" max="20" step="0.5" value="' + (thickMixed ? '' : (members[0].lineWidth ?? 2)) + '" placeholder="' + (thickMixed ? '(mixed)' : '') + '" /></div>',
+      '<div class="panel-row"><label>Head Size</label><input id="' + prefix + '_headSize" class="panel-input" type="number" min="4" max="60" step="1" value="' + (headMixed ? '' : (members[0].headSize ?? 14)) + '" placeholder="' + (headMixed ? '(mixed)' : '') + '" /></div>'
     );
   }
 
@@ -977,6 +1009,20 @@ function renderMixedEditor() {
     if (cs) {
       initColorSwatch(cs, {
         onSelect: (v) => { for (const m of members) m.color = v; },
+      });
+    }
+    const thickInput = document.getElementById(prefix + '_thickness');
+    const headInput = document.getElementById(prefix + '_headSize');
+    if (thickInput) {
+      thickInput.addEventListener('input', (ev) => {
+        const v = parseFloat(ev.target.value);
+        if (!Number.isNaN(v) && v > 0) for (const m of members) m.lineWidth = v;
+      });
+    }
+    if (headInput) {
+      headInput.addEventListener('input', (ev) => {
+        const v = parseFloat(ev.target.value);
+        if (!Number.isNaN(v) && v >= 4) for (const m of members) m.headSize = v;
       });
     }
   }
@@ -1290,6 +1336,8 @@ const ID_PROP_MAP = {
   panelTBFontSize: { entityType: 'textBox', prop: 'fontSize' },
   panelTBW: { entityType: 'textBox', prop: 'w' },
   panelTBH: { entityType: 'textBox', prop: 'h' },
+  panelArrowThickness: { entityType: 'arrow', prop: 'lineWidth' },
+  panelArrowHeadSize: { entityType: 'arrow', prop: 'headSize' },
 };
 
 function parseMixedId(id) {
