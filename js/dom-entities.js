@@ -306,6 +306,7 @@ function applyDrawOrder() {
       el.style.zIndex = 2 + i * 2;
     }
   }
+  state.arrowCanvas.style.zIndex = 2 + (order.length + 1) * 2;
 }
 
 function applySelectionClasses() {
