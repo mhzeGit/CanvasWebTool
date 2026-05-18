@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { GRID } from './config.js';
+import { GRID, TOUCH_ZOOM_DAMPENING } from './config.js';
 import { openContextMenu, closeContextMenu } from './context-menu.js';
 
 let _touchActionHandler = null;
@@ -92,6 +92,7 @@ export function handleTouchDown(e) {
   const count = state.touchPointers.size;
 
   if (count === 1) {
+    state.isTouchPanning = false;
     state.touchTapData = {
       clientX: e.clientX,
       clientY: e.clientY,
@@ -122,6 +123,13 @@ export function handleTouchDown(e) {
     state.twoFingerStartOffsetX = state.targetOffsetX;
     state.twoFingerStartOffsetY = state.targetOffsetY;
 
+    state.twoFingerInitMidX = mid.x;
+    state.twoFingerInitMidY = mid.y;
+    state.twoFingerInitDist = dist;
+    state.twoFingerInitScale = state.targetScale;
+    state.twoFingerInitOffsetX = state.targetOffsetX;
+    state.twoFingerInitOffsetY = state.targetOffsetY;
+
     _resetDrawingState();
     return true;
   }
@@ -150,46 +158,65 @@ export function handleTouchMove(e) {
     }
   }
 
-  if (!state.isTwoFingerGesture) return false;
+  if (!state.isTwoFingerGesture) {
+    const movedPastTap = ptr && (Math.abs(e.clientX - ptr.startX) > TAP_MAX_MOVE ||
+      Math.abs(e.clientY - ptr.startY) > TAP_MAX_MOVE);
+
+    if (state.isTouchPanning) {
+      const dx = e.clientX - state.touchPanLastX;
+      const dy = e.clientY - state.touchPanLastY;
+      state.touchPanLastX = e.clientX;
+      state.touchPanLastY = e.clientY;
+      state.targetOffsetX += dx;
+      state.targetOffsetY += dy;
+      return true;
+    }
+
+    if (movedPastTap && state.isSelectingBox) {
+      state.isSelectingBox = false;
+      state.isTouchPanning = true;
+      state.touchPanLastX = e.clientX;
+      state.touchPanLastY = e.clientY;
+      _lastTapTime = null;
+      state.touchTapData = null;
+      return true;
+    }
+
+    return false;
+  }
 
   if (state.touchPointers.size >= 2) {
     const mid = getTouchMidpoint();
     const dist = getTouchDistance();
 
-    const panDx = mid.x - state.twoFingerMidX;
-    const panDy = mid.y - state.twoFingerMidY;
+    const panDx = mid.x - state.twoFingerInitMidX;
+    const panDy = mid.y - state.twoFingerInitMidY;
 
-    state.targetOffsetX = state.twoFingerStartOffsetX + panDx;
-    state.targetOffsetY = state.twoFingerStartOffsetY + panDy;
+    state.targetOffsetX = state.twoFingerInitOffsetX + panDx;
+    state.targetOffsetY = state.twoFingerInitOffsetY + panDy;
 
-    if (state.twoFingerStartDist > 10 && dist > 10) {
-      const ratio = dist / state.twoFingerStartDist;
-      let newScale = state.twoFingerStartScale * ratio;
+    const ZOOM_DEAD_ZONE = 0.025;
+    const distRatio = dist / state.twoFingerInitDist;
+
+    if (state.twoFingerInitDist > 10 && dist > 10 &&
+        Math.abs(distRatio - 1) > ZOOM_DEAD_ZONE) {
+      const dampedRatio = 1 + (distRatio - 1) * TOUCH_ZOOM_DAMPENING;
+      let newScale = state.twoFingerInitScale * dampedRatio;
       newScale = Math.max(GRID.minScale, Math.min(GRID.maxScale, newScale));
 
-      const scaleFactor = newScale / state.twoFingerStartScale;
+      const factor = newScale / state.twoFingerInitScale;
 
       const rect = state.canvas.getBoundingClientRect();
       const focusSx = mid.x - rect.left;
       const focusSy = mid.y - rect.top;
 
-      const offsetAdjustX = (focusSx - state.twoFingerStartOffsetX) * (scaleFactor - 1);
-      const offsetAdjustY = (focusSy - state.twoFingerStartOffsetY) * (scaleFactor - 1);
-
-      state.targetOffsetX = state.twoFingerStartOffsetX + panDx - offsetAdjustX;
-      state.targetOffsetY = state.twoFingerStartOffsetY + panDy - offsetAdjustY;
+      state.targetOffsetX = factor * state.twoFingerInitOffsetX + factor * panDx + focusSx * (1 - factor);
+      state.targetOffsetY = factor * state.twoFingerInitOffsetY + factor * panDy + focusSy * (1 - factor);
       state.targetScale = newScale;
-
-      state.twoFingerMidX = mid.x;
-      state.twoFingerMidY = mid.y;
-      state.twoFingerStartDist = dist;
-      state.twoFingerStartScale = newScale;
-      state.twoFingerStartOffsetX = state.targetOffsetX;
-      state.twoFingerStartOffsetY = state.targetOffsetY;
-    } else {
-      state.twoFingerMidX = mid.x;
-      state.twoFingerMidY = mid.y;
     }
+
+    state.twoFingerMidX = mid.x;
+    state.twoFingerMidY = mid.y;
   }
 
   return true;
@@ -199,6 +226,15 @@ export function handleTouchUp(e) {
   if (e.pointerType !== 'touch') return false;
 
   state.touchPointers.delete(e.pointerId);
+
+  if (state.isTouchPanning) {
+    state.isTouchPanning = false;
+    _clearLongPress();
+    state.touchTapData = null;
+    _lastTapTime = null;
+    state.isSelectingBox = false;
+    return true;
+  }
 
   if (state.isTwoFingerGesture && state.touchPointers.size < 2) {
     _clearLongPress();
@@ -263,6 +299,7 @@ export function handleTouchCancel(e) {
   if (state.touchPointers.size < 2) {
     state.isTwoFingerGesture = false;
   }
+  state.isTouchPanning = false;
   state.touchTapData = null;
   _longPressTriggered = false;
   _lastTapTime = null;
@@ -288,6 +325,7 @@ function _resetDrawingState() {
   state.isDraggingConnectorBody = false;
   state.isDraggingArrowEnd = false;
   state.isSelectingBox = false;
+  state.isTouchPanning = false;
   state.pendingClickIndex = -1;
   state.didDragSincePointerDown = false;
 }
