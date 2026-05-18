@@ -257,20 +257,38 @@ export const state = {
     for (let i = 0; i < state.textBoxes.length; i++) {
       items.push({ type: 'textBox', i, area: state.textBoxes[i].w * state.textBoxes[i].h });
     }
-    items.sort((a, b) => b.area - a.area);
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+    const depthMap = new Map();
+    function computeDepth(item, visited) {
+      const key = item.type + ':' + item.i;
+      if (depthMap.has(key)) return depthMap.get(key);
+      if (visited.has(key)) return 0;
+      visited.add(key);
       const entity = item.type === 'shape' ? state.shapes[item.i] : state.textBoxes[item.i];
-      if (entity && entity.parentId != null) {
-        const parentIdx = items.findIndex(p => {
-          const pe = p.type === 'shape' ? state.shapes[p.i] : state.textBoxes[p.i];
-          return pe && pe.id === entity.parentId && p.type === entity.parentType;
-        });
-        if (parentIdx >= 0 && parentIdx >= i) {
-          [items[i], items[parentIdx]] = [items[parentIdx], items[i]];
-        }
+      if (!entity || entity.parentId == null) {
+        depthMap.set(key, 0);
+        return 0;
       }
+      const parentItem = items.find(p => {
+        const pe = p.type === 'shape' ? state.shapes[p.i] : state.textBoxes[p.i];
+        return pe && pe.id === entity.parentId && p.type === entity.parentType;
+      });
+      if (!parentItem) {
+        depthMap.set(key, 0);
+        return 0;
+      }
+      const depth = 1 + computeDepth(parentItem, visited);
+      depthMap.set(key, depth);
+      return depth;
     }
+    for (const item of items) {
+      computeDepth(item, new Set());
+    }
+    items.sort((a, b) => {
+      const depthA = depthMap.get(a.type + ':' + a.i) || 0;
+      const depthB = depthMap.get(b.type + ':' + b.i) || 0;
+      if (depthA !== depthB) return depthA - depthB;
+      return b.area - a.area;
+    });
     return items;
   },
   markDrawOrderDirty,

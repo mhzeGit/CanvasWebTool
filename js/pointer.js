@@ -124,23 +124,36 @@ function gatherChildDragStarts() {
   const parentIds = new Set();
   const parentTypes = new Set();
   for (const ti of state.selectedTextBoxes) {
-    parentIds.add(state.textBoxes[ti].id);
-    parentTypes.add('textBox');
+    const tb = state.textBoxes[ti];
+    if (tb) { parentIds.add(tb.id); parentTypes.add('textBox'); }
   }
   for (const si of state.selectedShapes) {
-    parentIds.add(state.shapes[si].id);
-    parentTypes.add('shape');
+    const s = state.shapes[si];
+    if (s) { parentIds.add(s.id); parentTypes.add('shape'); }
   }
-  for (let i = 0; i < state.shapes.length; i++) {
-    const s = state.shapes[i];
-    if (s.parentId !== null && parentIds.has(s.parentId) && parentTypes.has(s.parentType)) {
-      state.dragChildShapeStarts.push({ i, x: s.x, y: s.y, id: s.id });
+  const seen = new Set();
+  let foundNew = true;
+  while (foundNew) {
+    foundNew = false;
+    for (let i = 0; i < state.shapes.length; i++) {
+      const s = state.shapes[i];
+      if (s.parentId !== null && !seen.has(s.id) && parentIds.has(s.parentId) && parentTypes.has(s.parentType)) {
+        state.dragChildShapeStarts.push({ i, x: s.x, y: s.y, id: s.id });
+        parentIds.add(s.id);
+        parentTypes.add('shape');
+        seen.add(s.id);
+        foundNew = true;
+      }
     }
-  }
-  for (let i = 0; i < state.textBoxes.length; i++) {
-    const tb = state.textBoxes[i];
-    if (tb.parentId !== null && parentIds.has(tb.parentId) && parentTypes.has(tb.parentType)) {
-      state.dragChildTextBoxStarts.push({ i, x: tb.x, y: tb.y, id: tb.id });
+    for (let i = 0; i < state.textBoxes.length; i++) {
+      const tb = state.textBoxes[i];
+      if (tb.parentId !== null && !seen.has(tb.id) && parentIds.has(tb.parentId) && parentTypes.has(tb.parentType)) {
+        state.dragChildTextBoxStarts.push({ i, x: tb.x, y: tb.y, id: tb.id });
+        parentIds.add(tb.id);
+        parentTypes.add('textBox');
+        seen.add(tb.id);
+        foundNew = true;
+      }
     }
   }
 }
