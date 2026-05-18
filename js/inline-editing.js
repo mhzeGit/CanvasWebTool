@@ -1,6 +1,5 @@
 import { state } from './state.js';
 import { screenToWorld } from './utils.js';
-import { hitTestTextBox } from './textboxes.js';
 import { hitTestConnection } from './connections.js';
 import { createPropertyChangeCmd } from './undo.js';
 import { refreshSidePanel } from './side-panel.js';
@@ -110,8 +109,9 @@ function onDblClick(e) {
   const sy = e.clientY - rect.top;
   const world = screenToWorld(sx, sy, state.offsetX, state.offsetY, state.scale);
 
-  const tbHit = hitTestTextBox(world.x, world.y);
-  if (tbHit !== -1) {
+  const topHit = state.getTopHitAt(world.x, world.y);
+  if (topHit && topHit.type === 'textBox') {
+    const tbHit = topHit.i;
     state.selected.clear();
     state.selectedConnection = null;
     state.selectedArrows.clear();
