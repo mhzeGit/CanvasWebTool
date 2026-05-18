@@ -1,6 +1,20 @@
 import { state } from './state.js';
-import { GRID } from './config.js';
+import { GRID, TOUCHPAD_ZOOM_FACTOR } from './config.js';
 import { commitEditing } from './inline-editing.js';
+
+let _wheelAccX = 0;
+let _wheelAccY = 0;
+let _wheelAccPending = false;
+
+function _flushWheelAcc() {
+  if (_wheelAccX !== 0 || _wheelAccY !== 0) {
+    state.targetOffsetX -= _wheelAccX;
+    state.targetOffsetY -= _wheelAccY;
+    _wheelAccX = 0;
+    _wheelAccY = 0;
+  }
+  _wheelAccPending = false;
+}
 
 export function setupZoomPan() {
   state.canvas.addEventListener('wheel', (e) => {
@@ -11,7 +25,8 @@ export function setupZoomPan() {
 
     if (e.ctrlKey || e.metaKey) {
       const zoomDir = e.deltaY < 0 ? 1 : -1;
-      const zoomFactor = Math.pow(GRID.zoomFactor, zoomDir);
+      const factor = (e.deltaMode === 0) ? TOUCHPAD_ZOOM_FACTOR : GRID.zoomFactor;
+      const zoomFactor = Math.pow(factor, zoomDir);
       const newScale = state.targetScale * zoomFactor;
 
       if (newScale < GRID.minScale || newScale > GRID.maxScale) return;
@@ -34,8 +49,13 @@ export function setupZoomPan() {
         panX *= state.canvas.clientWidth;
         panY *= state.canvas.clientHeight;
       }
-      state.targetOffsetX -= panX;
-      state.targetOffsetY -= panY;
+      _wheelAccX += panX;
+      _wheelAccY += panY;
+      state.isSelectingBox = false;
+      if (!_wheelAccPending) {
+        _wheelAccPending = true;
+        requestAnimationFrame(_flushWheelAcc);
+      }
     }
   }, { passive: false });
 }
