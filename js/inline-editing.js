@@ -112,7 +112,6 @@ function onDblClick(e) {
   const topHit = state.getTopHitAt(world.x, world.y);
   if (topHit && topHit.type === 'textBox') {
     const tbHit = topHit.i;
-    state.selected.clear();
     state.selectedConnection = null;
     state.selectedArrows.clear();
     state.selectedShapes.clear();
@@ -139,7 +138,6 @@ function onDblClick(e) {
 
   const connHit = hitTestConnection(world.x, world.y);
   if (connHit !== null) {
-    state.selected.clear();
     state.selectedTextBoxes.clear();
     state.selectedArrows.clear();
     state.selectedShapes.clear();

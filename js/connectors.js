@@ -13,7 +13,6 @@ function getConnectedObject(conn, which) {
   if (resolvedType === 'textBox' && state.textBoxes[idx]) return state.textBoxes[idx];
   if (resolvedType === 'shape' && state.shapes[idx]) return state.shapes[idx];
   return null;
-  return null;
 }
 
 function getOtherEndpoint(conn, which) {

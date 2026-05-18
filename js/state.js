@@ -8,11 +8,12 @@ const sidePanel = document.getElementById('sidePanel');
 const sidePanelContent = document.getElementById('sidePanelContent');
 const entityLayer = document.getElementById('entityLayer');
 
-let drawOrderCache = [];
+let drawOrderCache = null;
 let drawOrderCacheDirty = true;
 
 function markDrawOrderDirty() {
   drawOrderCacheDirty = true;
+  state.entityPositionsDirty = true;
 }
 
 function containerArea(entity) {
@@ -175,10 +176,6 @@ export const state = {
   resizeShapeStartWorldY: 0,
   resizeShapeStartBounds: null,
 
-  nodes: [],
-  nextNodeId: 1,
-  selected: new Set(),
-
   textBoxes: [],
   nextTextBoxId: 1,
   selectedTextBoxes: new Set(),
@@ -247,6 +244,9 @@ export const state = {
   hoveredHandleInfo: null,
   panelTextMode: 'rich',
 
+  // Performance: tracks if entity positions have changed since last arrow/connector update
+  entityPositionsDirty: true,
+
   getTopHitAt(wx, wy) {
     const order = state.getAllDrawOrder();
     for (let i = order.length - 1; i >= 0; i--) {
@@ -259,6 +259,8 @@ export const state = {
     return null;
   },
   getAllDrawOrder() {
+    if (!drawOrderCacheDirty && drawOrderCache !== null) return drawOrderCache;
+
     const items = [];
     for (let i = 0; i < state.shapes.length; i++) {
       items.push({ type: 'shape', i, area: state.shapes[i].w * state.shapes[i].h });
@@ -298,6 +300,9 @@ export const state = {
       if (depthA !== depthB) return depthA - depthB;
       return b.area - a.area;
     });
+
+    drawOrderCache = items;
+    drawOrderCacheDirty = false;
     return items;
   },
   markDrawOrderDirty,

@@ -22,7 +22,6 @@ export function setupKeyboard() {
 function handleMarkdownShortcut(e) {
   const el = document.activeElement;
   if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return false;
-  if (el.isContentEditable) return false;
 
   const ctrl = e.ctrlKey || e.metaKey;
   if (!ctrl) return false;

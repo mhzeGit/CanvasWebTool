@@ -3,11 +3,12 @@ import { GRID } from './config.js';
 import { drawGrid } from './grid.js';
 import { initSettings } from './settings.js';
 import { openSettings } from './settings-dialog.js';
-import { drawSelectionMarquee, drawNodePreview } from './nodes.js';
+import { drawSelectionMarquee } from './nodes.js';
 import { drawArrows, updateArrowPositionsFromConnections } from './arrows.js';
 import { drawShapePreview } from './shapes.js';
 import { drawTextBoxPreview } from './textboxes.js';
 import { drawConnectors, drawConnectorPreview, drawArrowPreview, updateConnectorPositionsFromConnections } from './connectors.js';
+import { drawConnectionPreview, drawConnection } from './connections.js';
 import { initPointer } from './pointer.js';
 import { setupKeyboard } from './keyboard.js';
 import { setupContextMenu, initContextMenu } from './context-menu.js';
@@ -70,16 +71,7 @@ function animate() {
 
   drawGrid(ctx, canvas, state.offsetX, state.offsetY, state.scale, dpr);
 
-  const actx = state.arrowCtx;
-  const acvs = state.arrowCanvas;
-  actx.save();
-  actx.setTransform(1, 0, 0, 1, 0, 0);
-  actx.clearRect(0, 0, acvs.width, acvs.height);
-  actx.restore();
-  actx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  actx.translate(state.offsetX, state.offsetY);
-  actx.scale(state.scale, state.scale);
-
+  // Clean up orphaned connections (referencing deleted textboxes)
   for (let ci = state.connections.length - 1; ci >= 0; ci--) {
     const conn = state.connections[ci];
     const fromNode = state.textBoxes[conn.from];
@@ -91,8 +83,40 @@ function animate() {
     }
   }
 
-  updateArrowPositionsFromConnections();
-  updateConnectorPositionsFromConnections();
+  // Draw bezier connection lines on the grid canvas
+  for (let ci = 0; ci < state.connections.length; ci++) {
+    const conn = state.connections[ci];
+    const fromNode = state.textBoxes[conn.from];
+    const toNode = state.textBoxes[conn.to];
+    if (fromNode && toNode) {
+      drawConnection(fromNode, toNode, conn);
+    }
+  }
+
+  // Draw connection preview while connecting
+  if (state.connectingFrom !== null && state.textBoxes[state.connectingFrom]) {
+    drawConnectionPreview(
+      state.textBoxes[state.connectingFrom],
+      state.connectingMouseWorld.x,
+      state.connectingMouseWorld.y
+    );
+  }
+
+  const actx = state.arrowCtx;
+  const acvs = state.arrowCanvas;
+  actx.save();
+  actx.setTransform(1, 0, 0, 1, 0, 0);
+  actx.clearRect(0, 0, acvs.width, acvs.height);
+  actx.restore();
+  actx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  actx.translate(state.offsetX, state.offsetY);
+  actx.scale(state.scale, state.scale);
+
+  if (state.entityPositionsDirty) {
+    updateArrowPositionsFromConnections();
+    updateConnectorPositionsFromConnections();
+    state.entityPositionsDirty = false;
+  }
   drawArrows();
   drawConnectors();
 
@@ -103,7 +127,6 @@ function animate() {
   drawConnectorPreview();
   drawArrowPreview();
   drawShapePreview();
-  drawNodePreview();
   drawTextBoxPreview();
   drawImageContainerPreview();
 

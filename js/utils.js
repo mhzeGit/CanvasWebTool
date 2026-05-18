@@ -6,6 +6,17 @@ export function worldToScreen(wx, wy, offsetX, offsetY, scale) {
   return { x: wx * scale + offsetX, y: wy * scale + offsetY };
 }
 
+/**
+ * Returns the world coordinates of the center of the canvas viewport.
+ * Used by all add*AtCenter functions to determine where to place new entities.
+ */
+export function getViewportCenterWorld(canvas, offsetX, offsetY, scale) {
+  const rect = canvas.getBoundingClientRect();
+  const centerCssX = rect.width / 2;
+  const centerCssY = rect.height / 2;
+  return screenToWorld(centerCssX, centerCssY, offsetX, offsetY, scale);
+}
+
 export function getDividerColor(color) {
   let r, g, b;
   if (typeof color === 'string' && color.startsWith('#') && color.length === 7) {
@@ -210,7 +221,7 @@ export function getRectEdgePoint(x, y, w, h, targetX, targetY) {
   const dx = targetX - cx;
   const dy = targetY - cy;
 
-  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return { x: cx, y: cy };
+  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return { x: cx, y: cy, side: 'top' };
 
   const hw = w / 2;
   const hh = h / 2;
@@ -219,13 +230,15 @@ export function getRectEdgePoint(x, y, w, h, targetX, targetY) {
     const t = dx > 0 ? hw / dx : -hw / dx;
     const yAtEdge = cy + dy * t;
     if (yAtEdge >= y && yAtEdge <= y + h) {
-      return { x: cx + (dx > 0 ? hw : -hw), y: yAtEdge };
+      const side = dx > 0 ? 'right' : 'left';
+      return { x: cx + (dx > 0 ? hw : -hw), y: yAtEdge, side };
     }
   }
 
   const t = dy > 0 ? hh / dy : -hh / dy;
   const xAtEdge = cx + dx * t;
-  return { x: xAtEdge, y: cy + (dy > 0 ? hh : -hh) };
+  const side = dy > 0 ? 'bottom' : 'top';
+  return { x: xAtEdge, y: cy + (dy > 0 ? hh : -hh), side };
 }
 
 export function getNodeEdgePoint(node, targetX, targetY) {
