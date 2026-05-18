@@ -28,6 +28,7 @@ import { getSnapIncrement, snapValue, snapResizeBounds } from './snap.js';
 import { handleTouchDown, handleTouchMove, handleTouchUp, handleTouchCancel, isTwoFingerActive } from './touch.js';
 
 let _history;
+let _toolClickOnItem = false;
 
 export function initPointer(history) {
   _history = history;
@@ -176,6 +177,7 @@ export function deleteArrowFn(ai) {
 
 function onPointerCancel(e) {
   handleTouchCancel(e);
+  _toolClickOnItem = false;
   if (state.drawingTool) {
     state.drawingTool = null;
     state.drawingShapeType = null;
@@ -255,9 +257,8 @@ function onPointerDown(e) {
     const tool = getActiveTool();
 
     if (tool === TOOLS.TEXT || tool === TOOLS.SHAPES || tool === TOOLS.IMAGE_CONTAINER) {
-      if (hasHitOnExistingItem(world.x, world.y)) {
-        setActiveTool(TOOLS.CURSOR);
-      } else if (tool === TOOLS.TEXT) {
+      _toolClickOnItem = hasHitOnExistingItem(world.x, world.y);
+      if (tool === TOOLS.TEXT) {
         state.selectedTextBoxes.clear();
         state.selectedConnection = null;
         state.selectedArrows.clear();
@@ -1305,6 +1306,23 @@ function onPointerUp(e) {
 
   if (state.drawingTool) {
     try {
+      if (_toolClickOnItem) {
+        const dx = world.x - state.drawingStartX;
+        const dy = world.y - state.drawingStartY;
+        if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) {
+          _toolClickOnItem = false;
+          state.drawingTool = null;
+          state.drawingShapeType = null;
+          state.drawingStartX = 0;
+          state.drawingStartY = 0;
+          state.drawingStartConnected = null;
+          setActiveTool(TOOLS.CURSOR);
+          try { canvas.releasePointerCapture(e.pointerId); } catch {}
+          refreshSidePanel();
+          return;
+        }
+      }
+      _toolClickOnItem = false;
       if (state.drawingTool === 'arrow') {
         const dx = world.x - state.drawingStartX;
         const dy = world.y - state.drawingStartY;

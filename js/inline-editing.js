@@ -129,11 +129,11 @@ function onDblClick(e) {
       const titleLines = wrapTextLines(state.ctx, titleFont, tb.title, maxTitleWidth);
       const titleH = Math.min(tb.h / 3, Math.max(24, titleLines.length * titleLineHeight + padding * 2));
       if (world.y >= tb.y && world.y <= tb.y + titleH) {
-        startTitleEditing(tbHit);
+        startTitleEditing(tbHit, e.clientX, e.clientY);
         return;
       }
     }
-    startBodyEditing(tbHit);
+    startBodyEditing(tbHit, e.clientX, e.clientY);
     return;
   }
 
@@ -169,7 +169,7 @@ function wrapTextLines(ctx, font, text, maxWidth) {
   return lines;
 }
 
-function startTitleEditing(tbIdx) {
+function startTitleEditing(tbIdx, clickX, clickY) {
   cancelEditing();
 
   const tb = state.textBoxes[tbIdx];
@@ -183,7 +183,18 @@ function startTitleEditing(tbIdx) {
   titlebar.spellcheck = true;
   titlebar.textContent = tb.title || '';
   titlebar.focus();
-  placeCursorAtEnd(titlebar);
+  if (clickX !== undefined && clickY !== undefined) {
+    const range = document.caretRangeFromPoint(clickX, clickY);
+    if (range) {
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      placeCursorAtEnd(titlebar);
+    }
+  } else {
+    placeCursorAtEnd(titlebar);
+  }
 
   const originalValue = tb.title;
 
@@ -202,7 +213,9 @@ function startTitleEditing(tbIdx) {
 
   const onBlur = () => {
     setTimeout(() => {
-      if (!titlebar.contains(document.activeElement)) commitEditing();
+      const entity = getEntityElement('textBox', tbIdx);
+      if (entity && entity.contains(document.activeElement)) return;
+      commitEditing();
     }, 0);
   };
 
@@ -217,7 +230,7 @@ function startTitleEditing(tbIdx) {
   };
 }
 
-function startBodyEditing(tbIdx) {
+function startBodyEditing(tbIdx, clickX, clickY) {
   cancelEditing();
 
   const tb = state.textBoxes[tbIdx];
@@ -253,9 +266,11 @@ function startBodyEditing(tbIdx) {
 
   const onBlur = ({ editor: ed }) => {
     setTimeout(() => {
-      if (state.editingState && state.editingState.editor === ed) {
-        commitEditing();
-      }
+      if (!state.editingState || state.editingState.editor !== ed) return;
+      const tbIdx = state.editingState.idx;
+      const entity = getEntityElement('textBox', tbIdx);
+      if (entity && entity.contains(document.activeElement)) return;
+      commitEditing();
     }, 0);
   };
 
@@ -303,7 +318,20 @@ function startBodyEditing(tbIdx) {
 
   content.addEventListener('keydown', onKeyDown);
 
-  editor.commands.focus('end');
+  if (clickX !== undefined && clickY !== undefined) {
+    requestAnimationFrame(() => {
+      if (editor && editor.view) {
+        const pos = editor.view.posAtCoords({ left: clickX, top: clickY });
+        if (pos && pos.pos !== null) {
+          editor.commands.focus(pos.pos);
+        } else {
+          editor.commands.focus('end');
+        }
+      }
+    });
+  } else {
+    editor.commands.focus('end');
+  }
 
   initializing = false;
 

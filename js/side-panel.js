@@ -1248,7 +1248,6 @@ function attachDragNumber(inputEl, onDelta, onDragStart, onDragEnd) {
       if (!isDragging) {
         isDragging = true;
         if (onDragStart) onDragStart();
-        inputEl.blur();
       }
       accum += dx * step;
       if (Math.abs(accum) >= 1) {
