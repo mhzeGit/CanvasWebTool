@@ -12,6 +12,7 @@ class JsMimeRequestHandler(http.server.SimpleHTTPRequestHandler):
 		".js": "application/javascript",
 		".mjs": "application/javascript",
 		".json": "application/json",
+		".webp": "image/webp",
 	}
 
 	def log_message(self, format: str, *args):
