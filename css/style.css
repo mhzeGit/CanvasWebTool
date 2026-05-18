@@ -1375,14 +1375,47 @@ canvas#arrowCanvas {
 
 .entity-textbox-content .ProseMirror blockquote {
   border-left: 3px solid var(--text-muted);
-  padding-left: 10px;
+  padding-left: 0.7em;
   margin: 0.2em 0;
 }
 
 .entity-textbox-content .ProseMirror ul,
-.entity-textbox-content .ProseMirror ol { padding-left: 16px; margin: 0.15em 0; }
+.entity-textbox-content .ProseMirror ol {
+  padding-left: 0;
+  margin: 0.15em 0;
+  list-style: none;
+}
 
-.entity-textbox-content .ProseMirror li { margin: 0.1em 0; }
+.entity-textbox-content .ProseMirror ul li,
+.entity-textbox-content .ProseMirror ol li {
+  position: relative;
+  margin: 0.1em 0;
+}
+
+.entity-textbox-content .ProseMirror ul li {
+  padding-left: 1.3em;
+}
+
+.entity-textbox-content .ProseMirror ul li::before {
+  content: '\2022';
+  position: absolute;
+  left: 0;
+}
+
+.entity-textbox-content .ProseMirror ol {
+  counter-reset: list-counter;
+}
+
+.entity-textbox-content .ProseMirror ol li {
+  padding-left: 1.8em;
+  counter-increment: list-counter;
+}
+
+.entity-textbox-content .ProseMirror ol li::before {
+  content: counter(list-counter) '.';
+  position: absolute;
+  left: 0;
+}
 
 .entity-textbox-content .ProseMirror hr {
   border: none;
