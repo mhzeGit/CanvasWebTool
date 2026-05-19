@@ -14,6 +14,9 @@ import {
   createMoveShapesCmd, createMoveTextBoxesCmd, createMoveConnectorsCmd, createMoveArrowEndCmd, createBatchCmd,
 } from './undo.js';
 import { getSnapIncrement } from './snap.js';
+import { focusOnSelected, focusOnAll } from './focus.js';
+
+let fKeyTimer = null;
 
 export function setupKeyboard() {
   window.addEventListener('keydown', onKeyDown);
@@ -157,6 +160,20 @@ function onKeyDown(e) {
   if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'd')) {
     duplicateSelectedNodes();
     e.preventDefault();
+  }
+  if (!isInput && e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    if (fKeyTimer) {
+      clearTimeout(fKeyTimer);
+      fKeyTimer = null;
+      focusOnAll();
+    } else {
+      fKeyTimer = setTimeout(() => {
+        fKeyTimer = null;
+        focusOnSelected();
+      }, 300);
+    }
+    return;
   }
   if (!isInput && e.key === 'Escape') {
     if (state.drawingTool) {
