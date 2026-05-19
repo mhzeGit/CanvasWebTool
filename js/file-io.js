@@ -58,13 +58,9 @@ export async function saveToFile(jsonData, suggestedName) {
 
       let assetDirHandle = null;
       try {
-        assetDirHandle = await navigator.storage.getDirectory();
-        assetDirHandle = await assetDirHandle.getDirectoryHandle(currentAssetDirName, { create: true });
-      } catch (_) {
-        try {
-          assetDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-        } catch (_2) {}
-      }
+        const opfsRoot = await navigator.storage.getDirectory();
+        assetDirHandle = await opfsRoot.getDirectoryHandle(currentAssetDirName, { create: true });
+      } catch (_) {} // skip external assets if OPFS unavailable
       cachedAssetDirHandle = assetDirHandle;
 
       if (assetDirHandle && assets.length > 0) {
@@ -172,11 +168,7 @@ export async function loadFromFile() {
       try {
         const opfsRoot = await navigator.storage.getDirectory();
         cachedAssetDirHandle = await opfsRoot.getDirectoryHandle(currentAssetDirName);
-      } catch (_) {
-        try {
-          cachedAssetDirHandle = await window.showDirectoryPicker({ mode: 'read' });
-        } catch (_2) {}
-      }
+      } catch (_) {} // skip assets if directory not found in OPFS
 
       if (cachedAssetDirHandle) {
         const assetsMap = await readAssets(cachedAssetDirHandle);
