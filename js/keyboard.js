@@ -213,39 +213,40 @@ function nudgeSelected(dx, dy) {
   const connectorMoves = [];
   const arrowMoves = [];
 
-  function addChildren(parentId, parentType) {
-    for (let i = 0; i < state.shapes.length; i++) {
-      const s = state.shapes[i];
-      if (s.parentId === parentId && s.parentType === parentType && !movedIds.has(`s:${s.id}`)) {
-        movedIds.add(`s:${s.id}`);
-        shapeMoves.push({ id: s.id, fromX: s.x, fromY: s.y, toX: s.x + dx, toY: s.y + dy });
-        addChildren(s.id, 'shape');
-      }
-    }
-    for (let i = 0; i < state.textBoxes.length; i++) {
-      const tb = state.textBoxes[i];
-      if (tb.parentId === parentId && tb.parentType === parentType && !movedIds.has(`tb:${tb.id}`)) {
-        movedIds.add(`tb:${tb.id}`);
-        tbMoves.push({ id: tb.id, fromX: tb.x, fromY: tb.y, toX: tb.x + dx, toY: tb.y + dy });
-        addChildren(tb.id, 'textBox');
+  function addChildMoves(parentType, parentId) {
+    const descendants = state.parentTree.getDescendants(parentType, parentId);
+    for (const desc of descendants) {
+      const key = desc.type + ':' + desc.id;
+      if (movedIds.has(key)) continue;
+      movedIds.add(key);
+      if (desc.type === 'shape') {
+        const s = state.shapes.find(sh => sh.id === desc.id);
+        if (s) {
+          shapeMoves.push({ id: s.id, fromX: s.x, fromY: s.y, toX: s.x + dx, toY: s.y + dy });
+        }
+      } else if (desc.type === 'textBox') {
+        const tb = state.textBoxes.find(t => t.id === desc.id);
+        if (tb) {
+          tbMoves.push({ id: tb.id, fromX: tb.x, fromY: tb.y, toX: tb.x + dx, toY: tb.y + dy });
+        }
       }
     }
   }
 
   for (const idx of state.selectedShapes) {
     const s = state.shapes[idx];
-    if (!s || movedIds.has(`s:${s.id}`)) continue;
-    movedIds.add(`s:${s.id}`);
+    if (!s || movedIds.has('shape:' + s.id)) continue;
+    movedIds.add('shape:' + s.id);
     shapeMoves.push({ id: s.id, fromX: s.x, fromY: s.y, toX: s.x + dx, toY: s.y + dy });
-    addChildren(s.id, 'shape');
+    addChildMoves('shape', s.id);
   }
 
   for (const idx of state.selectedTextBoxes) {
     const tb = state.textBoxes[idx];
-    if (!tb || movedIds.has(`tb:${tb.id}`)) continue;
-    movedIds.add(`tb:${tb.id}`);
+    if (!tb || movedIds.has('textBox:' + tb.id)) continue;
+    movedIds.add('textBox:' + tb.id);
     tbMoves.push({ id: tb.id, fromX: tb.x, fromY: tb.y, toX: tb.x + dx, toY: tb.y + dy });
-    addChildren(tb.id, 'textBox');
+    addChildMoves('textBox', tb.id);
   }
 
   for (const idx of state.selectedConnectors) {
@@ -313,8 +314,9 @@ function nudgeSelected(dx, dy) {
     history.push(createBatchCmd(cmds, 'Nudge Items'));
   }
 
-  state.markDrawOrderDirty();
-  state.reparentAll();
+  for (const m of shapeMoves) state.parentTree.markDirty('shape', m.id);
+  for (const m of tbMoves) state.parentTree.markDirty('textBox', m.id);
+  state.parentTree.recomputeDirty();
   refreshSidePanel();
 }
 

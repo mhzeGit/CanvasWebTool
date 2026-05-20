@@ -122,40 +122,31 @@ function handleImageDropAt(dataOrUrl, worldX, worldY) {
 function gatherChildDragStarts() {
   state.dragChildShapeStarts = [];
   state.dragChildTextBoxStarts = [];
-  const parentIds = new Set();
-  const parentTypes = new Set();
+
+  const collect = (type, id) => {
+    const descendants = state.parentTree.getDescendants(type, id);
+    for (const desc of descendants) {
+      if (desc.type === 'shape') {
+        const idx = state.shapes.findIndex(s => s.id === desc.id);
+        if (idx !== -1) {
+          state.dragChildShapeStarts.push({ i: idx, x: state.shapes[idx].x, y: state.shapes[idx].y, id: desc.id });
+        }
+      } else if (desc.type === 'textBox') {
+        const idx = state.textBoxes.findIndex(t => t.id === desc.id);
+        if (idx !== -1) {
+          state.dragChildTextBoxStarts.push({ i: idx, x: state.textBoxes[idx].x, y: state.textBoxes[idx].y, id: desc.id });
+        }
+      }
+    }
+  };
+
   for (const ti of state.selectedTextBoxes) {
     const tb = state.textBoxes[ti];
-    if (tb) { parentIds.add(tb.id); parentTypes.add('textBox'); }
+    if (tb) collect('textBox', tb.id);
   }
   for (const si of state.selectedShapes) {
     const s = state.shapes[si];
-    if (s) { parentIds.add(s.id); parentTypes.add('shape'); }
-  }
-  const seen = new Set();
-  let foundNew = true;
-  while (foundNew) {
-    foundNew = false;
-    for (let i = 0; i < state.shapes.length; i++) {
-      const s = state.shapes[i];
-      if (s.parentId !== null && !seen.has(s.id) && parentIds.has(s.parentId) && parentTypes.has(s.parentType)) {
-        state.dragChildShapeStarts.push({ i, x: s.x, y: s.y, id: s.id });
-        parentIds.add(s.id);
-        parentTypes.add('shape');
-        seen.add(s.id);
-        foundNew = true;
-      }
-    }
-    for (let i = 0; i < state.textBoxes.length; i++) {
-      const tb = state.textBoxes[i];
-      if (tb.parentId !== null && !seen.has(tb.id) && parentIds.has(tb.parentId) && parentTypes.has(tb.parentType)) {
-        state.dragChildTextBoxStarts.push({ i, x: tb.x, y: tb.y, id: tb.id });
-        parentIds.add(tb.id);
-        parentTypes.add('textBox');
-        seen.add(tb.id);
-        foundNew = true;
-      }
-    }
+    if (s) collect('shape', s.id);
   }
 }
 
@@ -1126,8 +1117,8 @@ function onPointerUp(e) {
         _history.push(createResizeTextBoxCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, state.resizeTextBoxId,
           { x: state.resizeTextBoxStartBounds.x, y: state.resizeTextBoxStartBounds.y, w: state.resizeTextBoxStartBounds.w, h: state.resizeTextBoxStartBounds.h },
           { x: tb.x, y: tb.y, w: tb.w, h: tb.h }));
-        state.markDrawOrderDirty();
-        state.reparentAll();
+        state.parentTree.markDirty('textBox', state.resizeTextBoxId);
+        state.parentTree.recomputeDirty();
       }
     }
     state.isResizingTextBox = false;
@@ -1147,7 +1138,7 @@ function onPointerUp(e) {
     }
     if (moves.length > 0) {
       _history.push(createMoveTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, moves));
-      state.reparentAll();
+      for (const m of moves) state.parentTree.markDirty('textBox', m.id);
     }
     const shapeMoves = [];
     for (const item of state.dragShapeStarts) {
@@ -1158,7 +1149,20 @@ function onPointerUp(e) {
     }
     if (shapeMoves.length > 0) {
       _history.push(createMoveShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, shapeMoves));
+      for (const m of shapeMoves) state.parentTree.markDirty('shape', m.id);
     }
+    for (const item of state.dragChildShapeStarts) {
+      const s = state.shapes[item.i];
+      if (s && (s.x !== item.x || s.y !== item.y))
+        state.parentTree.markDirty('shape', s.id);
+    }
+    for (const item of state.dragChildTextBoxStarts) {
+      const tb = state.textBoxes[item.i];
+      if (tb && (tb.x !== item.x || tb.y !== item.y))
+        state.parentTree.markDirty('textBox', tb.id);
+    }
+    state.parentTree.recomputeDirty();
+
     state.dragShapeStarts = [];
     state.isDraggingNode = false;
     if (state.dragArrowStarts && state.dragArrowStarts.length > 0) {
@@ -1244,9 +1248,15 @@ function onPointerUp(e) {
     if (childTBMoves.length > 0) {
       _history.push(createMoveTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, childTBMoves));
     }
+
+    for (const m of moves) state.parentTree.markDirty('shape', m.id);
+    for (const m of tbMoves) state.parentTree.markDirty('textBox', m.id);
+    for (const m of childShapeMoves) state.parentTree.markDirty('shape', m.id);
+    for (const m of childTBMoves) state.parentTree.markDirty('textBox', m.id);
+    state.parentTree.recomputeDirty();
+
     state.dragChildShapeStarts = [];
     state.dragChildTextBoxStarts = [];
-    state.reparentAll();
   }
   if (state.isDraggingTextBox) {
     const moves = [];
@@ -1281,9 +1291,14 @@ function onPointerUp(e) {
     if (childTBMoves.length > 0) {
       _history.push(createMoveTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, childTBMoves));
     }
+
+    for (const m of moves) state.parentTree.markDirty('textBox', m.id);
+    for (const m of childShapeMoves) state.parentTree.markDirty('shape', m.id);
+    for (const m of childTBMoves) state.parentTree.markDirty('textBox', m.id);
+    state.parentTree.recomputeDirty();
+
     state.dragChildShapeStarts = [];
     state.dragChildTextBoxStarts = [];
-    state.reparentAll();
   }
   if (state.isDraggingConnectorBody && state.dragConnectorBodySnapshots.length > 0) {
     for (const snap of state.dragConnectorBodySnapshots) {
@@ -1517,7 +1532,7 @@ function onPointerUp(e) {
     state.isDraggingArrowBody = false;
     state.dragArrowBodySnapshots = [];
     state.dragArrowBodyStartWorld = null;
-    state.reparentAll();
+    state.parentTree.recomputeDirty();
     refreshSidePanel();
   }
 

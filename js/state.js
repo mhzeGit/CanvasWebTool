@@ -1,4 +1,4 @@
-import { EDGE_MARGIN } from './config.js';
+import { ParentTree } from './parent-tree.js';
 
 const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
@@ -8,70 +8,21 @@ const sidePanel = document.getElementById('sidePanel');
 const sidePanelContent = document.getElementById('sidePanelContent');
 const entityLayer = document.getElementById('entityLayer');
 
-let drawOrderCache = [];
-let drawOrderCacheDirty = true;
-
 function markDrawOrderDirty() {
-  drawOrderCacheDirty = true;
-}
-
-function containerArea(entity) {
-  return entity.w * entity.h;
-}
-
-function rectInRect(ax, ay, aw, ah, bx, by, bw, bh) {
-  return bx >= ax && by >= ay && bx + bw <= ax + aw && by + bh <= ay + ah;
-}
-
-function findParentForRect(rx, ry, rw, rh, excludeId, excludeType) {
-  let bestId = null;
-  let bestType = null;
-  let bestArea = Infinity;
-  for (let i = 0; i < state.shapes.length; i++) {
-    const s = state.shapes[i];
-    if (s.id === excludeId && excludeType === 'shape') continue;
-    const area = containerArea(s);
-    if (area < bestArea && rectInRect(s.x, s.y, s.w, s.h, rx, ry, rw, rh)) {
-      bestId = s.id; bestType = 'shape'; bestArea = area;
-    }
-  }
-  for (let i = 0; i < state.textBoxes.length; i++) {
-    const t = state.textBoxes[i];
-    if (t.id === excludeId && excludeType === 'textBox') continue;
-    const area = containerArea(t);
-    if (area < bestArea && rectInRect(t.x, t.y, t.w, t.h, rx, ry, rw, rh)) {
-      bestId = t.id; bestType = 'textBox'; bestArea = area;
-    }
-  }
-  return bestId ? { parentId: bestId, parentType: bestType } : null;
+  state.parentTree.markDepthDirty();
 }
 
 function reparentAll() {
-  for (let i = 0; i < state.shapes.length; i++) {
-    const s = state.shapes[i];
-    const p = findParentForRect(s.x, s.y, s.w, s.h, s.id, 'shape');
-    if (p) { s.parentId = p.parentId; s.parentType = p.parentType; }
-    else { s.parentId = null; s.parentType = null; }
-  }
-  for (let i = 0; i < state.textBoxes.length; i++) {
-    const t = state.textBoxes[i];
-    const p = findParentForRect(t.x, t.y, t.w, t.h, t.id, 'textBox');
-    if (p) { t.parentId = p.parentId; t.parentType = p.parentType; }
-    else { t.parentId = null; t.parentType = null; }
-  }
+  state.parentTree.rebuildAll(state.shapes, state.textBoxes);
 }
 
 function getChildrenByParentId(parentId, parentType) {
-  const children = [];
-  for (let i = 0; i < state.shapes.length; i++) {
-    const s = state.shapes[i];
-    if (s.parentId === parentId && s.parentType === parentType) children.push({ type: 'shape', index: i });
-  }
-  for (let i = 0; i < state.textBoxes.length; i++) {
-    const t = state.textBoxes[i];
-    if (t.parentId === parentId && t.parentType === parentType) children.push({ type: 'textBox', index: i });
-  }
-  return children;
+  const children = state.parentTree.getChildren(parentType, parentId);
+  return children.map(c => {
+    const arr = c.type === 'shape' ? state.shapes : state.textBoxes;
+    const idx = arr.findIndex(e => e.id === c.id);
+    return { type: c.type, index: idx };
+  }).filter(c => c.index !== -1);
 }
 
 function computeSelectionKey() {
@@ -101,6 +52,8 @@ function escAttr(s) {
 }
 
 export const state = {
+  parentTree: new ParentTree(),
+
   canvas,
   ctx,
   arrowCanvas,
@@ -259,46 +212,7 @@ export const state = {
     return null;
   },
   getAllDrawOrder() {
-    const items = [];
-    for (let i = 0; i < state.shapes.length; i++) {
-      items.push({ type: 'shape', i, area: state.shapes[i].w * state.shapes[i].h });
-    }
-    for (let i = 0; i < state.textBoxes.length; i++) {
-      items.push({ type: 'textBox', i, area: state.textBoxes[i].w * state.textBoxes[i].h });
-    }
-    const depthMap = new Map();
-    function computeDepth(item, visited) {
-      const key = item.type + ':' + item.i;
-      if (depthMap.has(key)) return depthMap.get(key);
-      if (visited.has(key)) return 0;
-      visited.add(key);
-      const entity = item.type === 'shape' ? state.shapes[item.i] : state.textBoxes[item.i];
-      if (!entity || entity.parentId == null) {
-        depthMap.set(key, 0);
-        return 0;
-      }
-      const parentItem = items.find(p => {
-        const pe = p.type === 'shape' ? state.shapes[p.i] : state.textBoxes[p.i];
-        return pe && pe.id === entity.parentId && p.type === entity.parentType;
-      });
-      if (!parentItem) {
-        depthMap.set(key, 0);
-        return 0;
-      }
-      const depth = 1 + computeDepth(parentItem, visited);
-      depthMap.set(key, depth);
-      return depth;
-    }
-    for (const item of items) {
-      computeDepth(item, new Set());
-    }
-    items.sort((a, b) => {
-      const depthA = depthMap.get(a.type + ':' + a.i) || 0;
-      const depthB = depthMap.get(b.type + ':' + b.i) || 0;
-      if (depthA !== depthB) return depthA - depthB;
-      return b.area - a.area;
-    });
-    return items;
+    return state.parentTree.getDrawOrder(state.shapes, state.textBoxes);
   },
   markDrawOrderDirty,
   reparentAll,

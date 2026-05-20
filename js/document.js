@@ -45,8 +45,7 @@ export function addImageContainerAt(worldX, worldY, optW, optH) {
   };
   const idx = state.shapes.length;
   state.shapes.push(shape);
-  state.markDrawOrderDirty();
-  state.reparentAll();
+  state.parentTree.register('shape', shape.id, shape);
   state.selectedShapes.clear();
   state.selectedTextBoxes.clear();
   state.selectedConnectors.clear();
@@ -211,8 +210,7 @@ export function addShapeAt(worldX, worldY, shapeType, optW, optH) {
   };
   const idx = state.shapes.length;
   state.shapes.push(shape);
-  state.markDrawOrderDirty();
-  state.reparentAll();
+  state.parentTree.register('shape', shape.id, shape);
   state.selectedShapes.clear();
   state.selectedTextBoxes.clear();
   state.selectedConnectors.clear();
@@ -245,8 +243,7 @@ export function addTextBoxAt(worldX, worldY, optW, optH) {
   };
   const idx = state.textBoxes.length;
   state.textBoxes.push(textBox);
-  state.markDrawOrderDirty();
-  state.reparentAll();
+  state.parentTree.register('textBox', textBox.id, textBox);
   state.selectedShapes.clear();
   state.selectedTextBoxes.clear();
   state.selectedConnectors.clear();
@@ -325,11 +322,13 @@ export function deleteSelectedShapes() {
     }
   }
 
+  for (const idx of sortedIndices) {
+    state.parentTree.unregister('shape', state.shapes[idx].id);
+  }
   for (let i = sortedIndices.length - 1; i >= 0; i--) {
     state.shapes.splice(sortedIndices[i], 1);
   }
   state.selectedShapes.clear();
-  state.reparentAll();
   refreshSidePanel();
   history.push(createDeleteShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, deletedEntries));
 }
@@ -359,11 +358,13 @@ export function deleteSelectedTextBoxes() {
     }
   }
 
+  for (const idx of sortedIndices) {
+    state.parentTree.unregister('textBox', state.textBoxes[idx].id);
+  }
   for (let i = sortedIndices.length - 1; i >= 0; i--) {
     state.textBoxes.splice(sortedIndices[i], 1);
   }
   state.selectedTextBoxes.clear();
-  state.reparentAll();
   refreshSidePanel();
   history.push(createDeleteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, deletedEntries));
 }
@@ -377,7 +378,6 @@ export function deleteSelectedConnectors() {
     state.connectors.splice(sortedIndices[i], 1);
   }
   state.selectedConnectors.clear();
-  state.reparentAll();
   refreshSidePanel();
   history.push(createDeleteConnectorsCmd(state.connectors, state.selectedConnectors, refreshSidePanel, deletedEntries));
 }
@@ -468,12 +468,13 @@ export function deleteSelectedTextBoxesWithConnections() {
   state.connections.length = 0;
   for (const c of newConnections) state.connections.push(c);
 
+  for (const idx of sortedIndices) {
+    state.parentTree.unregister('textBox', state.textBoxes[idx].id);
+  }
   for (let i = sortedIndices.length - 1; i >= 0; i--) {
     state.textBoxes.splice(sortedIndices[i], 1);
   }
   state.selectedTextBoxes.clear();
-  state.markDrawOrderDirty();
-  state.reparentAll();
   refreshSidePanel();
   history.push(createDeleteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, deletedEntries));
 }
@@ -506,12 +507,11 @@ export function duplicateSelectedTextBoxes() {
   const entries = [];
   for (let i = 0; i < dupes.length; i++) {
     state.textBoxes.push(dupes[i]);
+    state.parentTree.register('textBox', dupes[i].id, dupes[i]);
     entries.push({ textBox: dupes[i], index: startIdx + i });
   }
   state.selectedTextBoxes.clear();
   for (let i = 0; i < dupes.length; i++) state.selectedTextBoxes.add(startIdx + i);
-  state.markDrawOrderDirty();
-  state.reparentAll();
   refreshSidePanel();
   history.push(createDuplicateTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, entries));
 }
@@ -568,12 +568,11 @@ export function pasteTextBoxesAt(worldX, worldY) {
     };
     const idx = state.textBoxes.length;
     state.textBoxes.push(textBox);
+    state.parentTree.register('textBox', textBox.id, textBox);
     pastedEntries.push({ textBox, index: idx });
   }
   state.selectedTextBoxes.clear();
   for (let i = 0; i < pastedEntries.length; i++) state.selectedTextBoxes.add(pastedEntries[i].index);
-  state.markDrawOrderDirty();
-  state.reparentAll();
   refreshSidePanel();
   history.push(createPasteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, pastedEntries));
 }
@@ -627,14 +626,13 @@ export function pasteShapesAt(worldX, worldY) {
     };
     const idx = state.shapes.length;
     state.shapes.push(shape);
+    state.parentTree.register('shape', shape.id, shape);
     pastedShapes.push({ shape, index: idx });
   }
   state.selectedShapes.clear();
   state.selectedTextBoxes.clear();
   state.selectedConnectors.clear();
   for (let i = 0; i < pastedShapes.length; i++) state.selectedShapes.add(pastedShapes[i].index);
-  state.markDrawOrderDirty();
-  state.reparentAll();
   refreshSidePanel();
   history.push(createPasteShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, pastedShapes));
 }
@@ -665,14 +663,13 @@ export function duplicateSelectedShapes() {
   const entries = [];
   for (let i = 0; i < dupes.length; i++) {
     state.shapes.push(dupes[i]);
+    state.parentTree.register('shape', dupes[i].id, dupes[i]);
     entries.push({ shape: dupes[i], index: startIdx + i });
   }
   state.selectedTextBoxes.clear();
   state.selectedShapes.clear();
   state.selectedConnectors.clear();
   for (let i = 0; i < dupes.length; i++) state.selectedShapes.add(startIdx + i);
-  state.markDrawOrderDirty();
-  state.reparentAll();
   refreshSidePanel();
   history.push(createDuplicateShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, entries));
 }
@@ -743,6 +740,7 @@ export function pasteAt(worldX, worldY) {
       };
       const idx = state.textBoxes.length;
       state.textBoxes.push(tb);
+      state.parentTree.register('textBox', tb.id, tb);
       pastedTextBoxes.push({ textBox: tb, index: idx });
     } else if (type === 'shape') {
       const imgCopy = c.image ? { id: c.image.id, src: c.image.src, fileName: c.image.fileName } : null;
@@ -760,6 +758,7 @@ export function pasteAt(worldX, worldY) {
       };
       const idx = state.shapes.length;
       state.shapes.push(shape);
+      state.parentTree.register('shape', shape.id, shape);
       pastedShapes.push({ shape, index: idx });
     }
   }
@@ -768,8 +767,6 @@ export function pasteAt(worldX, worldY) {
   state.selectedConnectors.clear();
   for (const entry of pastedTextBoxes) state.selectedTextBoxes.add(entry.index);
   for (const entry of pastedShapes) state.selectedShapes.add(entry.index);
-  state.markDrawOrderDirty();
-  state.reparentAll();
   refreshSidePanel();
   const commands = [];
   if (pastedTextBoxes.length > 0) {
