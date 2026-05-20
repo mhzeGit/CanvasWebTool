@@ -73,7 +73,7 @@ body {
 canvas#gridCanvas {
   position: absolute;
   top: 40px; /* below top bar */
-  left: 44px;
+  left: 0;
   bottom: 0;
 }
 
@@ -1167,6 +1167,10 @@ canvas#gridCanvas {
   width: 20px;
   height: 20px;
   display: block;
+}
+
+canvas#gridCanvas {
+  left: 44px;
 }
 
 canvas#arrowCanvas {

@@ -314,9 +314,13 @@ function _resetDrawingState() {
   state.drawingStartConnected = null;
   state.isResizingShape = false;
   state.isResizingTextBox = false;
+  state.isResizingImageContainer = false;
+  state.isResizingImageItem = false;
   state.isDraggingNode = false;
   state.isDraggingShape = false;
   state.isDraggingTextBox = false;
+  state.isDraggingImageContainer = false;
+  state.isDraggingImageItem = false;
   state.isDraggingArrowBody = false;
   state.isDraggingConnectorBody = false;
   state.isDraggingArrowEnd = false;

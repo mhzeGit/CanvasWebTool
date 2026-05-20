@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { EDGE_MARGIN } from './config.js';
-import { getEdgeAt as getEntityEdgeAt, worldToScreen } from './utils.js';
+import { getEdgeAt as getEntityEdgeAt, drawRoundedRect, getDarkerColor, getBorderColor, worldToScreen } from './utils.js';
 
 export function hitTestNode(wx, wy) {
   for (let i = state.textBoxes.length - 1; i >= 0; i--) {
@@ -38,6 +38,33 @@ export function findNodeAtEdge(wx, wy) {
 
 export function getEdgeAt(wx, wy) {
   return findNodeAtEdge(wx, wy);
+}
+
+export function findNodeAtPoint(wx, wy) {
+  return hitTestNode(wx, wy);
+}
+
+export function drawNodePreview() {
+  if (!state.drawingTool || state.drawingTool !== 'text') return;
+  const ctx = state.ctx;
+  const x = Math.min(state.drawingStartX, state.lastWorldMouse.x);
+  const y = Math.min(state.drawingStartY, state.lastWorldMouse.y);
+  const w = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
+  const h = Math.abs(state.lastWorldMouse.y - state.drawingStartY);
+
+  ctx.save();
+  ctx.fillStyle = '#1a1a1a';
+  drawRoundedRect(ctx, x, y, w, h, 6);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 1.5;
+  const outlineOffset = ctx.lineWidth / 2;
+  drawRoundedRect(ctx, x - outlineOffset, y - outlineOffset, w + outlineOffset * 2, h + outlineOffset * 2, 6 + outlineOffset);
+  ctx.stroke();
+  ctx.restore();
 }
 
 export function drawSelectionMarquee() {

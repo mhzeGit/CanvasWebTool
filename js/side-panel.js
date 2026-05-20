@@ -762,8 +762,8 @@ export function refreshSidePanel() {
     if (borderColorSwatch) {
       initColorSwatch(borderColorSwatch, {
         onSelect: (v) => { if (isBatch) { for (const m of members) m.borderColor = v; } else { tb.borderColor = v; } },
-        onOpen: isBatch ? (() => _captureTbSnapshot('borderColor', members)) : (() => { startTextBoxPanelEdit(tbId, 'borderColor', tb.borderColor); }),
-        onClose: isBatch ? (() => _commitTbSnapshot('borderColor')) : (() => { flushPanelEdit(refreshSidePanel); }),
+        onOpen: isBatch ? (() => _captureTbSnapshot('borderColor', members)) : undefined,
+        onClose: isBatch ? (() => _commitTbSnapshot('borderColor')) : undefined,
       });
     }
     if (textColorSwatch) {

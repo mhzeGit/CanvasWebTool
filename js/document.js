@@ -16,7 +16,7 @@ import {
 } from './undo.js';
 import { serializeDocument, deserializeDocument, FILE_EXTENSION } from './format.js';
 import { saveToFile, loadFromFile, clearCachedFileHandle, saveToFileAs, reloadFromCachedHandle, syncFileTimestamp } from './file-io.js';
-import { screenToWorld, getObjectEdgePoint, getViewportCenterWorld } from './utils.js';
+import { screenToWorld, getObjectEdgePoint } from './utils.js';
 import { refreshSidePanel } from './side-panel.js';
 import { DEFAULT_TEXTBOX_COLOR } from './config.js';
 import { destroyAllEntities } from './dom-entities.js';
@@ -57,7 +57,11 @@ export function addImageContainerAt(worldX, worldY, optW, optH) {
 
 export function addImageContainerAtCenter() {
   flushPanelEdit();
-  const world = getViewportCenterWorld(state.canvas, state.offsetX, state.offsetY, state.scale);
+  const canvas = state.canvas;
+  const rect = canvas.getBoundingClientRect();
+  const centerCssX = rect.width / 2;
+  const centerCssY = rect.height / 2;
+  const world = screenToWorld(centerCssX, centerCssY, state.offsetX, state.offsetY, state.scale);
   addImageContainerAt(world.x, world.y);
 }
 
@@ -105,25 +109,39 @@ export function openImageInShape(shapeIdx) {
 
 export function addTextBoxAtCenter() {
   flushPanelEdit();
-  const world = getViewportCenterWorld(state.canvas, state.offsetX, state.offsetY, state.scale);
+  const canvas = state.canvas;
+  const rect = canvas.getBoundingClientRect();
+  const centerCssX = rect.width / 2;
+  const centerCssY = rect.height / 2;
+  const world = screenToWorld(centerCssX, centerCssY, state.offsetX, state.offsetY, state.scale);
   addTextBoxAt(world.x, world.y);
 }
 
 export function addArrowAtCenter() {
   flushPanelEdit();
-  const world = getViewportCenterWorld(state.canvas, state.offsetX, state.offsetY, state.scale);
+  const canvas = state.canvas;
+  const rect = canvas.getBoundingClientRect();
+  const centerCssX = rect.width / 2;
+  const centerCssY = rect.height / 2;
+  const world = screenToWorld(centerCssX, centerCssY, state.offsetX, state.offsetY, state.scale);
   addArrowAt(world.x, world.y);
 }
 
 export function addShapeAtCenter(shapeType) {
   flushPanelEdit();
-  const world = getViewportCenterWorld(state.canvas, state.offsetX, state.offsetY, state.scale);
+  const rect = state.canvas.getBoundingClientRect();
+  const centerCssX = rect.width / 2;
+  const centerCssY = rect.height / 2;
+  const world = screenToWorld(centerCssX, centerCssY, state.offsetX, state.offsetY, state.scale);
   addShapeAt(world.x, world.y, shapeType);
 }
 
 export function addConnectorAtCenter() {
   flushPanelEdit();
-  const world = getViewportCenterWorld(state.canvas, state.offsetX, state.offsetY, state.scale);
+  const rect = state.canvas.getBoundingClientRect();
+  const centerCssX = rect.width / 2;
+  const centerCssY = rect.height / 2;
+  const world = screenToWorld(centerCssX, centerCssY, state.offsetX, state.offsetY, state.scale);
   const offset = 60;
   addConnector(world.x - offset, world.y, world.x + offset, world.y);
 }
@@ -380,7 +398,9 @@ export function deleteSelectedArrows() {
 
 export function addConnection(fromIdx, toIdx) {
   flushPanelEdit();
-  const connection = { id: state.nextConnectionId++, from: fromIdx, to: toIdx, color: '#6bb5ff', text: '' };
+  let maxId = 0;
+  for (const c of state.connections) { if (c.id > maxId) maxId = c.id; }
+  const connection = { id: maxId + 1, from: fromIdx, to: toIdx, color: '#6bb5ff', text: '' };
   state.connections.push(connection);
   history.push(createAddConnectionCmd(state.connections, state.selectedConnection, refreshSidePanel, connection));
 }
