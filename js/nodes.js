@@ -46,7 +46,7 @@ export function findNodeAtPoint(wx, wy) {
 
 export function drawNodePreview() {
   if (!state.drawingTool || state.drawingTool !== 'text') return;
-  const ctx = state.ctx;
+  const ctx = state.arrowCtx;
   const x = Math.min(state.drawingStartX, state.lastWorldMouse.x);
   const y = Math.min(state.drawingStartY, state.lastWorldMouse.y);
   const w = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
