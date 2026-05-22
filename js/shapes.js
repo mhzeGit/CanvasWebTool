@@ -67,7 +67,7 @@ export function isShapeInBox(shape, bx1, by1, bx2, by2) {
 
 export function drawShapePreview() {
   if (!state.drawingTool || state.drawingTool !== 'shape') return;
-  const ctx = state.ctx;
+  const ctx = state.arrowCtx;
   const x = Math.min(state.drawingStartX, state.lastWorldMouse.x);
   const y = Math.min(state.drawingStartY, state.lastWorldMouse.y);
   const w = Math.abs(state.lastWorldMouse.x - state.drawingStartX);
