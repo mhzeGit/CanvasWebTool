@@ -399,6 +399,83 @@ function onPointerDown(e) {
       }
     }
 
+    {
+      const connHit = hitTestConnector(world.x, world.y);
+      if (connHit !== -1) {
+        state.selectedConnection = null;
+        if (e.ctrlKey) {
+          if (state.selectedConnectors.has(connHit)) state.selectedConnectors.delete(connHit);
+          refreshSidePanel();
+          e.preventDefault();
+          return;
+        }
+        if (e.shiftKey) {
+          state.selectedConnectors.add(connHit);
+        } else if (!state.selectedConnectors.has(connHit)) {
+          state.selectedTextBoxes.clear();
+          state.selectedArrows.clear();
+          state.selectedShapes.clear();
+          state.selectedConnectors.clear();
+          state.selectedConnectors.add(connHit);
+        }
+        state.pointerDownScreenX = sx;
+        state.pointerDownScreenY = sy;
+        state.pendingClickIndex = -5;
+        state.pendingClickItemIdx = connHit;
+        state.pendingShiftKey = e.shiftKey;
+        state.pendingCtrlKey = e.ctrlKey;
+        state.didDragSincePointerDown = false;
+        refreshSidePanel();
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
+
+    {
+      const bodyHit = hitTestArrowBody(world.x, world.y);
+      if (bodyHit !== -1) {
+        state.selectedConnection = null;
+        if (e.ctrlKey) {
+          if (state.selectedArrows.has(bodyHit)) state.selectedArrows.delete(bodyHit);
+          if (state.selectedArrows.size === 0) state.arrowDragTarget = null;
+          refreshSidePanel();
+          e.preventDefault();
+          return;
+        }
+        if (e.shiftKey) {
+          state.selectedArrows.add(bodyHit);
+        } else if (!state.selectedArrows.has(bodyHit)) {
+          state.selectedTextBoxes.clear();
+          state.selectedArrows.clear();
+          state.arrowDragTarget = null;
+          state.selectedArrows.add(bodyHit);
+        }
+        if (state.selectedArrows.size === 0) state.arrowDragTarget = null;
+        state.pointerDownScreenX = sx;
+        state.pointerDownScreenY = sy;
+        state.pendingClickIndex = -2;
+        state.didDragSincePointerDown = false;
+        refreshSidePanel();
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+    }
+
+    if (!e.shiftKey && !e.ctrlKey) {
+      const connHit = hitTestConnection(world.x, world.y);
+      if (connHit !== null) {
+        state.selectedTextBoxes.clear();
+        state.selectedArrows.clear();
+        state.arrowDragTarget = null;
+        state.selectedConnection = connHit;
+        refreshSidePanel();
+        e.preventDefault();
+        return;
+      }
+    }
+
     let hit;
     {
       const topHit = state.getTopHitAt(world.x, world.y);
@@ -483,83 +560,6 @@ function onPointerDown(e) {
           e.preventDefault();
           return;
         }
-      }
-    }
-
-    {
-      const connHit = hitTestConnector(world.x, world.y);
-      if (connHit !== -1) {
-        state.selectedConnection = null;
-        if (e.ctrlKey) {
-          if (state.selectedConnectors.has(connHit)) state.selectedConnectors.delete(connHit);
-          refreshSidePanel();
-          e.preventDefault();
-          return;
-        }
-        if (e.shiftKey) {
-          state.selectedConnectors.add(connHit);
-        } else if (!state.selectedConnectors.has(connHit)) {
-          state.selectedTextBoxes.clear();
-          state.selectedArrows.clear();
-          state.selectedShapes.clear();
-          state.selectedConnectors.clear();
-          state.selectedConnectors.add(connHit);
-        }
-        state.pointerDownScreenX = sx;
-        state.pointerDownScreenY = sy;
-        state.pendingClickIndex = -5;
-        state.pendingClickItemIdx = connHit;
-        state.pendingShiftKey = e.shiftKey;
-        state.pendingCtrlKey = e.ctrlKey;
-        state.didDragSincePointerDown = false;
-        refreshSidePanel();
-        canvas.setPointerCapture(e.pointerId);
-        e.preventDefault();
-        return;
-      }
-    }
-
-    {
-      const bodyHit = hitTestArrowBody(world.x, world.y);
-      if (bodyHit !== -1) {
-        state.selectedConnection = null;
-        if (e.ctrlKey) {
-          if (state.selectedArrows.has(bodyHit)) state.selectedArrows.delete(bodyHit);
-          if (state.selectedArrows.size === 0) state.arrowDragTarget = null;
-          refreshSidePanel();
-          e.preventDefault();
-          return;
-        }
-        if (e.shiftKey) {
-          state.selectedArrows.add(bodyHit);
-        } else if (!state.selectedArrows.has(bodyHit)) {
-          state.selectedTextBoxes.clear();
-          state.selectedArrows.clear();
-          state.arrowDragTarget = null;
-          state.selectedArrows.add(bodyHit);
-        }
-        if (state.selectedArrows.size === 0) state.arrowDragTarget = null;
-        state.pointerDownScreenX = sx;
-        state.pointerDownScreenY = sy;
-        state.pendingClickIndex = -2;
-        state.didDragSincePointerDown = false;
-        refreshSidePanel();
-        canvas.setPointerCapture(e.pointerId);
-        e.preventDefault();
-        return;
-      }
-    }
-
-    if (hit === -1 && !e.shiftKey && !e.ctrlKey) {
-      const connHit = hitTestConnection(world.x, world.y);
-      if (connHit !== null) {
-        state.selectedTextBoxes.clear();
-        state.selectedArrows.clear();
-        state.arrowDragTarget = null;
-        state.selectedConnection = connHit;
-        refreshSidePanel();
-        e.preventDefault();
-        return;
       }
     }
 
