@@ -30,6 +30,7 @@ import { performUndo, performRedo } from './history.js';
 import { initToolbar } from './toolbar.js';
 import { initEntityLayer, syncAllEntities } from './dom-entities.js';
 import { hasCachedFileHandle, checkFileModified } from './file-io.js';
+import { downloadPortableJSON, openPortableJSON } from './json-port.js';
 
 function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
@@ -135,6 +136,8 @@ function initTopBar() {
   const newBtn = document.getElementById('actionNew');
   const openBtn = document.getElementById('actionOpen');
   const saveBtn = document.getElementById('actionSave');
+  const exportJSONBtn = document.getElementById('actionExportJSON');
+  const importJSONBtn = document.getElementById('actionImportJSON');
   const settingsBtn = document.getElementById('actionSettings');
   const mobileUndoBtn = document.getElementById('mobileUndoBtn');
   const mobileRedoBtn = document.getElementById('mobileRedoBtn');
@@ -154,6 +157,8 @@ function initTopBar() {
   if (newBtn) newBtn.addEventListener('click', (e) => { e.preventDefault(); newDocument(); });
   if (openBtn) openBtn.addEventListener('click', (e) => { e.preventDefault(); openDocument(); });
   if (saveBtn) saveBtn.addEventListener('click', (e) => { e.preventDefault(); saveDocument(); });
+  if (exportJSONBtn) exportJSONBtn.addEventListener('click', (e) => { e.preventDefault(); downloadPortableJSON(); });
+  if (importJSONBtn) importJSONBtn.addEventListener('click', (e) => { e.preventDefault(); openPortableJSON(); });
   if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); openSettings(); });
   function addTouchGuard(btn, handler) {
     if (!btn) return;
