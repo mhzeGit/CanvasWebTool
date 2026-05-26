@@ -219,7 +219,6 @@ function ensureShapeElement(idx) {
       imageWrap.appendChild(imgEl);
     }
     const innerImg = imgEl.querySelector('.si-img-inner');
-    if (innerImg && innerImg.src !== s.image.src) innerImg.src = s.image.src;
     imgEl.style.position = 'absolute';
     imgEl.style.inset = '0';
     imgEl.style.display = '';

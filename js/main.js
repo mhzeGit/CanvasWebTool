@@ -29,6 +29,7 @@ import {
 import { performUndo, performRedo } from './history.js';
 import { initToolbar } from './toolbar.js';
 import { initEntityLayer, syncAllEntities } from './dom-entities.js';
+import { imageLOD } from './image-lod.js';
 import { hasCachedFileHandle, checkFileModified } from './file-io.js';
 import { downloadPortableJSON, openPortableJSON } from './json-port.js';
 
@@ -98,6 +99,8 @@ function animate() {
   drawConnectors();
 
   syncAllEntities();
+
+  imageLOD.update();
 
   drawSelectionMarquee();
 
@@ -283,6 +286,7 @@ function init() {
   initHistory(refreshSidePanel);
 
   initEntityLayer();
+  imageLOD.init();
   initPointer(history);
   initTouch();
   initToolbar();

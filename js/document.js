@@ -20,6 +20,7 @@ import { screenToWorld, getObjectEdgePoint } from './utils.js';
 import { refreshSidePanel } from './side-panel.js';
 import { DEFAULT_TEXTBOX_COLOR } from './config.js';
 import { destroyAllEntities } from './dom-entities.js';
+import { imageLOD } from './image-lod.js';
 import { showConfirmDialog } from './dialog.js';
 
 let _nextImageId = 1;
@@ -75,6 +76,7 @@ export function addImageToShape(shapeIdx, src) {
     fileName: '',
   };
   s.image = img;
+  imageLOD.generateLODs(img.id, img.src);
   state.markDrawOrderDirty();
   refreshSidePanel();
   return img;
@@ -84,7 +86,9 @@ export function removeImageFromShape(shapeIdx) {
   flushPanelEdit();
   const s = state.shapes[shapeIdx];
   if (!s || !s.image) return;
+  const oldId = s.image ? s.image.id : null;
   s.image = null;
+  if (oldId !== null) imageLOD.removeImage(oldId);
   state.markDrawOrderDirty();
   refreshSidePanel();
 }
