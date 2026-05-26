@@ -93,11 +93,11 @@
 
 ### Entity types and data model
 Each entity is a plain object in a flat array on `state`:
-- **textBox** — `{id, x, y, w, h, title, titleColor, text, blocks, color, borderColor, textColor, fontSize, parentId, parentType}`
-- **shape** — `{id, shapeType, x, y, w, h, color, borderColor, borderWidth, cornerRadius, image, parentId, parentType}`. shapeType: `rectangle | circle | triangle | diamond`
-- **arrow** — `{id, x1, y1, x2, y2, connectedFrom, connectedTo, connectedFromType, connectedToType, color, lineWidth, headSize}`
-- **connector** — `{id, x1, y1, x2, y2, connectedFrom, connectedTo, connectedFromType, connectedToType, color}`
-- **connection** — `{id, from, to, color, text}` (index-based references into textBoxes array)
+- **textBox** — `{id, x, y, w, h, title, titleColor, text, blocks, color, borderColor, textColor, fontSize, parentId, parentType, locked}`
+- **shape** — `{id, shapeType, x, y, w, h, color, borderColor, borderWidth, cornerRadius, image, parentId, parentType, locked}`. shapeType: `rectangle | circle | triangle | diamond`
+- **arrow** — `{id, x1, y1, x2, y2, connectedFrom, connectedTo, connectedFromType, connectedToType, color, lineWidth, headSize, locked}`
+- **connector** — `{id, x1, y1, x2, y2, connectedFrom, connectedTo, connectedFromType, connectedToType, color, locked}`
+- **connection** — `{id, from, to, color, text, locked}` (index-based references into textBoxes array)
 
 ### Key shared utilities
 - `state.js` — exported singleton `state`, `markDrawOrderDirty()`, `reparentAll()`, `getTopHitAt()` (z-ordered entity hit test), `getAllDrawOrder()` (sorted by depth), `computeSelectionKey()`, `escAttr()`
@@ -111,6 +111,6 @@ Each entity is a plain object in a flat array on `state`:
 - **Constants/Config**: UPPER_SNAKE_CASE (`GRID`, `DRAG_THRESHOLD_PX`), exported as named from `config.js`
 - **Entity properties**: snake_case for persistence (`connectedFrom`, `connectedToType`), camelCase for geometry (`x1`, `y1`, `shapeType`, `borderWidth`)
 - **Selection sets**: `selected<EntityType>s` on state: `selectedShapes`, `selectedTextBoxes`, `selectedArrows`, `selectedConnectors`, `selectedConnection`
-- **Undo commands**: `create<Action><Entity>Cmd` (`createAddShapeCmd`, `createDeleteTextBoxesCmd`)
+- **Undo commands**: `create<Action><Entity>Cmd` (`createAddShapeCmd`, `createDeleteTextBoxesCmd`, `createSetLockCmd`)
 - **File names**: kebab-case (`inline-editing.js`, `context-menu.js`, `color-palette.js`, `editor-content-bridge.js`)
 - **CSS**: hyphen-case class names (`side-panel`, `panel-resize-handle`, `context-menu`), BEM-style for nested elements

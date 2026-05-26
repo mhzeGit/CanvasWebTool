@@ -691,6 +691,22 @@ export function createPasteShapesCmd(shapes, selectedShapes, refreshPanelFn, pas
   };
 }
 
+export function createSetLockCmd(entities, entityId, oldLocked, newLocked, refreshPanelFn) {
+  return {
+    undo() {
+      const found = entities.find(e => e.id === entityId);
+      if (found) found.locked = oldLocked;
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    redo() {
+      const found = entities.find(e => e.id === entityId);
+      if (found) found.locked = newLocked;
+      if (refreshPanelFn) refreshPanelFn();
+    },
+    description: oldLocked ? 'Unlock' : 'Lock'
+  };
+}
+
 export function createBatchCmd(commands, description) {
   return {
     undo() {

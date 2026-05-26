@@ -4,6 +4,8 @@ import { hitTestConnection } from './connections.js';
 import { hitTestArrowEnd, hitTestArrowBody } from './arrows.js';
 import { hitTestConnector } from './connectors.js';
 import { commitEditing } from './inline-editing.js';
+import { history } from './history.js';
+import { createSetLockCmd } from './undo.js';
 
 const ADD_ITEM_TYPES = [];
 
@@ -83,16 +85,16 @@ function detectHit(worldX, worldY) {
   if (topHit) return topHit;
 
   const connIdx = hitTestConnector(worldX, worldY);
-  if (connIdx !== -1) return { type: 'connector', i: connIdx };
+  if (connIdx !== -1 && !state.connectors[connIdx]?.locked) return { type: 'connector', i: connIdx };
 
   const connLineHit = hitTestConnection(worldX, worldY);
-  if (connLineHit !== null) return { type: 'connection', i: connLineHit };
+  if (connLineHit !== null && !state.connections[connLineHit]?.locked) return { type: 'connection', i: connLineHit };
 
   const arrowEndHit = hitTestArrowEnd(worldX, worldY);
-  if (arrowEndHit) return { type: 'arrow', i: arrowEndHit.arrowIdx };
+  if (arrowEndHit && !state.arrows[arrowEndHit.arrowIdx]?.locked) return { type: 'arrow', i: arrowEndHit.arrowIdx };
 
   const arrowBodyHit = hitTestArrowBody(worldX, worldY);
-  if (arrowBodyHit !== -1) return { type: 'arrow', i: arrowBodyHit };
+  if (arrowBodyHit !== -1 && !state.arrows[arrowBodyHit]?.locked) return { type: 'arrow', i: arrowBodyHit };
 
   return null;
 }
@@ -106,6 +108,39 @@ function isInSelection(type, index) {
     case 'connection': return state.selectedConnection === index;
   }
   return false;
+}
+
+function getEntityByType(type, index) {
+  switch (type) {
+    case 'textBox': return state.textBoxes[index];
+    case 'shape': return state.shapes[index];
+    case 'arrow': return state.arrows[index];
+    case 'connector': return state.connectors[index];
+    case 'connection': return state.connections[index];
+  }
+  return null;
+}
+
+function getEntityArrayByType(type) {
+  switch (type) {
+    case 'textBox': return state.textBoxes;
+    case 'shape': return state.shapes;
+    case 'arrow': return state.arrows;
+    case 'connector': return state.connectors;
+    case 'connection': return state.connections;
+  }
+  return null;
+}
+
+function makeLockMenuItem(type, index) {
+  const entity = getEntityByType(type, index);
+  if (!entity || entity.locked) return null;
+  return makeMenuItem('Lock', () => {
+    const entities = getEntityArrayByType(type);
+    entity.locked = true;
+    history.push(createSetLockCmd(entities, entity.id, false, true, _refreshSidePanel));
+    _refreshSidePanel();
+  });
 }
 
 function selectSingle(type, index) {
@@ -153,6 +188,8 @@ export function openContextMenu(e) {
   }
 
   if (hitType === 'textBox') {
+    const lockItem = makeLockMenuItem(hitType, hitIndex);
+    if (lockItem) items.push(lockItem);
     items.push(makeMenuItem('Delete', _deleteSelectedNodes));
     items.push(makeMenuItem('Duplicate', _duplicateSelectedNodes));
     items.push(makeMenuItem('Connect to...', () => {
@@ -163,6 +200,8 @@ export function openContextMenu(e) {
       items.push(makeMenuItem('Paste', () => _pasteNodesAt(world.x, world.y)));
     }
   } else if (hitType === 'shape') {
+    const lockItem = makeLockMenuItem(hitType, hitIndex);
+    if (lockItem) items.push(lockItem);
     items.push(makeMenuItem('Delete', _deleteSelectedShapes));
     if (state.selectedShapes.size > 0) {
       items.push(makeMenuItem('Duplicate', _duplicateSelectedNodes));
@@ -172,10 +211,16 @@ export function openContextMenu(e) {
       items.push(makeMenuItem('Paste', () => _pasteNodesAt(world.x, world.y)));
     }
   } else if (hitType === 'arrow') {
+    const lockItem = makeLockMenuItem(hitType, hitIndex);
+    if (lockItem) items.push(lockItem);
     items.push(makeMenuItem('Delete Arrow', _deleteSelectedArrows));
   } else if (hitType === 'connector') {
+    const lockItem = makeLockMenuItem(hitType, hitIndex);
+    if (lockItem) items.push(lockItem);
     items.push(makeMenuItem('Delete Connector', _deleteSelectedConnectors));
   } else if (hitType === 'connection') {
+    const lockItem = makeLockMenuItem(hitType, hitIndex);
+    if (lockItem) items.push(lockItem);
     items.push(makeMenuItem('Delete Connection', () => _deleteConnection(hitIndex)));
   } else {
     if (state.clipboard.length > 0) {

@@ -42,6 +42,7 @@ export function addImageContainerAt(worldX, worldY, optW, optH) {
     image: null,
     parentId: null,
     parentType: null,
+    locked: false,
   };
   const idx = state.shapes.length;
   state.shapes.push(shape);
@@ -174,6 +175,7 @@ export function addArrowAt(worldX, worldY, connectTextBoxIdx) {
     color: '#6bb5ff',
     lineWidth: 2,
     headSize: 14,
+    locked: false,
   };
 
   const idx = state.arrows.length;
@@ -207,6 +209,7 @@ export function addShapeAt(worldX, worldY, shapeType, optW, optH) {
     image: null,
     parentId: null,
     parentType: null,
+    locked: false,
   };
   const idx = state.shapes.length;
   state.shapes.push(shape);
@@ -240,6 +243,7 @@ export function addTextBoxAt(worldX, worldY, optW, optH) {
     titleColor: '#e7e7e7',
     parentId: null,
     parentType: null,
+    locked: false,
   };
   const idx = state.textBoxes.length;
   state.textBoxes.push(textBox);
@@ -262,6 +266,7 @@ export function addConnector(x1, y1, x2, y2, connectedFrom, connectedTo, connect
     connectedFromType: connectedFromType ?? null,
     connectedToType: connectedToType ?? null,
     color: '#6bb5ff',
+    locked: false,
   };
   const idx = state.connectors.length;
   state.connectors.push(connector);
@@ -285,6 +290,7 @@ export function addArrowFromPoints(x1, y1, x2, y2, connectedFrom, connectedTo, c
     color: '#6bb5ff',
     lineWidth: 2,
     headSize: 14,
+    locked: false,
   };
   const idx = state.arrows.length;
   state.arrows.push(arrow);
@@ -400,7 +406,7 @@ export function addConnection(fromIdx, toIdx) {
   flushPanelEdit();
   let maxId = 0;
   for (const c of state.connections) { if (c.id > maxId) maxId = c.id; }
-  const connection = { id: maxId + 1, from: fromIdx, to: toIdx, color: '#6bb5ff', text: '' };
+  const connection = { id: maxId + 1, from: fromIdx, to: toIdx, color: '#6bb5ff', text: '', locked: false };
   state.connections.push(connection);
   history.push(createAddConnectionCmd(state.connections, state.selectedConnection, refreshSidePanel, connection));
 }

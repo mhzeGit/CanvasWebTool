@@ -235,7 +235,7 @@ function nudgeSelected(dx, dy) {
 
   for (const idx of state.selectedShapes) {
     const s = state.shapes[idx];
-    if (!s || movedIds.has('shape:' + s.id)) continue;
+    if (!s || s.locked || movedIds.has('shape:' + s.id)) continue;
     movedIds.add('shape:' + s.id);
     shapeMoves.push({ id: s.id, fromX: s.x, fromY: s.y, toX: s.x + dx, toY: s.y + dy });
     addChildMoves('shape', s.id);
@@ -243,7 +243,7 @@ function nudgeSelected(dx, dy) {
 
   for (const idx of state.selectedTextBoxes) {
     const tb = state.textBoxes[idx];
-    if (!tb || movedIds.has('textBox:' + tb.id)) continue;
+    if (!tb || tb.locked || movedIds.has('textBox:' + tb.id)) continue;
     movedIds.add('textBox:' + tb.id);
     tbMoves.push({ id: tb.id, fromX: tb.x, fromY: tb.y, toX: tb.x + dx, toY: tb.y + dy });
     addChildMoves('textBox', tb.id);
@@ -251,7 +251,7 @@ function nudgeSelected(dx, dy) {
 
   for (const idx of state.selectedConnectors) {
     const c = state.connectors[idx];
-    if (!c || movedIds.has(`c:${c.id}`)) continue;
+    if (!c || c.locked || movedIds.has(`c:${c.id}`)) continue;
     movedIds.add(`c:${c.id}`);
     connectorMoves.push({
       id: c.id,
@@ -262,7 +262,7 @@ function nudgeSelected(dx, dy) {
 
   for (const idx of state.selectedArrows) {
     const a = state.arrows[idx];
-    if (!a || a.connectedFrom !== null || a.connectedTo !== null) continue;
+    if (!a || a.locked || a.connectedFrom !== null || a.connectedTo !== null) continue;
     if (movedIds.has(`a:${a.id}`)) continue;
     movedIds.add(`a:${a.id}`);
     arrowMoves.push({

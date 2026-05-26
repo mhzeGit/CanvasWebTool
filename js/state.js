@@ -207,7 +207,7 @@ export const state = {
       let e;
       if (item.type === 'shape') e = state.shapes[item.i];
       else if (item.type === 'textBox') e = state.textBoxes[item.i];
-      if (e && wx >= e.x && wx <= e.x + e.w && wy >= e.y && wy <= e.y + e.h) return item;
+      if (e && !e.locked && wx >= e.x && wx <= e.x + e.w && wy >= e.y && wy <= e.y + e.h) return item;
     }
     return null;
   },

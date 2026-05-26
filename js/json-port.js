@@ -194,7 +194,8 @@ export function importFromPortableJSON(json) {
       textColor: (e.style && e.style.textColor) || '#ddd',
       fontSize: (e.style && e.style.fontSize) || 14,
       parentId: null,
-      parentType: null
+      parentType: null,
+      locked: false,
     };
     idToIndex.textBox[e.id] = i;
     state.textBoxes.push(textBox);
@@ -220,7 +221,8 @@ export function importFromPortableJSON(json) {
       cornerRadius: (e.style && e.style.cornerRadius) != null ? e.style.cornerRadius : (e.type === 'rectangle' ? 4 : 0),
       image: e.image ? { id: 0, src: e.image.src || null, fileName: e.image.fileName || '' } : null,
       parentId: null,
-      parentType: null
+      parentType: null,
+      locked: false,
     };
     idToIndex.shape[e.id] = i;
     state.shapes.push(shape);
@@ -286,7 +288,8 @@ export function importFromPortableJSON(json) {
       connectedFrom, connectedTo, connectedFromType, connectedToType,
       color: (a.style && a.style.color) || '#6bb5ff',
       lineWidth: (a.style && a.style.lineWidth) || 2,
-      headSize: (a.style && a.style.headSize) || 14
+      headSize: (a.style && a.style.headSize) || 14,
+      locked: false,
     });
   }
 
@@ -323,7 +326,8 @@ export function importFromPortableJSON(json) {
       x2: (c.endPoint && c.endPoint.x) || 120,
       y2: (c.endPoint && c.endPoint.y) || 0,
       connectedFrom, connectedTo, connectedFromType, connectedToType,
-      color: (c.style && c.style.color) || '#6bb5ff'
+      color: (c.style && c.style.color) || '#6bb5ff',
+      locked: false,
     });
   }
 
@@ -344,7 +348,8 @@ export function importFromPortableJSON(json) {
         from,
         to,
         color: (cn.style && cn.style.color) || '#6bb5ff',
-        text: cn.label || ''
+        text: cn.label || '',
+        locked: false,
       });
     }
   }

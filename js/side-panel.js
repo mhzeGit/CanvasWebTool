@@ -4,7 +4,8 @@ import { colorSwatchHTML, initColorSwatch } from './color-palette.js';
 import {
   createResizeShapeCmd, createResizeTextBoxCmd,
   createBatchShapePropertyChangeCmd, createBatchResizeShapeCmd,
-  createBatchTextBoxPropertyChangeCmd, createBatchResizeTextBoxCmd
+  createBatchTextBoxPropertyChangeCmd, createBatchResizeTextBoxCmd,
+  createSetLockCmd
 } from './undo.js';
 import { addImageToShape, removeImageFromShape, openImageInShape } from './document.js';
 import { getArrowEndpoint } from './arrows.js';
@@ -491,6 +492,7 @@ export function refreshSidePanel() {
 
     _sp( [
       '<div class="panel-section-title">' + title + '</div>',
+      '<div class="panel-row"><label>Locked</label><button id="panelShapeLockToggle" class="panel-input" style="cursor:pointer;width:auto;">' + (s.locked ? 'Unlock' : 'Lock') + '</button></div>',
       '<div class="panel-row"><label>Color</label>' + colorSwatchHTML('panelShapeColor', s.color ?? '#2b2b2b') + '</div>',
       '<div class="panel-row"><label>Border</label>' + colorSwatchHTML('panelShapeBorderColor', s.borderColor ?? '#6bb5ff') + '</div>',
       '<div class="panel-row"><label>Border W</label><input id="panelShapeBorderWidth" class="panel-input" type="number" min="0" max="20" step="0.5" value="' + (colorMixed || borderWidthMixed ? '' : (s.borderWidth ?? 2)) + '" placeholder="' + (borderWidthMixed ? '(mixed)' : '') + '" /></div>',
@@ -500,11 +502,22 @@ export function refreshSidePanel() {
       imageSectionHtml,
     ].join(''));
 
+    const lockToggle = document.getElementById('panelShapeLockToggle');
     const colorSwatch = document.getElementById('panelShapeColor');
     const borderColorSwatch = document.getElementById('panelShapeBorderColor');
     const borderWidthInput = document.getElementById('panelShapeBorderWidth');
     const wInput = document.getElementById('panelShapeW');
     const hInput = document.getElementById('panelShapeH');
+    if (lockToggle) {
+      lockToggle.addEventListener('click', () => {
+        const newLocked = !s.locked;
+        const oldLocked = !!s.locked;
+        s.locked = newLocked;
+        lockToggle.textContent = newLocked ? 'Unlock' : 'Lock';
+        history.push(createSetLockCmd(state.shapes, shapeId, oldLocked, newLocked, refreshSidePanel));
+        refreshSidePanel();
+      });
+    }
     if (colorSwatch) {
       initColorSwatch(colorSwatch, {
         onSelect: (v) => {
@@ -708,6 +721,7 @@ export function refreshSidePanel() {
 
     _sp( [
       '<div class="panel-section-title">' + sectionTitle + '</div>',
+      '<div class="panel-row"><label>Locked</label><button id="panelTBLockToggle" class="panel-input" style="cursor:pointer;width:auto;">' + (tb.locked ? 'Unlock' : 'Lock') + '</button></div>',
       '<div class="panel-row"><label>Title</label><input id="panelTBTitle" class="panel-input" type="text" value="' + (titleMixed ? '' : state.escAttr(tb.title ?? '')) + '" placeholder="' + (titleMixed ? '(mixed)' : state.escAttr(TITLE_PLACEHOLDER)) + '" /></div>',
       '<div class="panel-row"><label>Title Color</label>' + colorSwatchHTML('panelTBTitleColor', tb.titleColor ?? '#e7e7e7') + '</div>',
       '<div class="panel-row"><label>Color</label>' + colorSwatchHTML('panelTBColor', tb.color ?? '#1a1a1a') + '</div>',
@@ -723,6 +737,7 @@ export function refreshSidePanel() {
       '</div>',
     ].join(''));
 
+    const lockToggle = document.getElementById('panelTBLockToggle');
     const titleInput = document.getElementById('panelTBTitle');
     const titleColorSwatch = document.getElementById('panelTBTitleColor');
     const colorSwatch = document.getElementById('panelTBColor');
@@ -732,6 +747,16 @@ export function refreshSidePanel() {
     const wInput = document.getElementById('panelTBW');
     const hInput = document.getElementById('panelTBH');
 
+    if (lockToggle) {
+      lockToggle.addEventListener('click', () => {
+        const newLocked = !tb.locked;
+        const oldLocked = !!tb.locked;
+        tb.locked = newLocked;
+        lockToggle.textContent = newLocked ? 'Unlock' : 'Lock';
+        history.push(createSetLockCmd(state.textBoxes, tbId, oldLocked, newLocked, refreshSidePanel));
+        refreshSidePanel();
+      });
+    }
     if (titleInput) {
       titleInput.addEventListener('input', (ev) => {
         const v = ev.target.value;

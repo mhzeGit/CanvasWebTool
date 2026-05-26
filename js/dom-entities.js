@@ -6,6 +6,8 @@ import { createEditor, emptyDoc } from './editor/editor-core.js';
 import {
   DEFAULT_TITLE_COLOR, DEFAULT_TEXT_COLOR, TITLE_PLACEHOLDER, TEXT_PLACEHOLDER,
 } from './config.js';
+import { history } from './history.js';
+import { createSetLockCmd } from './undo.js';
 
 function isEditingEntity(type, idx, field) {
   if (!state.editingState) return false;
@@ -70,6 +72,30 @@ function titleToHtml(title) {
   return html;
 }
 
+function syncUnlockButton(el, isLocked, entityArray, entityId) {
+  let btn = el.querySelector('.entity-unlock-btn');
+  if (isLocked) {
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.className = 'entity-unlock-btn';
+      btn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16" r="1"/></svg>';
+      btn.title = 'Unlock';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const found = entityArray.find(ent => ent.id === entityId);
+        if (found && found.locked) {
+          found.locked = false;
+          history.push(createSetLockCmd(entityArray, entityId, true, false, () => {}));
+        }
+      });
+      el.appendChild(btn);
+    }
+  } else if (btn) {
+    btn.remove();
+  }
+  el.classList.toggle('locked', isLocked);
+}
+
 export function getEntityElement(type, idx) {
   if (type === 'textBox') return domByTypeIdx.textBox['t' + idx] || null;
   if (type === 'shape') return domByTypeIdx.shape['s' + idx] || null;
@@ -125,6 +151,7 @@ function ensureShapeElement(idx) {
   placeEntity(el, s.x, s.y, s.w, s.h, true);
   el.style.transform = `scale(${state.scale})`;
   el.style.transformOrigin = '0 0';
+  syncUnlockButton(el, !!s.locked, state.shapes, s.id);
 
   const borderEl = el.querySelector('.entity-shape-border');
   const fillEl = el.querySelector('.entity-shape-fill');
@@ -239,6 +266,7 @@ function ensureTextBoxElement(idx) {
   const titlebar = el.querySelector('.entity-textbox-titlebar');
   const content = el.querySelector('.entity-textbox-content');
 
+  syncUnlockButton(el, !!tb.locked, state.textBoxes, tb.id);
   placeEntity(el, tb.x, tb.y, tb.w, tb.h);
   el.style.transform = 'none';
   el.style.borderWidth = (1.5 * state.scale) + 'px';
