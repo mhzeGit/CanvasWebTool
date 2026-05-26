@@ -10,29 +10,37 @@ const LOD_CONFIG = [
 
 const CULL_MARGIN_WORLD = 400;
 
+function createDownscaleCanvas() {
+  const c = document.createElement('canvas');
+  return { canvas: c, ctx: c.getContext('2d') };
+}
+
 class ImageLODManager {
   constructor() {
     this._cache = new Map();
     this._shapeState = new Map();
-    this._canvas = null;
-    this._ctx = null;
     this._initialized = false;
   }
 
   init() {
     if (this._initialized) return;
-    this._canvas = document.createElement('canvas');
-    this._ctx = this._canvas.getContext('2d');
     this._initialized = true;
   }
 
   generateLODs(imageId, imageSrc) {
-    if (!this._initialized || this._cache.has(imageId)) return;
+    if (!this._initialized) return;
+
+    if (this._cache.has(imageId)) {
+      const existing = this._cache.get(imageId);
+      if (existing.loading) return;
+      this._cache.delete(imageId);
+    }
 
     const entry = { lods: [], loading: true, src: imageSrc };
     this._cache.set(imageId, entry);
 
     const img = new Image();
+    const downscale = createDownscaleCanvas();
     img.onload = () => {
       const srcW = img.naturalWidth;
       const srcH = img.naturalHeight;
@@ -46,10 +54,10 @@ class ImageLODManager {
           const scale = lod.maxDim / Math.max(srcW, srcH);
           const w = Math.max(1, Math.round(srcW * scale));
           const h = Math.max(1, Math.round(srcH * scale));
-          this._canvas.width = w;
-          this._canvas.height = h;
-          this._ctx.drawImage(img, 0, 0, w, h);
-          entry.lods.push(this._canvas.toDataURL());
+          downscale.canvas.width = w;
+          downscale.canvas.height = h;
+          downscale.ctx.drawImage(img, 0, 0, w, h);
+          entry.lods.push(downscale.canvas.toDataURL());
         }
       }
       entry.loading = false;
@@ -63,7 +71,11 @@ class ImageLODManager {
 
   _getLOD(imageId, screenWidth) {
     const entry = this._cache.get(imageId);
-    if (!entry || entry.loading) return null;
+    if (!entry) return null;
+
+    if (entry.loading) {
+      return { src: entry.src, level: -1 };
+    }
 
     for (let i = 0; i < LOD_CONFIG.length; i++) {
       if (screenWidth >= LOD_CONFIG[i].threshold) {
@@ -85,6 +97,11 @@ class ImageLODManager {
 
   removeImage(imageId) {
     this._cache.delete(imageId);
+    for (const [shapeId, st] of this._shapeState) {
+      if (st.imageId === imageId) {
+        this._shapeState.delete(shapeId);
+      }
+    }
   }
 
   update() {
@@ -94,14 +111,23 @@ class ImageLODManager {
     const dpr = window.devicePixelRatio || 1;
     const canvasCssW = state.canvas.width / dpr;
     const canvasCssH = state.canvas.height / dpr;
-    const activeImageIds = new Set();
+
+    const currentShapeIds = new Set();
 
     for (let i = 0; i < shapes.length; i++) {
       const shape = shapes[i];
       if (!shape || !shape.image) continue;
 
+      const shapeId = shape.id;
+      currentShapeIds.add(shapeId);
+
       const imgData = shape.image;
-      activeImageIds.add(imgData.id);
+      const prevState = this._shapeState.get(shapeId);
+
+      if (prevState && prevState.imageId !== imgData.id) {
+        this._clearDomSrc(shapeId);
+        this._shapeState.delete(shapeId);
+      }
 
       if (!this._cache.has(imgData.id)) {
         this.generateLODs(imgData.id, imgData.src);
@@ -112,41 +138,45 @@ class ImageLODManager {
       let targetSrc = null;
       let targetLevel = -1;
 
-      if (visible) {
-        const lod = this._getLOD(imgData.id, screenWidth);
-        if (lod) { targetSrc = lod.src; targetLevel = lod.level; }
-      } else {
-        const lod = this._getLOD(imgData.id, 0);
-        if (lod) { targetSrc = lod.src; targetLevel = lod.level; }
-      }
+      const lod = visible
+        ? this._getLOD(imgData.id, screenWidth)
+        : this._getLOD(imgData.id, 0);
+      if (lod) { targetSrc = lod.src; targetLevel = lod.level; }
 
-      if (targetLevel === -1) continue;
-
-      const prev = this._shapeState.get(i);
-      if (prev && prev.level === targetLevel && prev.src === targetSrc) continue;
-
-      this._shapeState.set(i, { level: targetLevel, src: targetSrc });
-      this._applyToDom(i, targetSrc, targetLevel, visible);
-    }
-
-    for (const key of this._shapeState.keys()) {
-      const shape = shapes[key];
-      if (!shape || !shape.image || !activeImageIds.has(shape.image.id)) {
-        this._shapeState.delete(key);
+      if (targetSrc) {
+        this._shapeState.set(shapeId, { level: targetLevel, src: targetSrc, imageId: imgData.id });
+        this._applyToDom(shapeId, targetSrc, targetLevel, visible);
       }
     }
 
+    for (const [shapeId] of this._shapeState) {
+      if (!currentShapeIds.has(shapeId)) {
+        this._shapeState.delete(shapeId);
+      }
+    }
+
+    const staleCacheKeys = [];
     for (const key of this._cache.keys()) {
       let found = false;
       for (const shape of shapes) {
         if (shape.image && shape.image.id === key) { found = true; break; }
       }
-      if (!found) this._cache.delete(key);
+      if (!found) staleCacheKeys.push(key);
+    }
+    for (const key of staleCacheKeys) {
+      this._cache.delete(key);
     }
   }
 
-  _applyToDom(shapeIdx, src, level, visible) {
-    const el = document.querySelector(`[data-entity-type="shape"][data-entity-idx="${shapeIdx}"]`);
+  _clearDomSrc(shapeId) {
+    const el = document.querySelector(`[data-entity-type="shape"][data-entity-id="${shapeId}"]`);
+    if (!el) return;
+    const innerImg = el.querySelector('.si-img-inner');
+    if (innerImg) innerImg.removeAttribute('src');
+  }
+
+  _applyToDom(shapeId, src, level, visible) {
+    const el = document.querySelector(`[data-entity-type="shape"][data-entity-id="${shapeId}"]`);
     if (!el) return;
 
     const imageWrap = el.querySelector('.entity-shape-image-wrap');
@@ -159,8 +189,7 @@ class ImageLODManager {
       innerImg.src = src;
     }
 
-    const lodLabel = LOD_CONFIG[level] ? LOD_CONFIG[level].label : 'unknown';
-    imageWrap.dataset.lod = lodLabel;
+    imageWrap.dataset.lod = level >= 0 && LOD_CONFIG[level] ? LOD_CONFIG[level].label || 'original' : 'original';
     imageWrap.dataset.lodLevel = level;
     imageWrap.dataset.lodVisible = visible ? '1' : '0';
   }

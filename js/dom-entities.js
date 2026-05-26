@@ -143,6 +143,7 @@ function ensureShapeElement(idx) {
     el.className = 'entity entity-shape';
     el.dataset.entityType = 'shape';
     el.dataset.entityIdx = idx;
+    el.dataset.entityId = s.id;
     el.innerHTML = '<div class="entity-shape-border"></div><div class="entity-shape-fill"></div><div class="entity-shape-image-wrap"></div>' + makeHandlesHtml();
     document.body.appendChild(el);
     domByTypeIdx.shape[key] = el;
@@ -151,6 +152,7 @@ function ensureShapeElement(idx) {
   placeEntity(el, s.x, s.y, s.w, s.h, true);
   el.style.transform = `scale(${state.scale})`;
   el.style.transformOrigin = '0 0';
+  el.dataset.entityId = s.id;
   syncUnlockButton(el, !!s.locked, state.shapes, s.id);
 
   const borderEl = el.querySelector('.entity-shape-border');

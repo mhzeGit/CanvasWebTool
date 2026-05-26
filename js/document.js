@@ -70,6 +70,9 @@ export function addImageToShape(shapeIdx, src) {
   flushPanelEdit();
   const s = state.shapes[shapeIdx];
   if (!s) return;
+  if (s.image && s.image.id !== undefined) {
+    imageLOD.removeImage(s.image.id);
+  }
   const img = {
     id: _nextImageId++,
     src: src || '',

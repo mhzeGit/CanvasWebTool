@@ -22,7 +22,7 @@
 │   ├── document.js         Document CRUD: add/delete/duplicate/copy/paste every entity type, serialization round-trip, file new/save/open/reload
 │   ├── format.js           File format: header identifier (.cvdoc), serialize/deserialize, image asset extraction/embedding (data URI ↔ external file)
 │   ├── file-io.js          File I/O: File System Access API (showSaveFilePicker/showOpenFilePicker), Web Share fallback, download blob, OPFS asset storage
-│   ├── image-lod.js        Image LOD (Level of Detail) manager: generates downscaled versions (800/320/120/48px max) for each image, switches LOD based on zoom distance and viewport visibility, culls off-screen images to lowest LOD, called each animation frame
+│   ├── image-lod.js        Image LOD manager: generates per-image downscaled data URIs (5 levels: original/800/320/120/48px max), tracks state by stable shape.id (not array index), queries DOM via data-entity-id, updates `<img>.src` each frame, culls off-screen images to lowest LOD, per-generation canvas for thread-safe downscaling
 │   ├── json-port.js        Portable JSON export/import: human & AI-readable format with ID-based entity references, roundtrip for all entity types (textBoxes, shapes, arrows, connectors, connections) — independent of .cvdoc save system
 │   ├── history.js           Thin integration layer: creates shared history manager, wraps undo/redo with draw-order reparenting, flush/start panel edits
 │   ├── undo.js             **Command-pattern undo/redo** — createHistoryManager() factory, command factory functions for every operation, batch command wrapper
