@@ -23,6 +23,97 @@ import { destroyAllEntities } from './dom-entities.js';
 import { imageLOD } from './image-lod.js';
 import { showConfirmDialog } from './dialog.js';
 
+/**
+ * After deleting entities from textBoxes or shapes array by index, adjust all
+ * index-based references in arrows, connectors, and connections to account for
+ * the array shift caused by splice().
+ *
+ * @param {number[]} sortedDeletedIndices - deleted indices, sorted ascending
+ * @param {'textBox'|'shape'} entityType - which entity type was deleted
+ */
+function shiftIndexRefsAfterDelete(sortedDeletedIndices, entityType) {
+  if (sortedDeletedIndices.length === 0) return;
+  const isText = entityType === 'textBox';
+
+  function matchesType(refType) {
+    if (isText) return refType === 'textBox' || refType === null;
+    return refType === 'shape';
+  }
+
+  function calcShift(idx) {
+    if (idx === null || idx === undefined) return 0;
+    let cnt = 0;
+    for (const d of sortedDeletedIndices) {
+      if (d < idx) cnt++;
+      else break; // sorted ascending, no need to continue
+    }
+    return cnt;
+  }
+
+  // Adjust arrows
+  for (const arrow of state.arrows) {
+    if (arrow.connectedFrom !== null && matchesType(arrow.connectedFromType)) {
+      const s = calcShift(arrow.connectedFrom);
+      if (s > 0) arrow.connectedFrom -= s;
+    }
+    if (arrow.connectedTo !== null && matchesType(arrow.connectedToType)) {
+      const s = calcShift(arrow.connectedTo);
+      if (s > 0) arrow.connectedTo -= s;
+    }
+  }
+
+  // Adjust connectors
+  for (const conn of state.connectors) {
+    if (conn.connectedFrom !== null && matchesType(conn.connectedFromType)) {
+      const s = calcShift(conn.connectedFrom);
+      if (s > 0) conn.connectedFrom -= s;
+    }
+    if (conn.connectedTo !== null && matchesType(conn.connectedToType)) {
+      const s = calcShift(conn.connectedTo);
+      if (s > 0) conn.connectedTo -= s;
+    }
+  }
+
+  // Adjust bezier connections (only for textBox deletes)
+  if (isText) {
+    for (const conn of state.connections) {
+      if (conn.from !== null && conn.from !== undefined) {
+        const s = calcShift(conn.from);
+        if (s > 0) conn.from -= s;
+      }
+      if (conn.to !== null && conn.to !== undefined) {
+        const s = calcShift(conn.to);
+        if (s > 0) conn.to -= s;
+      }
+    }
+  }
+}
+
+/**
+ * Capture pre-deletion reference state of arrows, connectors, and connections
+ * for undo/redo correctness.
+ */
+function snapshotRefState() {
+  return {
+    arrows: state.arrows.map(a => ({
+      connectedFrom: a.connectedFrom,
+      connectedFromType: a.connectedFromType,
+      connectedTo: a.connectedTo,
+      connectedToType: a.connectedToType,
+    })),
+    connectors: state.connectors.map(c => ({
+      connectedFrom: c.connectedFrom,
+      connectedFromType: c.connectedFromType,
+      connectedTo: c.connectedTo,
+      connectedToType: c.connectedToType,
+    })),
+    connections: state.connections.map(c => ({
+      from: c.from,
+      to: c.to,
+    })),
+  };
+}
+
 let _nextImageId = 1;
 
 export function addImageContainerAt(worldX, worldY, optW, optH) {
@@ -317,6 +408,7 @@ export function deleteSelectedShapes() {
   const sortedIndices = Array.from(state.selectedShapes).sort((a, b) => a - b);
   const deletedSet = new Set(sortedIndices);
   const deletedEntries = sortedIndices.map(i => ({ shape: state.shapes[i], index: i }));
+  const refSnapshot = snapshotRefState();
 
   for (const arrow of state.arrows) {
     if (arrow.connectedFrom !== null && arrow.connectedFromType === 'shape' && deletedSet.has(arrow.connectedFrom)) {
@@ -341,9 +433,16 @@ export function deleteSelectedShapes() {
   for (let i = sortedIndices.length - 1; i >= 0; i--) {
     state.shapes.splice(sortedIndices[i], 1);
   }
+
+  // Adjust remaining index-based references for the array shift
+  shiftIndexRefsAfterDelete(sortedIndices, 'shape');
+
   state.selectedShapes.clear();
   refreshSidePanel();
-  history.push(createDeleteShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, deletedEntries));
+  history.push(createDeleteShapesCmd(
+    state.shapes, state.selectedShapes, refreshSidePanel, deletedEntries,
+    sortedIndices, 'shape', refSnapshot, shiftIndexRefsAfterDelete
+  ));
 }
 
 export function deleteSelectedTextBoxes() {
@@ -352,21 +451,21 @@ export function deleteSelectedTextBoxes() {
   const sortedIndices = Array.from(state.selectedTextBoxes).sort((a, b) => a - b);
   const deletedSet = new Set(sortedIndices);
   const deletedEntries = sortedIndices.map(i => ({ textBox: state.textBoxes[i], index: i }));
-  const deletedIds = new Set(deletedEntries.map(e => e.textBox.id));
+  const refSnapshot = snapshotRefState();
 
   for (const arrow of state.arrows) {
-    if (arrow.connectedFrom !== null && arrow.connectedFromType === 'textBox' && deletedSet.has(arrow.connectedFrom)) {
+    if (arrow.connectedFrom !== null && (arrow.connectedFromType === 'textBox' || arrow.connectedFromType === null) && deletedSet.has(arrow.connectedFrom)) {
       arrow.connectedFrom = null; arrow.connectedFromType = null;
     }
-    if (arrow.connectedTo !== null && arrow.connectedToType === 'textBox' && deletedSet.has(arrow.connectedTo)) {
+    if (arrow.connectedTo !== null && (arrow.connectedToType === 'textBox' || arrow.connectedToType === null) && deletedSet.has(arrow.connectedTo)) {
       arrow.connectedTo = null; arrow.connectedToType = null;
     }
   }
   for (const conn of state.connectors) {
-    if (conn.connectedFrom !== null && conn.connectedFromType === 'textBox' && deletedSet.has(conn.connectedFrom)) {
+    if (conn.connectedFrom !== null && (conn.connectedFromType === 'textBox' || conn.connectedFromType === null) && deletedSet.has(conn.connectedFrom)) {
       conn.connectedFrom = null; conn.connectedFromType = null;
     }
-    if (conn.connectedTo !== null && conn.connectedToType === 'textBox' && deletedSet.has(conn.connectedTo)) {
+    if (conn.connectedTo !== null && (conn.connectedToType === 'textBox' || conn.connectedToType === null) && deletedSet.has(conn.connectedTo)) {
       conn.connectedTo = null; conn.connectedToType = null;
     }
   }
@@ -377,9 +476,16 @@ export function deleteSelectedTextBoxes() {
   for (let i = sortedIndices.length - 1; i >= 0; i--) {
     state.textBoxes.splice(sortedIndices[i], 1);
   }
+
+  // Adjust remaining index-based references for the array shift
+  shiftIndexRefsAfterDelete(sortedIndices, 'textBox');
+
   state.selectedTextBoxes.clear();
   refreshSidePanel();
-  history.push(createDeleteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, deletedEntries));
+  history.push(createDeleteTextBoxesCmd(
+    state.textBoxes, state.selectedTextBoxes, refreshSidePanel, deletedEntries,
+    sortedIndices, 'textBox', refSnapshot, shiftIndexRefsAfterDelete
+  ));
 }
 
 export function deleteSelectedConnectors() {
@@ -433,9 +539,9 @@ export function deleteSelectedTextBoxesWithConnections() {
   flushPanelEdit();
   const sortedIndices = Array.from(state.selectedTextBoxes).sort((a, b) => a - b);
   const deletedEntries = sortedIndices.map(i => ({ textBox: state.textBoxes[i], index: i }));
+  const refSnapshot = snapshotRefState();
 
   const toDelete = new Set(state.selectedTextBoxes);
-  const deletedIds = new Set(deletedEntries.map(e => e.textBox.id));
 
   for (const arrow of state.arrows) {
     if (arrow.connectedFrom !== null) {
@@ -487,9 +593,16 @@ export function deleteSelectedTextBoxesWithConnections() {
   for (let i = sortedIndices.length - 1; i >= 0; i--) {
     state.textBoxes.splice(sortedIndices[i], 1);
   }
+
+  // Adjust remaining index-based references for the array shift
+  shiftIndexRefsAfterDelete(sortedIndices, 'textBox');
+
   state.selectedTextBoxes.clear();
   refreshSidePanel();
-  history.push(createDeleteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, deletedEntries));
+  history.push(createDeleteTextBoxesCmd(
+    state.textBoxes, state.selectedTextBoxes, refreshSidePanel, deletedEntries,
+    sortedIndices, 'textBox', refSnapshot, shiftIndexRefsAfterDelete
+  ));
 }
 
 export function duplicateSelectedTextBoxes() {

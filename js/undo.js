@@ -124,11 +124,41 @@ export function createAddShapeCmd(shapes, selectedShapes, refreshPanelFn, shape,
   };
 }
 
-export function createDeleteShapesCmd(shapes, selectedShapes, refreshPanelFn, deletedEntries) {
+export function createDeleteShapesCmd(shapes, selectedShapes, refreshPanelFn, deletedEntries,
+  sortedDeletedIndices, entityType, refSnapshot, shiftFn) {
   return {
     undo() {
+      // Restore shapes at original indices
       for (let i = 0; i < deletedEntries.length; i++) {
         shapes.splice(deletedEntries[i].index, 0, deletedEntries[i].shape);
+      }
+      // Restore arrow/connector reference state from before deletion
+      for (let i = 0; i < refSnapshot.arrows.length; i++) {
+        const a = state.arrows[i];
+        if (a) {
+          a.connectedFrom = refSnapshot.arrows[i].connectedFrom;
+          a.connectedFromType = refSnapshot.arrows[i].connectedFromType;
+          a.connectedTo = refSnapshot.arrows[i].connectedTo;
+          a.connectedToType = refSnapshot.arrows[i].connectedToType;
+        }
+      }
+      for (let i = 0; i < refSnapshot.connectors.length; i++) {
+        const c = state.connectors[i];
+        if (c) {
+          c.connectedFrom = refSnapshot.connectors[i].connectedFrom;
+          c.connectedFromType = refSnapshot.connectors[i].connectedFromType;
+          c.connectedTo = refSnapshot.connectors[i].connectedTo;
+          c.connectedToType = refSnapshot.connectors[i].connectedToType;
+        }
+      }
+      if (refSnapshot.connections) {
+        for (let i = 0; i < refSnapshot.connections.length; i++) {
+          const c = state.connections[i];
+          if (c) {
+            c.from = refSnapshot.connections[i].from;
+            c.to = refSnapshot.connections[i].to;
+          }
+        }
       }
       selectedShapes.clear();
       for (const entry of deletedEntries) selectedShapes.add(entry.index);
@@ -141,6 +171,8 @@ export function createDeleteShapesCmd(shapes, selectedShapes, refreshPanelFn, de
       for (let i = shapes.length - 1; i >= 0; i--) {
         if (ids.has(shapes[i].id)) shapes.splice(i, 1);
       }
+      // Re-apply index shift so references stay correct
+      if (shiftFn) shiftFn(sortedDeletedIndices, entityType);
       selectedShapes.clear();
       state.markDrawOrderDirty();
       state.reparentAll();
@@ -253,11 +285,41 @@ export function createAddTextBoxCmd(textBoxes, selectedTextBoxes, refreshPanelFn
   };
 }
 
-export function createDeleteTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPanelFn, deletedEntries) {
+export function createDeleteTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPanelFn, deletedEntries,
+  sortedDeletedIndices, entityType, refSnapshot, shiftFn) {
   return {
     undo() {
+      // Restore textBoxes at original indices
       for (let i = 0; i < deletedEntries.length; i++) {
         textBoxes.splice(deletedEntries[i].index, 0, deletedEntries[i].textBox);
+      }
+      // Restore arrow/connector/connection reference state from before deletion
+      for (let i = 0; i < refSnapshot.arrows.length; i++) {
+        const a = state.arrows[i];
+        if (a) {
+          a.connectedFrom = refSnapshot.arrows[i].connectedFrom;
+          a.connectedFromType = refSnapshot.arrows[i].connectedFromType;
+          a.connectedTo = refSnapshot.arrows[i].connectedTo;
+          a.connectedToType = refSnapshot.arrows[i].connectedToType;
+        }
+      }
+      for (let i = 0; i < refSnapshot.connectors.length; i++) {
+        const c = state.connectors[i];
+        if (c) {
+          c.connectedFrom = refSnapshot.connectors[i].connectedFrom;
+          c.connectedFromType = refSnapshot.connectors[i].connectedFromType;
+          c.connectedTo = refSnapshot.connectors[i].connectedTo;
+          c.connectedToType = refSnapshot.connectors[i].connectedToType;
+        }
+      }
+      if (refSnapshot.connections) {
+        for (let i = 0; i < refSnapshot.connections.length; i++) {
+          const c = state.connections[i];
+          if (c) {
+            c.from = refSnapshot.connections[i].from;
+            c.to = refSnapshot.connections[i].to;
+          }
+        }
       }
       selectedTextBoxes.clear();
       for (const entry of deletedEntries) selectedTextBoxes.add(entry.index);
@@ -270,6 +332,8 @@ export function createDeleteTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPa
       for (let i = textBoxes.length - 1; i >= 0; i--) {
         if (ids.has(textBoxes[i].id)) textBoxes.splice(i, 1);
       }
+      // Re-apply index shift so references stay correct
+      if (shiftFn) shiftFn(sortedDeletedIndices, entityType);
       selectedTextBoxes.clear();
       state.markDrawOrderDirty();
       state.reparentAll();
