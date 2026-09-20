@@ -16,6 +16,7 @@
 | `npm start` | Runs the desktop app (Electron) |
 | `npm run serve` | Serves the web app on :5173 |
 | `npm run dist` | Builds the Windows installer + portable .exe into `release/` |
+| `build-and-run.bat` | Click-to-run: clean `release/`, rebuild, then launch the built portable .exe |
 | `npm test` | Node test runner over `test/**/*.test.mjs` |
 | `npm run smoke` | Boots the real window, drives it via agent commands, captures a PNG |
 | `npm run bench` | Measures idle CPU with a large document loaded |
@@ -29,6 +30,7 @@ Building Windows artifacts on Linux additionally needs Wine (32-bit, for the NSI
 ├── index.html              Entry point. Top bar menus, toolbar, canvas layers, side panel, CSP, import map pointing at vendor/
 ├── css/style.css           Complete dark/light theme (CSS custom properties). Canvas, panel, context menu, inline editors, markdown, responsive mobile (<=768px)
 ├── serve.py                Python static file server with correct JS MIME types. Run: python serve.py --port 5173
+├── build-and-run.bat       Windows one-click build: deletes release/, re-runs npm run vendor, runs npm run dist, then launches the freshly built portable .exe (falls back to release/win-unpacked/Canvas.exe)
 ├── package.json            Scripts, electron-builder deps, and the pinned browser modules that `npm run vendor` copies into vendor/
 ├── electron-builder.yml    Packaging config: which files go in the asar, Windows nsis + portable targets, file associations
 ├── vendor/                 **Generated, gitignored** — Tiptap/ProseMirror ES modules copied out of node_modules so the app needs no network
