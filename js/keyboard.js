@@ -22,6 +22,12 @@ export function setupKeyboard() {
   window.addEventListener('keydown', onKeyDown);
 }
 
+function isTextFocused() {
+  const el = document.activeElement;
+  if (!el) return false;
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
+}
+
 function handleMarkdownShortcut(e) {
   const el = document.activeElement;
   if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return false;
@@ -68,32 +74,49 @@ function wrapSelection(el, wrapper) {
 }
 
 function onKeyDown(e) {
-  const active = document.activeElement;
-  const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+  const textFocused = isTextFocused();
+  const editing = state.editingState;
+  const ctrl = e.ctrlKey || e.metaKey;
+  const key = e.key;
+  const keyLower = key.toLowerCase();
 
-  if (isInput && handleMarkdownShortcut(e)) {
-    return;
-  }
-
-  if (state.editingState) {
-    if (e.key === 'Escape') {
-      cancelEditing();
-      e.preventDefault();
+  if (textFocused || editing) {
+    if (textFocused && !editing && handleMarkdownShortcut(e)) {
+      return;
+    }
+    if (editing) {
+      if (key === 'Escape') {
+        cancelEditing();
+        e.preventDefault();
+      }
+      return;
     }
     return;
   }
 
-  if (!isInput && (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key.toLowerCase() === 'z')) {
+  if (ctrl && keyLower === 's') {
+    e.preventDefault();
+    if (e.shiftKey) {
+      saveDocumentAs();
+    } else {
+      saveDocument();
+    }
+    return;
+  }
+
+  if (ctrl && !e.shiftKey && keyLower === 'z') {
     performUndo();
     e.preventDefault();
     return;
   }
-  if (!isInput && (e.ctrlKey || e.metaKey) && ((e.shiftKey && e.key.toLowerCase() === 'z') || e.key.toLowerCase() === 'y')) {
+
+  if (ctrl && ((e.shiftKey && keyLower === 'z') || keyLower === 'y')) {
     performRedo();
     e.preventDefault();
     return;
   }
-  if (!isInput && (e.key === 'Delete' || e.key === 'Backspace')) {
+
+  if (key === 'Delete' || key === 'Backspace') {
     if (state.selectedShapes.size > 0) {
       deleteSelectedShapes();
       e.preventDefault();
@@ -122,13 +145,14 @@ function onKeyDown(e) {
     deleteSelectedNodes();
     e.preventDefault();
   }
-  if (!isInput && (e.key.startsWith('Arrow'))) {
+
+  if (key.startsWith('Arrow')) {
     if (state.drawingTool || state.connectingFrom !== null) return;
     if (state.selectedShapes.size === 0 && state.selectedTextBoxes.size === 0 &&
         state.selectedConnectors.size === 0 && state.selectedArrows.size === 0) return;
     e.preventDefault();
     const inc = e.shiftKey ? 1 : getSnapIncrement(state.scale);
-    switch (e.key) {
+    switch (key) {
       case 'ArrowUp': nudgeSelected(0, -inc); break;
       case 'ArrowDown': nudgeSelected(0, inc); break;
       case 'ArrowLeft': nudgeSelected(-inc, 0); break;
@@ -136,7 +160,8 @@ function onKeyDown(e) {
     }
     return;
   }
-  if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c')) {
+
+  if (ctrl && keyLower === 'c') {
     if (state.hoveredPropField) {
       copyHoveredProp();
       e.preventDefault();
@@ -145,7 +170,8 @@ function onKeyDown(e) {
     copySelectedNodes();
     e.preventDefault();
   }
-  if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'v')) {
+
+  if (ctrl && keyLower === 'v') {
     if (state.hoveredPropField && state.propertyClipboard) {
       pasteHoveredProp();
       e.preventDefault();
@@ -158,11 +184,13 @@ function onKeyDown(e) {
     pasteNodesAt(world.x, world.y);
     e.preventDefault();
   }
-  if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'd')) {
+
+  if (ctrl && keyLower === 'd') {
     duplicateSelectedNodes();
     e.preventDefault();
   }
-  if (!isInput && e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey) {
+
+  if (keyLower === 'f' && !ctrl) {
     e.preventDefault();
     if (fKeyTimer) {
       clearTimeout(fKeyTimer);
@@ -176,7 +204,8 @@ function onKeyDown(e) {
     }
     return;
   }
-  if (!isInput && e.key === 'Escape') {
+
+  if (key === 'Escape') {
     if (state.drawingTool) {
       state.drawingTool = null;
       state.drawingStartX = 0;
@@ -363,17 +392,3 @@ function pasteHoveredProp() {
   flushPanelEdit();
   refreshSidePanel();
 }
-
-window.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-    const active = document.activeElement;
-    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
-    if (isInput) return;
-    e.preventDefault();
-    if (e.shiftKey) {
-      saveDocumentAs();
-    } else {
-      saveDocument();
-    }
-  }
-});
