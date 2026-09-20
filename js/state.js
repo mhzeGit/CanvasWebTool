@@ -51,6 +51,50 @@ function escAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/**
+ * Observers of "which document, and does it have unsaved changes".
+ *
+ * These three fields are written from a couple of dozen places, so rather than
+ * making every one of them remember to notify, they are accessors that fire
+ * these listeners whenever a value actually changes. Auto-save and the desktop
+ * window title and CLI status both hang off this.
+ */
+const documentStatusListeners = new Set();
+
+export function onDocumentStatusChange(listener) {
+  documentStatusListeners.add(listener);
+  return () => documentStatusListeners.delete(listener);
+}
+
+function notifyDocumentStatus() {
+  for (const listener of documentStatusListeners) {
+    try {
+      listener();
+    } catch (err) {
+      console.error('Document status listener failed:', err);
+    }
+  }
+}
+
+/** Define a state field that notifies when it changes. */
+function observableField(name, normalise) {
+  const backing = '_' + name;
+  return {
+    get() {
+      return this[backing];
+    },
+    set(value) {
+      const next = normalise(value);
+      if (next === this[backing]) return;
+      this[backing] = next;
+      notifyDocumentStatus();
+    },
+  };
+}
+
+const asBoolean = (value) => !!value;
+const asStringOrNull = (value) => (typeof value === 'string' && value.length > 0 ? value : null);
+
 export const state = {
   parentTree: new ParentTree(),
 
@@ -79,8 +123,12 @@ export const state = {
   hoveredPropField: null,
 
   panelPendingEdit: null,
-  currentFileName: null,
-  isDirty: false,
+
+  // Document status: see observableField above. The backing fields are
+  // declared here so the object has a stable shape.
+  _currentFileName: null,
+  _currentFilePath: null,
+  _isDirty: false,
 
   isSelectingBox: false,
   boxStartX: 0,
@@ -220,3 +268,12 @@ export const state = {
   computeSelectionKey,
   escAttr,
 };
+
+Object.defineProperties(state, {
+  /** Whether the document has changes that are not on disk. */
+  isDirty: observableField('isDirty', asBoolean),
+  /** File name of the open document, or null when it has never been saved. */
+  currentFileName: observableField('currentFileName', asStringOrNull),
+  /** Absolute path on disk, when the desktop build knows it; null in a browser. */
+  currentFilePath: observableField('currentFilePath', asStringOrNull),
+});

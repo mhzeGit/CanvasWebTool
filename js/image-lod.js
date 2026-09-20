@@ -1,4 +1,6 @@
 import { state } from './state.js';
+import { getEntityElement } from './dom-entities.js';
+import { requestRender } from './render-scheduler.js';
 
 const LOD_CONFIG = [
   { level: 0, threshold: 600, maxDim: null },
@@ -61,10 +63,14 @@ class ImageLODManager {
         }
       }
       entry.loading = false;
+      // Decoding and downscaling finish asynchronously, with no user input to
+      // trigger the next frame, so ask for one explicitly.
+      requestRender(2);
     };
     img.onerror = () => {
       entry.lods = [imageSrc];
       entry.loading = false;
+      requestRender(2);
     };
     img.src = imageSrc;
   }
@@ -112,87 +118,81 @@ class ImageLODManager {
     const canvasCssW = state.canvas.width / dpr;
     const canvasCssH = state.canvas.height / dpr;
 
-    const currentShapeIds = new Set();
+    const liveShapeIds = new Set();
+    const liveImageIds = new Set();
 
     for (let i = 0; i < shapes.length; i++) {
       const shape = shapes[i];
-      if (!shape || !shape.image) continue;
+      const imgData = shape?.image;
+      if (!imgData) continue;
 
-      const shapeId = shape.id;
-      currentShapeIds.add(shapeId);
+      liveShapeIds.add(shape.id);
+      liveImageIds.add(imgData.id);
 
-      const imgData = shape.image;
-      const prevState = this._shapeState.get(shapeId);
+      // The element is looked up by array position rather than with an
+      // attribute selector, which used to run a document-wide query for every
+      // image on every frame.
+      const el = getEntityElement('shape', i);
 
-      if (prevState && prevState.imageId !== imgData.id) {
-        this._clearDomSrc(shapeId);
-        this._shapeState.delete(shapeId);
+      const previous = this._shapeState.get(shape.id);
+      if (previous && previous.imageId !== imgData.id) {
+        clearImageSrc(el);
+        this._shapeState.delete(shape.id);
       }
 
-      if (!this._cache.has(imgData.id)) {
-        this.generateLODs(imgData.id, imgData.src);
-      }
+      if (!this._cache.has(imgData.id)) this.generateLODs(imgData.id, imgData.src);
 
       const visible = this._isInViewport(shape, offsetX, offsetY, scale, canvasCssW, canvasCssH);
-      const screenWidth = shape.w * scale;
-      let targetSrc = null;
-      let targetLevel = -1;
+      // Off-screen images drop to the smallest level so panning stays cheap.
+      const lod = this._getLOD(imgData.id, visible ? shape.w * scale : 0);
+      if (!lod) continue;
 
-      const lod = visible
-        ? this._getLOD(imgData.id, screenWidth)
-        : this._getLOD(imgData.id, 0);
-      if (lod) { targetSrc = lod.src; targetLevel = lod.level; }
-
-      if (targetSrc) {
-        this._shapeState.set(shapeId, { level: targetLevel, src: targetSrc, imageId: imgData.id });
-        this._applyToDom(shapeId, targetSrc, targetLevel, visible);
-      }
+      this._shapeState.set(shape.id, { level: lod.level, src: lod.src, imageId: imgData.id });
+      applyImageSrc(el, lod.src, lod.level, visible);
     }
 
-    for (const [shapeId] of this._shapeState) {
-      if (!currentShapeIds.has(shapeId)) {
-        this._shapeState.delete(shapeId);
-      }
+    for (const shapeId of this._shapeState.keys()) {
+      if (!liveShapeIds.has(shapeId)) this._shapeState.delete(shapeId);
     }
-
-    const staleCacheKeys = [];
-    for (const key of this._cache.keys()) {
-      let found = false;
-      for (const shape of shapes) {
-        if (shape.image && shape.image.id === key) { found = true; break; }
-      }
-      if (!found) staleCacheKeys.push(key);
-    }
-    for (const key of staleCacheKeys) {
-      this._cache.delete(key);
+    for (const imageId of this._cache.keys()) {
+      if (!liveImageIds.has(imageId)) this._cache.delete(imageId);
     }
   }
+}
 
-  _clearDomSrc(shapeId) {
-    const el = document.querySelector(`[data-entity-type="shape"][data-entity-id="${shapeId}"]`);
-    if (!el) return;
-    const innerImg = el.querySelector('.si-img-inner');
-    if (innerImg) innerImg.removeAttribute('src');
+/** The <img> inside a shape element, or null if it has no image layer yet. */
+function imageElement(el) {
+  return el ? el.querySelector('.si-img-inner') : null;
+}
+
+function clearImageSrc(el) {
+  const img = imageElement(el);
+  if (!img) return;
+  img.removeAttribute('src');
+  img._appliedSrc = null;
+}
+
+/**
+ * Point the <img> at the chosen level. The last applied value is remembered on
+ * the element: comparing against `img.src` would compare the whole data URL
+ * string — often megabytes — on every frame.
+ */
+function applyImageSrc(el, src, level, visible) {
+  const img = imageElement(el);
+  if (!img) return;
+
+  if (img._appliedSrc !== src) {
+    img._appliedSrc = src;
+    img.src = src;
   }
 
-  _applyToDom(shapeId, src, level, visible) {
-    const el = document.querySelector(`[data-entity-type="shape"][data-entity-id="${shapeId}"]`);
-    if (!el) return;
-
-    const imageWrap = el.querySelector('.entity-shape-image-wrap');
-    if (!imageWrap) return;
-
-    const innerImg = imageWrap.querySelector('.si-img-inner');
-    if (!innerImg) return;
-
-    if (innerImg.src !== src) {
-      innerImg.src = src;
-    }
-
-    imageWrap.dataset.lod = level >= 0 && LOD_CONFIG[level] ? LOD_CONFIG[level].label || 'original' : 'original';
-    imageWrap.dataset.lodLevel = level;
-    imageWrap.dataset.lodVisible = visible ? '1' : '0';
-  }
+  // Diagnostics: makes the chosen level and cull state visible in devtools.
+  const wrap = el._parts?.imageWrap;
+  if (!wrap) return;
+  const lodLevel = String(level);
+  const lodVisible = visible ? '1' : '0';
+  if (wrap.dataset.lodLevel !== lodLevel) wrap.dataset.lodLevel = lodLevel;
+  if (wrap.dataset.lodVisible !== lodVisible) wrap.dataset.lodVisible = lodVisible;
 }
 
 export const imageLOD = new ImageLODManager();

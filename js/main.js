@@ -1,6 +1,6 @@
-import { state } from './state.js';
-import { GRID } from './config.js';
+import { state, onDocumentStatusChange } from './state.js';
 import { drawGrid } from './grid.js';
+import { requestRender, startRenderLoop } from './render-scheduler.js';
 import { initSettings } from './settings.js';
 import { openSettings } from './settings-dialog.js';
 import { drawSelectionMarquee, drawNodePreview } from './nodes.js';
@@ -32,66 +32,72 @@ import { initEntityLayer, syncAllEntities } from './dom-entities.js';
 import { imageLOD } from './image-lod.js';
 import { hasCachedFileHandle, checkFileModified } from './file-io.js';
 import { downloadPortableJSON, openPortableJSON } from './json-port.js';
+import { initDesktopIntegration } from './desktop.js';
+
+const MOBILE_BREAKPOINT_PX = 768;
+const TOP_BAR_PX = 40;
+const MOBILE_TOOLBAR_PX = 52;
 
 function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
   const sideEl = document.getElementById('sidePanel');
   const toolbarEl = document.getElementById('leftToolbar');
-  const isMobile = window.innerWidth <= 768;
+  const isMobile = window.innerWidth <= MOBILE_BREAKPOINT_PX;
   const sideVisible = sideEl && sideEl.classList.contains('mobile-visible');
-  const sideWidthPx = sideVisible ? sideEl.getBoundingClientRect().width : (isMobile ? 0 : (sideEl ? sideEl.getBoundingClientRect().width : Math.floor(window.innerWidth * 0.30)));
-  const toolbarWidthPx = isMobile ? 0 : (toolbarEl ? toolbarEl.getBoundingClientRect().width : 0);
-  const toolbarBottomPx = isMobile ? 52 : 0;
-  const topBarPx = 40;
+
+  let sideWidthPx;
+  if (sideVisible) sideWidthPx = sideEl.getBoundingClientRect().width;
+  else if (isMobile) sideWidthPx = 0;
+  else if (sideEl) sideWidthPx = sideEl.getBoundingClientRect().width;
+  else sideWidthPx = Math.floor(window.innerWidth * 0.30);
+
+  const toolbarWidthPx = isMobile || !toolbarEl ? 0 : toolbarEl.getBoundingClientRect().width;
   const cssWidth = window.innerWidth - sideWidthPx - toolbarWidthPx;
-  const cssHeight = window.innerHeight - topBarPx - toolbarBottomPx;
-  state.canvas.style.width = cssWidth + 'px';
-  state.canvas.style.height = cssHeight + 'px';
-  state.canvas.width = cssWidth * dpr;
-  state.canvas.height = cssHeight * dpr;
-  state.arrowCanvas.style.width = cssWidth + 'px';
-  state.arrowCanvas.style.height = cssHeight + 'px';
-  state.arrowCanvas.width = cssWidth * dpr;
-  state.arrowCanvas.height = cssHeight * dpr;
+  const cssHeight = window.innerHeight - TOP_BAR_PX - (isMobile ? MOBILE_TOOLBAR_PX : 0);
+
+  for (const canvas of [state.canvas, state.arrowCanvas]) {
+    canvas.style.width = cssWidth + 'px';
+    canvas.style.height = cssHeight + 'px';
+    canvas.width = cssWidth * dpr;
+    canvas.height = cssHeight * dpr;
+  }
+
+  // Resizing a canvas clears it, so the next frame must redraw.
+  requestRender(2);
 }
 
-function animate() {
-  const ctx = state.ctx;
-  const canvas = state.canvas;
+/** Drop connections whose endpoints no longer exist, keeping the selection valid. */
+function pruneDanglingConnections() {
+  for (let i = state.connections.length - 1; i >= 0; i--) {
+    const conn = state.connections[i];
+    if (state.textBoxes[conn.from] && state.textBoxes[conn.to]) continue;
 
-  state.offsetX += (state.targetOffsetX - state.offsetX) * GRID.panLerp;
-  state.offsetY += (state.targetOffsetY - state.offsetY) * GRID.panLerp;
-  state.scale += (state.targetScale - state.scale) * GRID.zoomLerp;
+    state.connections.splice(i, 1);
+    if (state.selectedConnection === i) state.selectedConnection = null;
+    else if (state.selectedConnection > i) state.selectedConnection--;
+  }
+}
 
-  const dpr = window.devicePixelRatio || 1;
-
+function clearCanvas(ctx, canvas) {
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.restore();
+}
 
-  drawGrid(ctx, canvas, state.offsetX, state.offsetY, state.scale, dpr);
+function drawFrame() {
+  const dpr = window.devicePixelRatio || 1;
+
+  clearCanvas(state.ctx, state.canvas);
+  drawGrid(state.ctx, state.canvas, state.offsetX, state.offsetY, state.scale, dpr);
 
   const actx = state.arrowCtx;
-  const acvs = state.arrowCanvas;
-  actx.save();
-  actx.setTransform(1, 0, 0, 1, 0, 0);
-  actx.clearRect(0, 0, acvs.width, acvs.height);
-  actx.restore();
+  clearCanvas(actx, state.arrowCanvas);
   actx.setTransform(dpr, 0, 0, dpr, 0, 0);
   actx.translate(state.offsetX, state.offsetY);
   actx.scale(state.scale, state.scale);
 
-  for (let ci = state.connections.length - 1; ci >= 0; ci--) {
-    const conn = state.connections[ci];
-    const fromNode = state.textBoxes[conn.from];
-    const toNode = state.textBoxes[conn.to];
-    if (!fromNode || !toNode) {
-      state.connections.splice(ci, 1);
-      if (state.selectedConnection === ci) state.selectedConnection = null;
-      else if (state.selectedConnection > ci) state.selectedConnection--;
-    }
-  }
+  pruneDanglingConnections();
 
   updateArrowPositionsFromConnections();
   updateConnectorPositionsFromConnections();
@@ -116,12 +122,10 @@ function animate() {
     refreshSidePanel();
     state.lastPanelKey = key;
   }
-
-  requestAnimationFrame(animate);
 }
 
 function drawImageContainerPreview() {
-  if (!state.drawingTool || state.drawingTool !== 'imageContainer') return;
+  if (state.drawingTool !== 'imageContainer') return;
   drawShapePreview();
 }
 
@@ -182,24 +186,34 @@ function initTopBar() {
   addTouchGuard(mobileSaveBtn, saveDocument);
 }
 
+/**
+ * Save an already-saved document ten seconds after it last went dirty.
+ *
+ * The original implementation polled every two seconds and re-armed a timeout
+ * on each tick, so the timer was pushed back before it could ever fire while
+ * edits kept arriving, and it kept a poll running for the life of the app. A
+ * single debounce, re-armed only when the document actually becomes dirty,
+ * does the same job with no idle work.
+ */
 function setupAutoSave() {
-  let timer = null;
   const AUTO_SAVE_DELAY = 10000;
+  let timer = null;
 
-  setInterval(() => {
-    if (state.isDirty && state.currentFileName && hasCachedFileHandle()) {
-      clearTimeout(timer);
-      timer = setTimeout(async () => {
-        timer = null;
-        if (state.isDirty) {
-          await saveDocument();
-        }
-      }, AUTO_SAVE_DELAY);
-    } else {
+  const canAutoSave = () => state.isDirty && state.currentFileName && hasCachedFileHandle();
+
+  onDocumentStatusChange(() => {
+    if (!canAutoSave()) {
       clearTimeout(timer);
       timer = null;
+      return;
     }
-  }, 2000);
+    if (timer !== null) return; // already counting down
+
+    timer = setTimeout(async () => {
+      timer = null;
+      if (canAutoSave()) await saveDocument();
+    }, AUTO_SAVE_DELAY);
+  });
 }
 
 function setupExternalChangeDetection() {
@@ -355,7 +369,9 @@ function init() {
     if (didClear) refreshSidePanel();
   });
 
-  animate();
+  initDesktopIntegration();
+
+  startRenderLoop(state, drawFrame);
 }
 
 window.addEventListener('beforeunload', (e) => {

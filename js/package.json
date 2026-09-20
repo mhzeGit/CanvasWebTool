@@ -1,0 +1,4 @@
+{
+  "_comment": "Scopes js/ to ES modules for Node. Browsers load these files via <script type=\"module\"> and ignore this file, but the CLI imports js/format.js and js/portable-format.js directly, and without this Node would read them as CommonJS. The root package stays CommonJS so the Electron preload script can require().",
+  "type": "module"
+}

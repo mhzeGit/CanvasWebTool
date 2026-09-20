@@ -1,0 +1,16 @@
+#!/bin/sh
+# Canvas CLI launcher for the installed desktop app.
+#
+# ELECTRON_RUN_AS_NODE makes the Canvas binary behave as a plain Node runtime,
+# so the CLI works without Node being installed separately and never opens a
+# window. Run `canvas path --install` once to put this folder on your PATH.
+set -e
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+resources=$(dirname -- "$here")
+
+case "$(uname -s)" in
+  Darwin) binary="$(dirname -- "$(dirname -- "$resources")")/MacOS/Canvas" ;;
+  *)      binary="$(dirname -- "$resources")/canvas" ;;
+esac
+
+ELECTRON_RUN_AS_NODE=1 exec "$binary" "$resources/app.asar/bin/canvas.mjs" "$@"

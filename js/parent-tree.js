@@ -7,9 +7,15 @@ export class ParentTree {
     this._dirty = new Set();
     this._depths = new Map();
     this._depthDirty = true;
+
+    // Cached result of getDrawOrder, revalidated cheaply on each call.
+    this._drawOrder = null;
+    this._drawOrderShapeCount = -1;
+    this._drawOrderTextBoxCount = -1;
   }
 
   rebuildAll(shapes, textBoxes) {
+    this._invalidateDrawOrder();
     this._entities.clear();
     this._parent.clear();
     this._children.clear();
@@ -141,29 +147,68 @@ export class ParentTree {
     return this._depths.get(type + ':' + id) || 0;
   }
 
+  /**
+   * Entities ordered back-to-front: shallower first, and larger first within a
+   * depth so a container never covers what it contains.
+   *
+   * Called several times per frame (draw order, hit testing, entity sync), so
+   * the result is cached and only re-sorted when an input to the ordering
+   * actually changes. Checking that is a linear scan with no allocation, which
+   * is far cheaper than rebuilding and sorting the list every time.
+   */
   getDrawOrder(shapes, textBoxes) {
     this._ensureDepths();
-    const items = [];
+    if (this._drawOrder && this._drawOrderMatches(shapes, textBoxes)) {
+      return this._drawOrder;
+    }
 
+    const items = [];
     for (let i = 0; i < shapes.length; i++) {
-      const depth = this._depths.get('shape:' + shapes[i].id) || 0;
-      items.push({ type: 'shape', i, area: shapes[i].w * shapes[i].h, depth });
+      items.push({
+        type: 'shape',
+        i,
+        area: shapes[i].w * shapes[i].h,
+        depth: this._depths.get('shape:' + shapes[i].id) || 0,
+      });
     }
     for (let i = 0; i < textBoxes.length; i++) {
-      const depth = this._depths.get('textBox:' + textBoxes[i].id) || 0;
-      items.push({ type: 'textBox', i, area: textBoxes[i].w * textBoxes[i].h, depth });
+      items.push({
+        type: 'textBox',
+        i,
+        area: textBoxes[i].w * textBoxes[i].h,
+        depth: this._depths.get('textBox:' + textBoxes[i].id) || 0,
+      });
     }
 
-    items.sort((a, b) => {
-      if (a.depth !== b.depth) return a.depth - b.depth;
-      return b.area - a.area;
-    });
+    items.sort((a, b) => (a.depth !== b.depth ? a.depth - b.depth : b.area - a.area));
 
+    this._drawOrder = items;
+    this._drawOrderShapeCount = shapes.length;
+    this._drawOrderTextBoxCount = textBoxes.length;
     return items;
+  }
+
+  /** True when the cached order still reflects the current sizes and depths. */
+  _drawOrderMatches(shapes, textBoxes) {
+    if (this._drawOrderShapeCount !== shapes.length) return false;
+    if (this._drawOrderTextBoxCount !== textBoxes.length) return false;
+
+    for (const item of this._drawOrder) {
+      const entity = item.type === 'shape' ? shapes[item.i] : textBoxes[item.i];
+      if (!entity) return false;
+      if (entity.w * entity.h !== item.area) return false;
+      if ((this._depths.get(item.type + ':' + entity.id) || 0) !== item.depth) return false;
+    }
+    return true;
+  }
+
+  _invalidateDrawOrder() {
+    this._drawOrder = null;
   }
 
   markDepthDirty() {
     this._depthDirty = true;
+    this._invalidateDrawOrder();
   }
 
   _ensureDepths() {

@@ -22,6 +22,7 @@ import { DEFAULT_TEXTBOX_COLOR } from './config.js';
 import { destroyAllEntities } from './dom-entities.js';
 import { imageLOD } from './image-lod.js';
 import { showConfirmDialog } from './dialog.js';
+import { requestRender } from './render-scheduler.js';
 
 /**
  * After deleting entities from textBoxes or shapes array by index, adjust all
@@ -173,6 +174,7 @@ export function addImageToShape(shapeIdx, src) {
   imageLOD.generateLODs(img.id, img.src);
   state.markDrawOrderDirty();
   refreshSidePanel();
+  requestRender(3);
   return img;
 }
 
@@ -971,15 +973,6 @@ export function restoreDocumentState(docState) {
     }
   }
 
-  const connOffset = docState.nodes ? docState.nodes.length : 0;
-  for (const c of (docState.connections || [])) {
-    const newFrom = c.from;
-    const newTo = c.to;
-    if (newFrom < state.textBoxes.length && newTo < state.textBoxes.length) {
-      state.connections.push({ id: c.id, from: newFrom, to: newTo, color: c.color || '#6bb5ff', text: c.text || '' });
-    }
-  }
-
   for (const a of (docState.arrows || [])) {
     state.arrows.push(a);
   }
@@ -991,6 +984,21 @@ export function restoreDocumentState(docState) {
   }
   for (const cn of (docState.connectors || [])) {
     state.connectors.push(cn);
+  }
+
+  // Connections index into textBoxes, so they can only be validated once the
+  // text boxes are in place. This ran before that loop, which meant every
+  // connection failed the bounds check and was silently discarded on load.
+  for (const c of (docState.connections || [])) {
+    if (c.from >= state.textBoxes.length || c.to >= state.textBoxes.length) continue;
+    state.connections.push({
+      id: c.id,
+      from: c.from,
+      to: c.to,
+      color: c.color || '#6bb5ff',
+      text: c.text || '',
+      locked: !!c.locked,
+    });
   }
 
   let maxTextBoxId = 0;
@@ -1032,6 +1040,9 @@ export function restoreDocumentState(docState) {
   state.reparentAll();
   state.isDirty = false;
   refreshSidePanel();
+  // Loading finishes asynchronously, after whatever input started it, so the
+  // next frame has to be asked for rather than assumed.
+  requestRender(3);
 }
 
 export async function newDocument() {
@@ -1042,6 +1053,7 @@ export async function newDocument() {
   }
   restoreDocumentState({ nodes: [], connections: [], arrows: [], shapes: [], textBoxes: [], connectors: [], viewport: { offsetX: 0, offsetY: 0, scale: 1 } });
   state.currentFileName = null;
+  state.currentFilePath = null;
   clearCachedFileHandle();
   state.markDrawOrderDirty();
 }
@@ -1070,14 +1082,7 @@ export async function saveDocument() {
   const docState = getDocumentState();
   const doc = serializeDocument(docState);
   const suggestedName = state.currentFileName || `document${FILE_EXTENSION}`;
-  const result = await saveToFile(doc, suggestedName);
-  if (result) {
-    state.currentFileName = result.name;
-    state.isDirty = false;
-    showSaved();
-  } else {
-    clearIndicator();
-  }
+  return finishSave(await saveToFile(doc, suggestedName));
 }
 
 export async function saveDocumentAs() {
@@ -1085,14 +1090,19 @@ export async function saveDocumentAs() {
   const docState = getDocumentState();
   const doc = serializeDocument(docState);
   const suggestedName = state.currentFileName || `document${FILE_EXTENSION}`;
-  const result = await saveToFileAs(doc, suggestedName);
-  if (result) {
-    state.currentFileName = result.name;
-    state.isDirty = false;
-    showSaved();
-  } else {
+  return finishSave(await saveToFileAs(doc, suggestedName));
+}
+
+function finishSave(result) {
+  if (!result) {
     clearIndicator();
+    return false;
   }
+  state.currentFileName = result.name;
+  state.currentFilePath = result.path ?? state.currentFilePath;
+  state.isDirty = false;
+  showSaved();
+  return true;
 }
 
 function clearIndicator() {
@@ -1137,13 +1147,31 @@ export async function openDocument() {
   flushPanelEdit();
   if (state.isDirty) {
     const confirmed = await showConfirmDialog('This project has unsaved changes. Are you sure you want to open a different file? Everything unsaved will be discarded!');
-    if (!confirmed) return;
+    if (!confirmed) return false;
   }
-  const result = await loadFromFile();
-  if (!result) return;
-  const docState = deserializeDocument(result.data);
-  restoreDocumentState(docState);
+  return loadInto(await loadFromFile());
+}
+
+/**
+ * Open a specific file without prompting — used by the CLI, by file
+ * associations and by a path given on the command line. Desktop only: in the
+ * browser the app is never told where a file lives.
+ */
+export async function openDocumentPath(path) {
+  flushPanelEdit();
+  if (state.isDirty) {
+    const confirmed = await showConfirmDialog(`Opening "${path}" will discard your unsaved changes. Continue?`);
+    if (!confirmed) return false;
+  }
+  return loadInto(await loadFromFile(path));
+}
+
+function loadInto(result) {
+  if (!result) return false;
+  restoreDocumentState(deserializeDocument(result.data));
   state.currentFileName = result.name;
+  state.currentFilePath = result.path ?? null;
+  return true;
 }
 
 export function addNodeAt(worldX, worldY, optW, optH) {

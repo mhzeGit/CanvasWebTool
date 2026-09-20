@@ -2,20 +2,13 @@ export const FORMAT_IDENTIFIER = 'canvaswebtool-document';
 export const FORMAT_VERSION = 1;
 export const FILE_EXTENSION = '.cvdoc';
 
-function serializeArrow(arrow) {
-  return { ...arrow };
-}
-
-function serializeShape(shape) {
-  return { ...shape };
-}
-
-function serializeTextBox(textBox) {
-  return { ...textBox };
-}
-
-function serializeConnector(connector) {
-  return { ...connector };
+/**
+ * Entities are stored as-is. The copy matters: callers such as
+ * `extractImageAssets` replace fields on the serialised document, and must not
+ * reach through into the live entities the user is still editing.
+ */
+function copyEntities(list) {
+  return (list || []).map((entity) => ({ ...entity }));
 }
 
 export function serializeDocument(state) {
@@ -27,20 +20,23 @@ export function serializeDocument(state) {
     version: FORMAT_VERSION,
     metadata: {
       created: now,
-      modified: now
+      modified: now,
     },
     document: {
       settings: settings ?? {},
       viewport: {
         offsetX: viewport.offsetX ?? 0,
         offsetY: viewport.offsetY ?? 0,
-        scale: viewport.scale ?? 1
+        scale: viewport.scale ?? 1,
       },
-      arrows: (arrows || []).map(serializeArrow),
-      shapes: (shapes || []).map(serializeShape),
-      textBoxes: (textBoxes || []).map(serializeTextBox),
-      connectors: (connectors || []).map(serializeConnector),
-    }
+      arrows: copyEntities(arrows),
+      shapes: copyEntities(shapes),
+      textBoxes: copyEntities(textBoxes),
+      connectors: copyEntities(connectors),
+      // Bezier connections were previously written by no one and read by
+      // deserializeDocument, so every save silently dropped them.
+      connections: copyEntities(connections),
+    },
   };
 }
 
@@ -73,39 +69,57 @@ export function migrateDocument(doc) {
   return { ...doc };
 }
 
+/** MIME subtypes whose natural file extension differs from the subtype name. */
+const ASSET_EXTENSIONS = {
+  jpeg: 'jpg',
+  'svg+xml': 'svg',
+  'x-icon': 'ico',
+};
+
+function assetExtension(dataUrl) {
+  const subtype = dataUrl.slice(5).split(';')[0].split('/')[1] || 'png';
+  const normalised = ASSET_EXTENSIONS[subtype] || subtype;
+  // Anything unexpected falls back to png rather than producing an odd filename.
+  return /^[a-z0-9]{1,5}$/i.test(normalised) ? normalised.toLowerCase() : 'png';
+}
+
+/**
+ * Move embedded images out of a serialised document and into a list of assets
+ * to be written alongside it, leaving an `assetPath` reference behind.
+ *
+ * The image object is replaced rather than edited: `serializeDocument` makes
+ * shallow copies of each shape, so mutating `shape.image` in place would strip
+ * the source out of the live document the user is still looking at.
+ */
 export function extractImageAssets(docState) {
   const assets = [];
-  const shapesArr = docState.shapes || [];
-  for (const s of shapesArr) {
-    if (s.image && s.image.src && s.image.src.startsWith('data:')) {
-      const ext = s.image.src.split(';')[0].split('/')[1] || 'png';
-      const hash = simpleHash(s.image.src).toString(36);
-      const fileName = `img_${hash}.${ext}`;
-      const dataUrl = s.image.src;
-      s.image.src = undefined;
-      s.image.assetPath = fileName;
-      assets.push({ fileName, dataUrl });
-    }
+  for (const shape of docState.shapes || []) {
+    const image = shape.image;
+    if (!image || typeof image.src !== 'string' || !image.src.startsWith('data:')) continue;
+
+    const fileName = `img_${simpleHash(image.src).toString(36)}.${assetExtension(image.src)}`;
+    assets.push({ fileName, dataUrl: image.src });
+    shape.image = { ...image, src: undefined, assetPath: fileName };
   }
   return assets;
 }
 
+/** Inverse of extractImageAssets: fold stored assets back into the document. */
 export function embedImageAssets(docState, assetsMap) {
-  const shapesArr = docState.shapes || [];
-  for (const s of shapesArr) {
-    if (s.image && s.image.assetPath && assetsMap[s.image.assetPath]) {
-      s.image.src = assetsMap[s.image.assetPath];
-      delete s.image.assetPath;
-    }
+  for (const shape of docState.shapes || []) {
+    const image = shape.image;
+    if (!image || !image.assetPath || !assetsMap[image.assetPath]) continue;
+
+    shape.image = { ...image, src: assetsMap[image.assetPath] };
+    delete shape.image.assetPath;
   }
 }
 
+/** Deterministic 32-bit content hash, so identical images share one asset file. */
 function simpleHash(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
   }
   return Math.abs(hash);
 }
