@@ -24,3 +24,5 @@ Thumbs.db
 .idea/
 *.sublime-workspace
 *.sublime-project
+# Browser dependencies copied out of node_modules by `npm run vendor`
+vendor/
