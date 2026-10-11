@@ -13,6 +13,7 @@
 ├── index.html              Entry point. Top bar menus, toolbar, canvas layers, side panel, import map for CDN packages
 ├── css/style.css           Complete dark/light theme (CSS custom properties). Canvas, panel, context menu, inline editors, markdown, responsive mobile (<=768px)
 ├── serve.py                Python static file server with correct JS MIME types. Run: python serve.py --port 5173
+├── build-and-run.bat      Windows one-click launcher: checks Python, runs npm install only if @tiptap/core is missing, starts serve.py on port 5173 and opens the browser
 ├── package.json            npm deps (Tiptap ecosystem) — for IDE intellisense only; actual imports come from CDN via import map
 ├── js/
 │   ├── main.js             App entry. Resizes canvas (DPR-aware), runs animation loop, wires top bar / mobile UI / auto-save / external change detection
