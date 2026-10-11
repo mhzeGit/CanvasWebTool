@@ -2,37 +2,32 @@
 setlocal
 cd /d "%~dp0"
 
-echo === Checking Python ===
-where python >nul 2>nul
-if errorlevel 1 (
-	echo Python was not found. Install it from https://www.python.org/downloads/ and tick "Add python.exe to PATH".
-	pause
-	exit /b 1
+echo === Cleaning previous build ===
+if exist release rmdir /s /q release
+
+echo === Vendoring browser modules ===
+call npm run vendor
+if errorlevel 1 goto :fail
+
+echo === Building Windows artifacts ===
+call npm run dist
+if errorlevel 1 goto :fail
+
+set "EXE="
+for %%F in ("release\Canvas-*-portable.exe") do set "EXE=%%~fF"
+if not defined EXE if exist "release\win-unpacked\Canvas.exe" set "EXE=%CD%\release\win-unpacked\Canvas.exe"
+
+if not defined EXE (
+  echo Could not find a built executable in release\
+  goto :fail
 )
 
-echo === Installing dependencies ===
-if exist "node_modules\@tiptap\core\package.json" (
-	echo Dependencies already installed, skipping npm install.
-) else (
-	where npm >nul 2>nul
-	if errorlevel 1 (
-		echo npm was not found. Install Node.js LTS from https://nodejs.org/
-		pause
-		exit /b 1
-	)
-	call npm install
-	if errorlevel 1 (
-		echo npm install failed.
-		pause
-		exit /b 1
-	)
-)
+echo === Running "%EXE%" ===
+start "" "%EXE%"
+exit /b 0
 
-echo === Starting server on http://localhost:5173 ===
-echo Press Ctrl+C to stop the server.
-start "" cmd /c "timeout /t 2 >nul && start http://localhost:5173"
-python serve.py --port 5173
-if errorlevel 1 (
-	echo Server failed to start. Is port 5173 already in use?
-)
+:fail
+echo.
+echo Build failed.
 pause
+exit /b 1

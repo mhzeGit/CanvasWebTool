@@ -9,6 +9,10 @@ yarn-error.log*
 # Build output
 dist/
 build/
+release/
+
+# Browser dependencies copied out of node_modules by `npm run vendor`
+vendor/
 
 # Temporary files
 *.tmp

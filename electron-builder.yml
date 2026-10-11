@@ -1,0 +1,71 @@
+appId: com.mhzegit.canvaswebtool
+productName: Canvas
+copyright: Copyright © mhzeGit
+
+directories:
+  output: release
+  buildResources: electron/resources
+
+# Only the files the app actually loads at runtime. node_modules is absent by
+# design: the browser modules live in vendor/, put there by `npm run vendor`.
+files:
+  - index.html
+  - favicon.ico
+  - favicon.png
+  - Icon.webp
+  - css/**/*
+  - js/**/*
+  - vendor/**/*
+  - electron/**/*
+  - shared/**/*
+  - lib/**/*
+  - bin/**/*
+  - package.json
+  - '!**/*.map'
+  - '!**/.DS_Store'
+
+# The CLI shims sit outside the asar so a shell can execute them directly.
+extraResources:
+  - from: electron/resources/cli
+    to: cli
+
+asar: true
+compression: maximum
+
+fileAssociations:
+  - ext: cvdoc
+    name: Canvas Document
+    description: Canvas Document
+    role: Editor
+
+win:
+  icon: electron/resources/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Canvas
+  artifactName: Canvas-${version}-setup.${ext}
+
+portable:
+  artifactName: Canvas-${version}-portable.${ext}
+
+linux:
+  icon: electron/resources/icon.png
+  category: Graphics
+  target:
+    - AppImage
+
+mac:
+  icon: electron/resources/icon.png
+  category: public.app-category.graphics-design
+  target:
+    - dmg

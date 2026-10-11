@@ -1,10 +1,23 @@
 {
   "name": "canvaswebtool",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Canvas whiteboard/diagramming tool — desktop app, web app and agent CLI",
+  "main": "electron/main.mjs",
+  "type": "commonjs",
+  "bin": {
+    "canvas": "bin/canvas.mjs"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "vendor": "node tools/vendor-deps.mjs",
+    "postinstall": "node tools/vendor-deps.mjs",
+    "serve": "python serve.py --port 5173",
+    "start": "electron .",
+    "dist": "electron-builder --win",
+    "dist:portable": "electron-builder --win portable",
+    "dist:dir": "electron-builder --win --dir",
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "smoke": "electron tools/smoke.mjs",
+    "bench": "electron tools/bench-idle.mjs"
   },
   "repository": {
     "type": "git",
@@ -17,13 +30,48 @@
     "url": "https://github.com/mhzeGit/CanvasWebTool/issues"
   },
   "homepage": "https://github.com/mhzeGit/CanvasWebTool#readme",
-  "dependencies": {
-    "@tiptap/core": "^3.23.4",
-    "@tiptap/extension-color": "^3.23.4",
-    "@tiptap/extension-font-family": "^3.23.4",
-    "@tiptap/extension-highlight": "^3.23.4",
-    "@tiptap/extension-text-style": "^3.23.4",
-    "@tiptap/pm": "^3.23.4",
-    "@tiptap/starter-kit": "^3.23.4"
+  "dependencies": {},
+  "devDependencies": {
+    "@tiptap/core": "3.23.4",
+    "@tiptap/extension-blockquote": "3.23.4",
+    "@tiptap/extension-bold": "3.23.4",
+    "@tiptap/extension-code": "3.23.4",
+    "@tiptap/extension-code-block": "3.23.4",
+    "@tiptap/extension-color": "3.23.4",
+    "@tiptap/extension-document": "3.23.4",
+    "@tiptap/extension-font-family": "3.23.4",
+    "@tiptap/extension-hard-break": "3.23.4",
+    "@tiptap/extension-heading": "3.23.4",
+    "@tiptap/extension-highlight": "3.23.4",
+    "@tiptap/extension-horizontal-rule": "3.23.4",
+    "@tiptap/extension-italic": "3.23.4",
+    "@tiptap/extension-link": "3.23.4",
+    "@tiptap/extension-list": "3.23.4",
+    "@tiptap/extension-paragraph": "3.23.4",
+    "@tiptap/extension-strike": "3.23.4",
+    "@tiptap/extension-text": "3.23.4",
+    "@tiptap/extension-text-style": "3.23.4",
+    "@tiptap/extension-underline": "3.23.4",
+    "@tiptap/extensions": "3.23.4",
+    "@tiptap/pm": "3.23.4",
+    "@tiptap/starter-kit": "3.23.4",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "linkifyjs": "4.3.3",
+    "orderedmap": "2.1.1",
+    "prosemirror-changeset": "2.4.1",
+    "prosemirror-commands": "1.7.1",
+    "prosemirror-dropcursor": "1.8.2",
+    "prosemirror-gapcursor": "1.4.1",
+    "prosemirror-history": "1.5.0",
+    "prosemirror-keymap": "1.2.3",
+    "prosemirror-model": "1.25.6",
+    "prosemirror-schema-list": "1.5.1",
+    "prosemirror-state": "1.4.4",
+    "prosemirror-tables": "1.8.5",
+    "prosemirror-transform": "1.12.0",
+    "prosemirror-view": "1.41.8",
+    "rope-sequence": "1.3.4",
+    "w3c-keyname": "2.2.8"
   }
 }
