@@ -1,4 +1,4 @@
-import { ParentTree } from './parent-tree.js';
+import { EDGE_MARGIN } from './config.js';
 
 const canvas = document.getElementById('gridCanvas');
 const ctx = canvas.getContext('2d');
@@ -8,21 +8,70 @@ const sidePanel = document.getElementById('sidePanel');
 const sidePanelContent = document.getElementById('sidePanelContent');
 const entityLayer = document.getElementById('entityLayer');
 
+let drawOrderCache = [];
+let drawOrderCacheDirty = true;
+
 function markDrawOrderDirty() {
-  state.parentTree.markDepthDirty();
+  drawOrderCacheDirty = true;
+}
+
+function containerArea(entity) {
+  return entity.w * entity.h;
+}
+
+function rectInRect(ax, ay, aw, ah, bx, by, bw, bh) {
+  return bx >= ax && by >= ay && bx + bw <= ax + aw && by + bh <= ay + ah;
+}
+
+function findParentForRect(rx, ry, rw, rh, excludeId, excludeType) {
+  let bestId = null;
+  let bestType = null;
+  let bestArea = Infinity;
+  for (let i = 0; i < state.shapes.length; i++) {
+    const s = state.shapes[i];
+    if (s.id === excludeId && excludeType === 'shape') continue;
+    const area = containerArea(s);
+    if (area < bestArea && rectInRect(s.x, s.y, s.w, s.h, rx, ry, rw, rh)) {
+      bestId = s.id; bestType = 'shape'; bestArea = area;
+    }
+  }
+  for (let i = 0; i < state.textBoxes.length; i++) {
+    const t = state.textBoxes[i];
+    if (t.id === excludeId && excludeType === 'textBox') continue;
+    const area = containerArea(t);
+    if (area < bestArea && rectInRect(t.x, t.y, t.w, t.h, rx, ry, rw, rh)) {
+      bestId = t.id; bestType = 'textBox'; bestArea = area;
+    }
+  }
+  return bestId ? { parentId: bestId, parentType: bestType } : null;
 }
 
 function reparentAll() {
-  state.parentTree.rebuildAll(state.shapes, state.textBoxes);
+  for (let i = 0; i < state.shapes.length; i++) {
+    const s = state.shapes[i];
+    const p = findParentForRect(s.x, s.y, s.w, s.h, s.id, 'shape');
+    if (p) { s.parentId = p.parentId; s.parentType = p.parentType; }
+    else { s.parentId = null; s.parentType = null; }
+  }
+  for (let i = 0; i < state.textBoxes.length; i++) {
+    const t = state.textBoxes[i];
+    const p = findParentForRect(t.x, t.y, t.w, t.h, t.id, 'textBox');
+    if (p) { t.parentId = p.parentId; t.parentType = p.parentType; }
+    else { t.parentId = null; t.parentType = null; }
+  }
 }
 
 function getChildrenByParentId(parentId, parentType) {
-  const children = state.parentTree.getChildren(parentType, parentId);
-  return children.map(c => {
-    const arr = c.type === 'shape' ? state.shapes : state.textBoxes;
-    const idx = arr.findIndex(e => e.id === c.id);
-    return { type: c.type, index: idx };
-  }).filter(c => c.index !== -1);
+  const children = [];
+  for (let i = 0; i < state.shapes.length; i++) {
+    const s = state.shapes[i];
+    if (s.parentId === parentId && s.parentType === parentType) children.push({ type: 'shape', index: i });
+  }
+  for (let i = 0; i < state.textBoxes.length; i++) {
+    const t = state.textBoxes[i];
+    if (t.parentId === parentId && t.parentType === parentType) children.push({ type: 'textBox', index: i });
+  }
+  return children;
 }
 
 function computeSelectionKey() {
@@ -51,53 +100,7 @@ function escAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/**
- * Observers of "which document, and does it have unsaved changes".
- *
- * These three fields are written from a couple of dozen places, so rather than
- * making every one of them remember to notify, they are accessors that fire
- * these listeners whenever a value actually changes. Auto-save and the desktop
- * window title and CLI status both hang off this.
- */
-const documentStatusListeners = new Set();
-
-export function onDocumentStatusChange(listener) {
-  documentStatusListeners.add(listener);
-  return () => documentStatusListeners.delete(listener);
-}
-
-function notifyDocumentStatus() {
-  for (const listener of documentStatusListeners) {
-    try {
-      listener();
-    } catch (err) {
-      console.error('Document status listener failed:', err);
-    }
-  }
-}
-
-/** Define a state field that notifies when it changes. */
-function observableField(name, normalise) {
-  const backing = '_' + name;
-  return {
-    get() {
-      return this[backing];
-    },
-    set(value) {
-      const next = normalise(value);
-      if (next === this[backing]) return;
-      this[backing] = next;
-      notifyDocumentStatus();
-    },
-  };
-}
-
-const asBoolean = (value) => !!value;
-const asStringOrNull = (value) => (typeof value === 'string' && value.length > 0 ? value : null);
-
 export const state = {
-  parentTree: new ParentTree(),
-
   canvas,
   ctx,
   arrowCanvas,
@@ -123,12 +126,8 @@ export const state = {
   hoveredPropField: null,
 
   panelPendingEdit: null,
-
-  // Document status: see observableField above. The backing fields are
-  // declared here so the object has a stable shape.
-  _currentFileName: null,
-  _currentFilePath: null,
-  _isDirty: false,
+  currentFileName: null,
+  isDirty: false,
 
   isSelectingBox: false,
   boxStartX: 0,
@@ -208,21 +207,12 @@ export const state = {
   touchPointers: new Map(),
   touchTapData: null,
   isTwoFingerGesture: false,
-  isTouchPanning: false,
-  touchPanLastX: 0,
-  touchPanLastY: 0,
   twoFingerMidX: 0,
   twoFingerMidY: 0,
   twoFingerStartDist: 0,
   twoFingerStartScale: 1,
   twoFingerStartOffsetX: 0,
   twoFingerStartOffsetY: 0,
-  twoFingerInitMidX: 0,
-  twoFingerInitMidY: 0,
-  twoFingerInitDist: 0,
-  twoFingerInitScale: 1,
-  twoFingerInitOffsetX: 0,
-  twoFingerInitOffsetY: 0,
 
   pendingClickIndex: -1,
   pendingClickItemIdx: -1,
@@ -255,12 +245,33 @@ export const state = {
       let e;
       if (item.type === 'shape') e = state.shapes[item.i];
       else if (item.type === 'textBox') e = state.textBoxes[item.i];
-      if (e && !e.locked && wx >= e.x && wx <= e.x + e.w && wy >= e.y && wy <= e.y + e.h) return item;
+      if (e && wx >= e.x && wx <= e.x + e.w && wy >= e.y && wy <= e.y + e.h) return item;
     }
     return null;
   },
   getAllDrawOrder() {
-    return state.parentTree.getDrawOrder(state.shapes, state.textBoxes);
+    const items = [];
+    for (let i = 0; i < state.shapes.length; i++) {
+      items.push({ type: 'shape', i, area: state.shapes[i].w * state.shapes[i].h });
+    }
+    for (let i = 0; i < state.textBoxes.length; i++) {
+      items.push({ type: 'textBox', i, area: state.textBoxes[i].w * state.textBoxes[i].h });
+    }
+    items.sort((a, b) => b.area - a.area);
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const entity = item.type === 'shape' ? state.shapes[item.i] : state.textBoxes[item.i];
+      if (entity && entity.parentId != null) {
+        const parentIdx = items.findIndex(p => {
+          const pe = p.type === 'shape' ? state.shapes[p.i] : state.textBoxes[p.i];
+          return pe && pe.id === entity.parentId && p.type === entity.parentType;
+        });
+        if (parentIdx >= 0 && parentIdx >= i) {
+          [items[i], items[parentIdx]] = [items[parentIdx], items[i]];
+        }
+      }
+    }
+    return items;
   },
   markDrawOrderDirty,
   reparentAll,
@@ -268,12 +279,3 @@ export const state = {
   computeSelectionKey,
   escAttr,
 };
-
-Object.defineProperties(state, {
-  /** Whether the document has changes that are not on disk. */
-  isDirty: observableField('isDirty', asBoolean),
-  /** File name of the open document, or null when it has never been saved. */
-  currentFileName: observableField('currentFileName', asStringOrNull),
-  /** Absolute path on disk, when the desktop build knows it; null in a browser. */
-  currentFilePath: observableField('currentFilePath', asStringOrNull),
-});

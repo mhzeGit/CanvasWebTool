@@ -1,6 +1,6 @@
-import { state, onDocumentStatusChange } from './state.js';
+import { state } from './state.js';
+import { GRID } from './config.js';
 import { drawGrid } from './grid.js';
-import { requestRender, startRenderLoop } from './render-scheduler.js';
 import { initSettings } from './settings.js';
 import { openSettings } from './settings-dialog.js';
 import { drawSelectionMarquee, drawNodePreview } from './nodes.js';
@@ -24,80 +24,69 @@ import {
   duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
   addShapeAt, addConnector,
   addImageContainerAt, addImageContainerAtCenter,
-  newDocument, saveDocument, openDocument, reloadDocument,
+  newDocument, saveDocument, openDocument,
 } from './document.js';
 import { performUndo, performRedo } from './history.js';
 import { initToolbar } from './toolbar.js';
 import { initEntityLayer, syncAllEntities } from './dom-entities.js';
-import { imageLOD } from './image-lod.js';
-import { hasCachedFileHandle, checkFileModified } from './file-io.js';
-import { downloadPortableJSON, openPortableJSON } from './json-port.js';
-import { initDesktopIntegration } from './desktop.js';
-
-const MOBILE_BREAKPOINT_PX = 768;
-const TOP_BAR_PX = 40;
-const MOBILE_TOOLBAR_PX = 52;
+import { hasCachedFileHandle } from './file-io.js';
 
 function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
   const sideEl = document.getElementById('sidePanel');
   const toolbarEl = document.getElementById('leftToolbar');
-  const isMobile = window.innerWidth <= MOBILE_BREAKPOINT_PX;
-  const sideVisible = sideEl && sideEl.classList.contains('mobile-visible');
-
-  let sideWidthPx;
-  if (sideVisible) sideWidthPx = sideEl.getBoundingClientRect().width;
-  else if (isMobile) sideWidthPx = 0;
-  else if (sideEl) sideWidthPx = sideEl.getBoundingClientRect().width;
-  else sideWidthPx = Math.floor(window.innerWidth * 0.30);
-
-  const toolbarWidthPx = isMobile || !toolbarEl ? 0 : toolbarEl.getBoundingClientRect().width;
+  const sideWidthPx = sideEl ? sideEl.getBoundingClientRect().width : Math.floor(window.innerWidth * 0.30);
+  const toolbarWidthPx = toolbarEl ? toolbarEl.getBoundingClientRect().width : 0;
+  const topBarPx = 40;
   const cssWidth = window.innerWidth - sideWidthPx - toolbarWidthPx;
-  const cssHeight = window.innerHeight - TOP_BAR_PX - (isMobile ? MOBILE_TOOLBAR_PX : 0);
-
-  for (const canvas of [state.canvas, state.arrowCanvas]) {
-    canvas.style.width = cssWidth + 'px';
-    canvas.style.height = cssHeight + 'px';
-    canvas.width = cssWidth * dpr;
-    canvas.height = cssHeight * dpr;
-  }
-
-  // Resizing a canvas clears it, so the next frame must redraw.
-  requestRender(2);
+  const cssHeight = window.innerHeight - topBarPx;
+  state.canvas.style.width = cssWidth + 'px';
+  state.canvas.style.height = cssHeight + 'px';
+  state.canvas.width = cssWidth * dpr;
+  state.canvas.height = cssHeight * dpr;
+  state.arrowCanvas.style.width = cssWidth + 'px';
+  state.arrowCanvas.style.height = cssHeight + 'px';
+  state.arrowCanvas.width = cssWidth * dpr;
+  state.arrowCanvas.height = cssHeight * dpr;
 }
 
-/** Drop connections whose endpoints no longer exist, keeping the selection valid. */
-function pruneDanglingConnections() {
-  for (let i = state.connections.length - 1; i >= 0; i--) {
-    const conn = state.connections[i];
-    if (state.textBoxes[conn.from] && state.textBoxes[conn.to]) continue;
+function animate() {
+  const ctx = state.ctx;
+  const canvas = state.canvas;
 
-    state.connections.splice(i, 1);
-    if (state.selectedConnection === i) state.selectedConnection = null;
-    else if (state.selectedConnection > i) state.selectedConnection--;
-  }
-}
+  state.offsetX += (state.targetOffsetX - state.offsetX) * GRID.panLerp;
+  state.offsetY += (state.targetOffsetY - state.offsetY) * GRID.panLerp;
+  state.scale += (state.targetScale - state.scale) * GRID.zoomLerp;
 
-function clearCanvas(ctx, canvas) {
+  const dpr = window.devicePixelRatio || 1;
+
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.restore();
-}
 
-function drawFrame() {
-  const dpr = window.devicePixelRatio || 1;
-
-  clearCanvas(state.ctx, state.canvas);
-  drawGrid(state.ctx, state.canvas, state.offsetX, state.offsetY, state.scale, dpr);
+  drawGrid(ctx, canvas, state.offsetX, state.offsetY, state.scale, dpr);
 
   const actx = state.arrowCtx;
-  clearCanvas(actx, state.arrowCanvas);
+  const acvs = state.arrowCanvas;
+  actx.save();
+  actx.setTransform(1, 0, 0, 1, 0, 0);
+  actx.clearRect(0, 0, acvs.width, acvs.height);
+  actx.restore();
   actx.setTransform(dpr, 0, 0, dpr, 0, 0);
   actx.translate(state.offsetX, state.offsetY);
   actx.scale(state.scale, state.scale);
 
-  pruneDanglingConnections();
+  for (let ci = state.connections.length - 1; ci >= 0; ci--) {
+    const conn = state.connections[ci];
+    const fromNode = state.textBoxes[conn.from];
+    const toNode = state.textBoxes[conn.to];
+    if (!fromNode || !toNode) {
+      state.connections.splice(ci, 1);
+      if (state.selectedConnection === ci) state.selectedConnection = null;
+      else if (state.selectedConnection > ci) state.selectedConnection--;
+    }
+  }
 
   updateArrowPositionsFromConnections();
   updateConnectorPositionsFromConnections();
@@ -105,8 +94,6 @@ function drawFrame() {
   drawConnectors();
 
   syncAllEntities();
-
-  imageLOD.update();
 
   drawSelectionMarquee();
 
@@ -122,10 +109,12 @@ function drawFrame() {
     refreshSidePanel();
     state.lastPanelKey = key;
   }
+
+  requestAnimationFrame(animate);
 }
 
 function drawImageContainerPreview() {
-  if (state.drawingTool !== 'imageContainer') return;
+  if (!state.drawingTool || state.drawingTool !== 'imageContainer') return;
   drawShapePreview();
 }
 
@@ -143,13 +132,7 @@ function initTopBar() {
   const newBtn = document.getElementById('actionNew');
   const openBtn = document.getElementById('actionOpen');
   const saveBtn = document.getElementById('actionSave');
-  const exportJSONBtn = document.getElementById('actionExportJSON');
-  const importJSONBtn = document.getElementById('actionImportJSON');
   const settingsBtn = document.getElementById('actionSettings');
-  const mobileUndoBtn = document.getElementById('mobileUndoBtn');
-  const mobileRedoBtn = document.getElementById('mobileRedoBtn');
-  const mobileOpenBtn = document.getElementById('mobileOpenBtn');
-  const mobileSaveBtn = document.getElementById('mobileSaveBtn');
 
   if (addNodeBtn) addNodeBtn.addEventListener('click', (e) => { e.preventDefault(); addNodeAtCenter(); });
   if (addArrowBtn) addArrowBtn.addEventListener('click', (e) => { e.preventDefault(); addArrowAtCenter(); });
@@ -164,84 +147,33 @@ function initTopBar() {
   if (newBtn) newBtn.addEventListener('click', (e) => { e.preventDefault(); newDocument(); });
   if (openBtn) openBtn.addEventListener('click', (e) => { e.preventDefault(); openDocument(); });
   if (saveBtn) saveBtn.addEventListener('click', (e) => { e.preventDefault(); saveDocument(); });
-  if (exportJSONBtn) exportJSONBtn.addEventListener('click', (e) => { e.preventDefault(); downloadPortableJSON(); });
-  if (importJSONBtn) importJSONBtn.addEventListener('click', (e) => { e.preventDefault(); openPortableJSON(); });
   if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.preventDefault(); openSettings(); });
-  function addTouchGuard(btn, handler) {
-    if (!btn) return;
-    btn.addEventListener('pointerdown', (e) => {
-      if (e.pointerType === 'touch') {
-        e.preventDefault();
-        handler();
-      }
-    });
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      handler();
-    });
-  }
-  addTouchGuard(mobileUndoBtn, performUndo);
-  addTouchGuard(mobileRedoBtn, performRedo);
-  addTouchGuard(mobileOpenBtn, openDocument);
-  addTouchGuard(mobileSaveBtn, saveDocument);
 }
 
-/**
- * Save an already-saved document ten seconds after it last went dirty.
- *
- * The original implementation polled every two seconds and re-armed a timeout
- * on each tick, so the timer was pushed back before it could ever fire while
- * edits kept arriving, and it kept a poll running for the life of the app. A
- * single debounce, re-armed only when the document actually becomes dirty,
- * does the same job with no idle work.
- */
 function setupAutoSave() {
-  const AUTO_SAVE_DELAY = 10000;
   let timer = null;
+  const AUTO_SAVE_DELAY = 10000;
 
-  const canAutoSave = () => state.isDirty && state.currentFileName && hasCachedFileHandle();
-
-  onDocumentStatusChange(() => {
-    if (!canAutoSave()) {
+  setInterval(() => {
+    if (state.isDirty && state.currentFileName && hasCachedFileHandle()) {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        timer = null;
+        if (state.isDirty) {
+          await saveDocument();
+        }
+      }, AUTO_SAVE_DELAY);
+    } else {
       clearTimeout(timer);
       timer = null;
-      return;
     }
-    if (timer !== null) return; // already counting down
-
-    timer = setTimeout(async () => {
-      timer = null;
-      if (canAutoSave()) await saveDocument();
-    }, AUTO_SAVE_DELAY);
-  });
-}
-
-function setupExternalChangeDetection() {
-  let lastCheck = 0;
-  const MIN_CHECK_INTERVAL = 30000;
-
-  async function handleCheck() {
-    const now = Date.now();
-    if (now - lastCheck < MIN_CHECK_INTERVAL) return;
-    lastCheck = now;
-    if (!hasCachedFileHandle()) return;
-    const modified = await checkFileModified();
-    if (modified) {
-      await reloadDocument();
-    }
-  }
-
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) handleCheck();
-  });
-  window.addEventListener('focus', handleCheck);
-  setTimeout(handleCheck, 1500);
+  }, 2000);
 }
 
 function setupMobileUI() {
   const hamburgerBtn = document.getElementById('hamburgerBtn');
   const topBarMenus = document.getElementById('topBarMenus');
-  const mobilePanelToggle = document.getElementById('toolPanelToggle');
+  const mobilePanelToggle = document.getElementById('mobilePanelToggle');
   const sidePanel = document.getElementById('sidePanel');
 
   if (hamburgerBtn && topBarMenus) {
@@ -279,7 +211,6 @@ function setupMobileUI() {
     mobilePanelToggle.addEventListener('click', (e) => {
       e.stopPropagation();
       sidePanel.classList.toggle('mobile-visible');
-      resizeCanvas();
     });
 
     document.addEventListener('pointerdown', (e) => {
@@ -287,7 +218,6 @@ function setupMobileUI() {
         !sidePanel.contains(e.target) &&
         e.target !== mobilePanelToggle) {
         sidePanel.classList.remove('mobile-visible');
-        resizeCanvas();
       }
     });
   }
@@ -300,7 +230,6 @@ function init() {
   initHistory(refreshSidePanel);
 
   initEntityLayer();
-  imageLOD.init();
   initPointer(history);
   initTouch();
   initToolbar();
@@ -313,7 +242,6 @@ function init() {
   initPanelResize();
 
   setupAutoSave();
-  setupExternalChangeDetection();
 
   setupMobileUI();
 
@@ -369,9 +297,7 @@ function init() {
     if (didClear) refreshSidePanel();
   });
 
-  initDesktopIntegration();
-
-  startRenderLoop(state, drawFrame);
+  animate();
 }
 
 window.addEventListener('beforeunload', (e) => {

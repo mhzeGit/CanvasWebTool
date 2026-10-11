@@ -1,13 +1,10 @@
 import { state } from './state.js';
 import { getDarkerColor, getBorderColor, getDividerColor, worldToScreen } from './utils.js';
+import { blocksToHtml, getOrCreateBlocks } from './rich-text.js';
 import { parseInlineSpans } from './markdown.js';
-import { getOrCreateTiptapContent } from './editor/editor-content-bridge.js';
-import { createEditor, emptyDoc } from './editor/editor-core.js';
 import {
   DEFAULT_TITLE_COLOR, DEFAULT_TEXT_COLOR, TITLE_PLACEHOLDER, TEXT_PLACEHOLDER,
 } from './config.js';
-import { history } from './history.js';
-import { createSetLockCmd } from './undo.js';
 
 function isEditingEntity(type, idx, field) {
   if (!state.editingState) return false;
@@ -21,7 +18,7 @@ const domByTypeIdx = {
   textBox: {},
 };
 
-let prevDrawOrder = null;
+let prevDrawOrderKey = '';
 let prevSelectionKey = '';
 
 export function initEntityLayer() {
@@ -33,11 +30,11 @@ export function destroyAllEntities() {
     domByTypeIdx.shape[key].remove();
   }
   for (const key in domByTypeIdx.textBox) {
-    destroyTextBoxElement(domByTypeIdx.textBox[key]);
+    domByTypeIdx.textBox[key].remove();
   }
   domByTypeIdx.shape = {};
   domByTypeIdx.textBox = {};
-  prevDrawOrder = null;
+  prevDrawOrderKey = '';
   prevSelectionKey = '';
 }
 
@@ -66,30 +63,6 @@ function titleToHtml(title) {
   return html;
 }
 
-function syncUnlockButton(el, isLocked, entityArray, entityId) {
-  let btn = el.querySelector('.entity-unlock-btn');
-  if (isLocked) {
-    if (!btn) {
-      btn = document.createElement('button');
-      btn.className = 'entity-unlock-btn';
-      btn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16" r="1"/></svg>';
-      btn.title = 'Unlock';
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const found = entityArray.find(ent => ent.id === entityId);
-        if (found && found.locked) {
-          found.locked = false;
-          history.push(createSetLockCmd(entityArray, entityId, true, false, () => {}));
-        }
-      });
-      el.appendChild(btn);
-    }
-  } else if (btn) {
-    btn.remove();
-  }
-  el.classList.toggle('locked', isLocked);
-}
-
 export function getEntityElement(type, idx) {
   if (type === 'textBox') return domByTypeIdx.textBox['t' + idx] || null;
   if (type === 'shape') return domByTypeIdx.shape['s' + idx] || null;
@@ -109,305 +82,211 @@ function makeHandlesHtml() {
   ].join('');
 }
 
-/**
- * Style writes are cached per element.
- *
- * Every entity is re-placed and re-styled on each sync, which used to mean
- * dozens of writes per entity per frame. Assigning the value a property already
- * holds still costs a CSSOM write and can invalidate style, so the last value
- * written is remembered and identical writes are skipped. `el._styleCache` is
- * created with the element and dies with it.
- */
-function setStyle(el, property, value) {
-  const cache = el._styleCache;
-  if (cache[property] === value) return;
-  cache[property] = value;
-  el.style[property] = value;
-}
-
-function setClassName(el, child, value) {
-  if (child._lastClassName === value) return;
-  child._lastClassName = value;
-  child.className = value;
-}
-
-/**
- * The canvas rectangle is the same for every entity in a frame, and reading it
- * forces a layout. It is therefore measured once per sync rather than once per
- * entity — the single biggest cost in the old per-frame path.
- */
-let canvasLeft = 0;
-let canvasTop = 0;
-
-function measureCanvas() {
-  const rect = state.canvas.getBoundingClientRect();
-  canvasLeft = rect.left;
-  canvasTop = rect.top;
-}
-
-function placeEntity(el, wx, wy, ww, wh, useWorldSize) {
+function placeEntity(el, wx, wy, ww, wh) {
+  const canvasRect = state.canvas.getBoundingClientRect();
   const tl = worldToScreen(wx, wy, state.offsetX, state.offsetY, state.scale);
+  const br = worldToScreen(wx + ww, wy + wh, state.offsetX, state.offsetY, state.scale);
+  const screenW = br.x - tl.x;
+  const screenH = br.y - tl.y;
 
-  setStyle(el, 'position', 'fixed');
-  setStyle(el, 'left', (tl.x + canvasLeft) + 'px');
-  setStyle(el, 'top', (tl.y + canvasTop) + 'px');
-
-  if (useWorldSize) {
-    setStyle(el, 'width', ww + 'px');
-    setStyle(el, 'height', wh + 'px');
-  } else {
-    const br = worldToScreen(wx + ww, wy + wh, state.offsetX, state.offsetY, state.scale);
-    setStyle(el, 'width', Math.max(1, br.x - tl.x) + 'px');
-    setStyle(el, 'height', Math.max(1, br.y - tl.y) + 'px');
-  }
-}
-
-/** Shape kind -> the modifier class its border and fill layers carry. */
-const SHAPE_CLASS = {
-  rectangle: 'entity-shape-rect',
-  circle: 'entity-shape-circle',
-  triangle: 'entity-shape-triangle',
-  diamond: 'entity-shape-diamond',
-};
-
-/** Outer-element corner radius per shape kind; rectangles use their own value. */
-function outerRadiusFor(shape) {
-  switch (shape.shapeType) {
-    case 'circle': return '50%';
-    case 'triangle':
-    case 'diamond': return '0';
-    default: return (shape.cornerRadius ?? 4) + 'px';
-  }
-}
-
-function createShapeElement(idx, shape) {
-  const el = document.createElement('div');
-  el._styleCache = {};
-  el.className = 'entity entity-shape';
-  el.dataset.entityType = 'shape';
-  el.dataset.entityIdx = idx;
-  el.dataset.entityId = shape.id;
-  el.innerHTML = '<div class="entity-shape-border"></div><div class="entity-shape-fill"></div><div class="entity-shape-image-wrap"></div>' + makeHandlesHtml();
-
-  // Looking these up once and hanging them off the element avoids three
-  // querySelector calls per shape per frame.
-  el._parts = {
-    border: el.querySelector('.entity-shape-border'),
-    fill: el.querySelector('.entity-shape-fill'),
-    imageWrap: el.querySelector('.entity-shape-image-wrap'),
-  };
-  for (const part of Object.values(el._parts)) part._styleCache = {};
-
-  document.body.appendChild(el);
-  return el;
+  el.style.position = 'fixed';
+  el.style.left = (tl.x + canvasRect.left) + 'px';
+  el.style.top = (tl.y + canvasRect.top) + 'px';
+  el.style.width = Math.max(1, screenW) + 'px';
+  el.style.height = Math.max(1, screenH) + 'px';
 }
 
 function ensureShapeElement(idx) {
   const s = state.shapes[idx];
   if (!s) return null;
-
   const key = 's' + idx;
   let el = domByTypeIdx.shape[key];
   if (!el) {
-    el = createShapeElement(idx, s);
+    el = document.createElement('div');
+    el.className = 'entity entity-shape';
+    el.dataset.entityType = 'shape';
+    el.dataset.entityIdx = idx;
+    el.innerHTML = '<div class="entity-shape-border"></div><div class="entity-shape-fill"></div><div class="entity-shape-image-wrap"></div>' + makeHandlesHtml();
+    document.body.appendChild(el);
     domByTypeIdx.shape[key] = el;
   }
 
-  placeEntity(el, s.x, s.y, s.w, s.h, true);
-  setStyle(el, 'transform', `scale(${state.scale})`);
-  setStyle(el, 'transformOrigin', '0 0');
-  setStyle(el, 'borderRadius', outerRadiusFor(s));
-  if (el.dataset.entityId !== String(s.id)) el.dataset.entityId = s.id;
-  syncUnlockButton(el, !!s.locked, state.shapes, s.id);
+  placeEntity(el, s.x, s.y, s.w, s.h);
 
-  const { border: borderEl, fill: fillEl, imageWrap } = el._parts;
-  const borderWidth = s.borderWidth || 2;
-  const inset = Math.max(0.5, borderWidth);
-  const corner = s.cornerRadius ?? 4;
-  const innerRadius = Math.max(0, corner - borderWidth) + 'px';
-  const shapeClass = SHAPE_CLASS[s.shapeType] || SHAPE_CLASS.rectangle;
+  const borderEl = el.querySelector('.entity-shape-border');
+  const fillEl = el.querySelector('.entity-shape-fill');
+  const imageWrap = el.querySelector('.entity-shape-image-wrap');
+  const bw = (s.borderWidth || 2) * state.scale;
+  const borderColor = s.borderColor || '#6bb5ff';
+  const fillColor = s.color || '#2b2b2b';
 
-  setClassName(el, borderEl, 'entity-shape-border ' + shapeClass);
-  setStyle(borderEl, 'position', 'absolute');
-  setStyle(borderEl, 'inset', '0');
-  setStyle(borderEl, 'background', s.borderColor || '#6bb5ff');
+  borderEl.className = 'entity-shape-border';
+  fillEl.className = 'entity-shape-fill';
+  imageWrap.className = 'entity-shape-image-wrap';
+  borderEl.style.position = 'absolute';
+  borderEl.style.inset = '0';
+  fillEl.style.position = 'absolute';
+  fillEl.style.inset = Math.max(0.5, bw) + 'px';
 
-  setClassName(el, fillEl, 'entity-shape-fill ' + shapeClass);
-  setStyle(fillEl, 'position', 'absolute');
-  setStyle(fillEl, 'inset', inset + 'px');
-  setStyle(fillEl, 'background', s.color || '#2b2b2b');
+  switch (s.shapeType) {
+    case 'rectangle':
+      borderEl.classList.add('entity-shape-rect');
+      fillEl.classList.add('entity-shape-rect');
+      borderEl.style.borderRadius = ((s.cornerRadius ?? 4) * state.scale) + 'px';
+      fillEl.style.borderRadius = Math.max(0, ((s.cornerRadius ?? 4) - (s.borderWidth || 2)) * state.scale) + 'px';
+      break;
+    case 'circle':
+      borderEl.classList.add('entity-shape-circle');
+      fillEl.classList.add('entity-shape-circle');
+      break;
+    case 'triangle':
+      borderEl.classList.add('entity-shape-triangle');
+      fillEl.classList.add('entity-shape-triangle');
+      break;
+    case 'diamond':
+      borderEl.classList.add('entity-shape-diamond');
+      fillEl.classList.add('entity-shape-diamond');
+      break;
+    default:
+      borderEl.classList.add('entity-shape-rect');
+      fillEl.classList.add('entity-shape-rect');
+  }
 
-  // Only rectangles round their border and fill layers; the other kinds are
-  // drawn by clip paths, so a radius there would do nothing.
-  setStyle(borderEl, 'borderRadius', s.shapeType === 'rectangle' ? corner + 'px' : '');
-  setStyle(fillEl, 'borderRadius', s.shapeType === 'rectangle' ? innerRadius : '');
+  borderEl.style.background = borderColor;
+  fillEl.style.background = fillColor;
 
-  setClassName(el, imageWrap, 'entity-shape-image-wrap');
-  setStyle(imageWrap, 'position', 'absolute');
-  setStyle(imageWrap, 'overflow', 'hidden');
-  setStyle(imageWrap, 'borderRadius', innerRadius);
-  setStyle(imageWrap, 'inset', inset + 'px');
-  syncShapeImage(imageWrap, s);
+  imageWrap.style.position = 'absolute';
+  imageWrap.style.overflow = 'hidden';
+  const corner = (s.cornerRadius ?? 4) * state.scale;
+  const inset = Math.max(0.5, bw);
+  imageWrap.style.borderRadius = Math.max(0, corner - (s.borderWidth || 2) * state.scale) + 'px';
+  imageWrap.style.inset = inset + 'px';
 
-  return el;
-}
-
-function syncShapeImage(imageWrap, shape) {
-  if (!shape.image) {
+  if (s.image) {
+    let imgEl = imageWrap.querySelector('.si-img');
+    if (!imgEl) {
+      imgEl = document.createElement('div');
+      imgEl.className = 'si-img';
+      const innerImg = document.createElement('img');
+      innerImg.className = 'si-img-inner';
+      innerImg.draggable = false;
+      innerImg.alt = '';
+      imgEl.appendChild(innerImg);
+      imageWrap.appendChild(imgEl);
+    }
+    const innerImg = imgEl.querySelector('.si-img-inner');
+    if (innerImg && innerImg.src !== s.image.src) innerImg.src = s.image.src;
+    const sc = state.scale;
+    imgEl.style.position = 'absolute';
+    imgEl.style.left = (s.image.x * sc) + 'px';
+    imgEl.style.top = (s.image.y * sc) + 'px';
+    imgEl.style.width = (s.image.w * sc) + 'px';
+    imgEl.style.height = (s.image.h * sc) + 'px';
+    imgEl.style.display = '';
+    if (innerImg) {
+      innerImg.style.width = '100%';
+      innerImg.style.height = '100%';
+      innerImg.style.objectFit = s.image.keepRatio ? 'contain' : 'fill';
+      innerImg.style.display = 'block';
+    }
+    imageWrap.style.display = '';
+  } else {
     const existing = imageWrap.querySelector('.si-img');
     if (existing) existing.remove();
-    setStyle(imageWrap, 'display', 'none');
-    return;
+    imageWrap.style.display = 'none';
   }
 
-  let imgEl = imageWrap.querySelector('.si-img');
-  if (!imgEl) {
-    // Built once; the <img> src is then driven each frame by the LOD manager.
-    imgEl = document.createElement('div');
-    imgEl.className = 'si-img';
-    imgEl.style.position = 'absolute';
-    imgEl.style.inset = '0';
-
-    const innerImg = document.createElement('img');
-    innerImg.className = 'si-img-inner';
-    innerImg.draggable = false;
-    innerImg.alt = '';
-    innerImg.style.width = '100%';
-    innerImg.style.height = '100%';
-    innerImg.style.objectFit = 'contain';
-    innerImg.style.display = 'block';
-
-    imgEl.appendChild(innerImg);
-    imageWrap.appendChild(imgEl);
-  }
-  setStyle(imageWrap, 'display', '');
-}
-
-function createTextBoxElement(idx) {
-  const el = document.createElement('div');
-  el._styleCache = {};
-  el.className = 'entity entity-textbox';
-  el.dataset.entityType = 'textBox';
-  el.dataset.entityIdx = idx;
-  el.innerHTML = '<div class="entity-textbox-titlebar"></div><div class="entity-textbox-content"></div>' + makeHandlesHtml();
-
-  el._parts = {
-    titlebar: el.querySelector('.entity-textbox-titlebar'),
-    content: el.querySelector('.entity-textbox-content'),
-  };
-  for (const part of Object.values(el._parts)) part._styleCache = {};
-
-  document.body.appendChild(el);
   return el;
 }
 
 function ensureTextBoxElement(idx) {
   const tb = state.textBoxes[idx];
   if (!tb) return null;
-
   const key = 't' + idx;
   let el = domByTypeIdx.textBox[key];
   if (!el) {
-    el = createTextBoxElement(idx);
+    el = document.createElement('div');
+    el.className = 'entity entity-textbox';
+    el.dataset.entityType = 'textBox';
+    el.dataset.entityIdx = idx;
+    el.innerHTML = '<div class="entity-textbox-titlebar"></div><div class="entity-textbox-content"></div>' + makeHandlesHtml();
+    document.body.appendChild(el);
     domByTypeIdx.textBox[key] = el;
   }
 
   const baseColor = tb.color || '#1a1a1a';
-  const hasTitle = !!tb.title && tb.title.length > 0;
-  const scale = state.scale;
-  const { titlebar, content } = el._parts;
+  const borderColor = tb.borderColor || '#444';
+  const hasTitle = tb.title && tb.title.length > 0;
 
-  setStyle(el, 'background', baseColor);
-  setStyle(el, 'borderColor', tb.borderColor || '#444');
-  if (el._dividerFor !== baseColor) {
-    el._dividerFor = baseColor;
-    el.style.setProperty('--node-divider-color', getDividerColor(baseColor));
-  }
-
-  syncUnlockButton(el, !!tb.locked, state.textBoxes, tb.id);
   placeEntity(el, tb.x, tb.y, tb.w, tb.h);
-  setStyle(el, 'transform', 'none');
-  setStyle(el, 'borderWidth', (1.5 * scale) + 'px');
-  setStyle(el, 'borderRadius', (6 * scale) + 'px');
+
+  el.style.background = baseColor;
+  el.style.borderColor = borderColor;
+  el.style.borderWidth = (1.5 * state.scale) + 'px';
+  el.style.borderRadius = (6 * state.scale) + 'px';
+  el.style.setProperty('--node-divider-color', getDividerColor(baseColor));
+
+  const titlebar = el.querySelector('.entity-textbox-titlebar');
+  const content = el.querySelector('.entity-textbox-content');
 
   if (hasTitle) {
-    const radius = 6 * scale;
-    setStyle(titlebar, 'display', '');
-    setStyle(titlebar, 'background', getDarkerColor(baseColor, 0.6));
-    setStyle(titlebar, 'color', tb.titleColor || DEFAULT_TITLE_COLOR);
-    setStyle(titlebar, 'lineHeight', '1.2');
-    setStyle(titlebar, 'borderRadius', radius + 'px ' + radius + 'px 0 0');
-    setStyle(titlebar, 'fontSize', (15 * scale) + 'px');
-    setStyle(titlebar, 'padding', (4 * scale) + 'px ' + (8 * scale) + 'px');
-    setStyle(titlebar, 'minHeight', ((15 * 1.2 * scale) + (4 * scale) + (4 * scale)) + 'px');
-
-    // Re-parsing and rewriting the title markup on every frame would also
-    // destroy any selection inside it, so it is rebuilt only when it changes.
-    if (!isEditingEntity('textBox', idx, 'title') && titlebar._renderedTitle !== tb.title) {
-      titlebar._renderedTitle = tb.title;
+    titlebar.style.display = '';
+    const tbRadius = 6 * state.scale;
+    titlebar.style.background = getDarkerColor(baseColor, 0.6);
+    titlebar.style.borderRadius = tbRadius + 'px ' + tbRadius + 'px 0 0';
+    titlebar.style.color = tb.titleColor || DEFAULT_TITLE_COLOR;
+    titlebar.style.fontSize = (15 * state.scale) + 'px';
+    titlebar.style.padding = (4 * state.scale) + 'px ' + (8 * state.scale) + 'px';
+    titlebar.style.lineHeight = 1.2;
+    titlebar.style.minHeight = ((15 * 1.2 * state.scale) + (4 * state.scale) + (4 * state.scale)) + 'px';
+    if (!isEditingEntity('textBox', idx, 'title')) {
       titlebar.innerHTML = titleToHtml(tb.title);
     }
-    setStyle(content, 'paddingTop', (4 * scale) + 'px');
+    content.style.paddingTop = (4 * state.scale) + 'px';
   } else {
-    setStyle(titlebar, 'display', 'none');
-    titlebar._renderedTitle = undefined;
-    setStyle(content, 'paddingTop', (8 * scale) + 'px');
+    titlebar.style.display = 'none';
+    content.style.paddingTop = (8 * state.scale) + 'px';
   }
 
-  setStyle(content, 'color', tb.textColor || DEFAULT_TEXT_COLOR);
-  setStyle(content, 'fontSize', ((tb.fontSize || 14) * scale) + 'px');
-  setStyle(content, 'paddingLeft', (8 * scale) + 'px');
-  setStyle(content, 'paddingRight', (8 * scale) + 'px');
-  setStyle(content, 'paddingBottom', (8 * scale) + 'px');
-  setStyle(content, 'lineHeight', '1.25');
-  setStyle(content, 'overflowY', 'hidden');
+  content.style.color = tb.textColor || DEFAULT_TEXT_COLOR;
+  content.style.fontSize = ((tb.fontSize || 14) * state.scale) + 'px';
+  content.style.paddingLeft = (8 * state.scale) + 'px';
+  content.style.paddingRight = (8 * state.scale) + 'px';
+  content.style.paddingBottom = (8 * state.scale) + 'px';
+  content.style.lineHeight = 1.25;
 
-  if (!isEditingEntity('textBox', idx)) syncTextBoxContent(content, tb);
+  if (!isEditingEntity('textBox', idx)) {
+    const blocks = getOrCreateBlocks(tb);
+    const hasContent = blocks && blocks.length > 0 && blocks.some(b => b.t !== 'p' || (b.s && b.s.length > 0 && b.s.some(s => s.t)));
+    if (hasContent) {
+      content.innerHTML = blocksToHtml(blocks);
+    } else {
+      content.innerHTML = '';
+      const placeholder = document.createElement('span');
+      placeholder.className = 'entity-textbox-placeholder';
+      placeholder.textContent = hasTitle ? 'Double-click to edit' : 'Double-click to edit';
+      placeholder.style.fontSize = ((tb.fontSize || 14) * state.scale) + 'px';
+      content.appendChild(placeholder);
+    }
+  }
 
   return el;
 }
 
-/**
- * Keep the read-only Tiptap view in step with the entity's content.
- *
- * The content object is compared by identity and by the version counter that
- * edits bump, rather than by serialising it. The old code ran
- * JSON.stringify over every text box's document on every frame, which for a
- * board of any size was the single most expensive thing in the loop.
- */
-function syncTextBoxContent(content, tb) {
-  const tiptapContent = getOrCreateTiptapContent(tb);
-  const version = tb._contentVersion || 0;
-  const editor = content._tiptapEditor;
-
-  if (!editor || editor.isDestroyed) {
-    content._tiptapEditor = createEditor({
-      element: content,
-      content: tiptapContent,
-      editable: false,
-      excludeHistory: true,
-    });
-    content._tiptapEditor._renderedContent = tiptapContent;
-    content._tiptapEditor._renderedVersion = version;
-    return;
-  }
-
-  if (editor._renderedContent === tiptapContent && editor._renderedVersion === version) return;
-
-  editor.commands.setContent(tiptapContent, { emitUpdate: false });
-  editor._renderedContent = tiptapContent;
-  editor._renderedVersion = version;
-}
-
-function applyDrawOrder(order) {
+function applyDrawOrder() {
+  const order = state.getAllDrawOrder();
   for (let i = 0; i < order.length; i++) {
     const item = order[i];
-    const el = item.type === 'shape'
-      ? domByTypeIdx.shape['s' + item.i]
-      : domByTypeIdx.textBox['t' + item.i];
-    if (el) setStyle(el, 'zIndex', String(2 + i * 2));
+    let el = null;
+    if (item.type === 'shape') {
+      el = domByTypeIdx.shape['s' + item.i];
+    } else if (item.type === 'textBox') {
+      el = domByTypeIdx.textBox['t' + item.i];
+    }
+    if (el) {
+      el.style.zIndex = 2 + i * 2;
+    }
   }
-  state.arrowCanvas.style.zIndex = 2 + (order.length + 1) * 2;
 }
 
 function applySelectionClasses() {
@@ -423,57 +302,45 @@ function applySelectionClasses() {
   }
 }
 
-/**
- * Elements are keyed by array position, so the ones past the end of a shrunken
- * array are the stale ones. Comparing against the length directly avoids
- * building a set of live keys on every frame.
- */
 function cleanupStaleElements() {
+  const aliveShapeKeys = new Set();
+  for (let i = 0; i < state.shapes.length; i++) aliveShapeKeys.add('s' + i);
   for (const key in domByTypeIdx.shape) {
-    if (Number(key.slice(1)) < state.shapes.length) continue;
-    domByTypeIdx.shape[key].remove();
-    delete domByTypeIdx.shape[key];
+    if (!aliveShapeKeys.has(key)) {
+      domByTypeIdx.shape[key].remove();
+      delete domByTypeIdx.shape[key];
+    }
   }
-
+  const aliveTBKeys = new Set();
+  for (let i = 0; i < state.textBoxes.length; i++) aliveTBKeys.add('t' + i);
   for (const key in domByTypeIdx.textBox) {
-    if (Number(key.slice(1)) < state.textBoxes.length) continue;
-    destroyTextBoxElement(domByTypeIdx.textBox[key]);
-    delete domByTypeIdx.textBox[key];
+    if (!aliveTBKeys.has(key)) {
+      domByTypeIdx.textBox[key].remove();
+      delete domByTypeIdx.textBox[key];
+    }
   }
-}
-
-function destroyTextBoxElement(el) {
-  const content = el._parts?.content || el.querySelector('.entity-textbox-content');
-  if (content?._tiptapEditor && !content._tiptapEditor.isDestroyed) {
-    content._tiptapEditor.destroy();
-    content._tiptapEditor = null;
-  }
-  el.remove();
-}
-
-/** Stable key for the current selection, used to skip redundant class updates. */
-function selectionKey() {
-  if (state.selectedShapes.size === 0 && state.selectedTextBoxes.size === 0) return '|';
-  return [...state.selectedShapes].sort((a, b) => a - b).join(',') + '|'
-    + [...state.selectedTextBoxes].sort((a, b) => a - b).join(',');
 }
 
 export function syncAllEntities() {
-  measureCanvas();
+  const order = state.getAllDrawOrder();
+  const drawOrderKey = order.map(item => item.type[0] + item.i).join(',');
+  const selKey = [...state.selectedShapes].sort((a,b)=>a-b).join(',') + '|' +
+    [...state.selectedTextBoxes].sort((a,b)=>a-b).join(',');
+
   cleanupStaleElements();
 
-  for (let i = 0; i < state.shapes.length; i++) ensureShapeElement(i);
-  for (let i = 0; i < state.textBoxes.length; i++) ensureTextBoxElement(i);
-
-  // getAllDrawOrder returns a cached array, so a new reference means the order
-  // was actually recomputed — no key string needed to detect the change.
-  const order = state.getAllDrawOrder();
-  if (order !== prevDrawOrder) {
-    applyDrawOrder(order);
-    prevDrawOrder = order;
+  for (let i = 0; i < state.shapes.length; i++) {
+    ensureShapeElement(i);
+  }
+  for (let i = 0; i < state.textBoxes.length; i++) {
+    ensureTextBoxElement(i);
   }
 
-  const selKey = selectionKey();
+  if (drawOrderKey !== prevDrawOrderKey) {
+    applyDrawOrder();
+    prevDrawOrderKey = drawOrderKey;
+  }
+
   if (selKey !== prevSelectionKey) {
     applySelectionClasses();
     prevSelectionKey = selKey;

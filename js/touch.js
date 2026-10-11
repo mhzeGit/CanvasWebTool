@@ -1,52 +1,14 @@
 import { state } from './state.js';
-import { GRID, TOUCH_ZOOM_DAMPENING } from './config.js';
+import { GRID } from './config.js';
 import { openContextMenu, closeContextMenu } from './context-menu.js';
 
 let _touchActionHandler = null;
 
 const TAP_MAX_MS = 300;
-const LONG_PRESS_MS = 500;
 const TAP_MAX_MOVE = 10;
-const DOUBLE_TAP_MAX_MS = 300;
-const DOUBLE_TAP_MAX_MOVE = 30;
-
-let _longPressTimer = null;
-let _longPressTriggered = false;
-
-let _lastTapTime = null;
-let _lastTapX = 0;
-let _lastTapY = 0;
 
 export function initTouch(ontouchaction) {
   _touchActionHandler = ontouchaction;
-}
-
-function _clearLongPress() {
-  if (_longPressTimer !== null) {
-    clearTimeout(_longPressTimer);
-    _longPressTimer = null;
-  }
-}
-
-function _startLongPressTimer(clientX, clientY) {
-  _clearLongPress();
-  _longPressTriggered = false;
-  _longPressTimer = setTimeout(() => {
-    _longPressTimer = null;
-    _longPressTriggered = true;
-    _lastTapTime = null;
-    closeContextMenu();
-    const rect = state.canvas.getBoundingClientRect();
-    const sx = clientX - rect.left;
-    const sy = clientY - rect.top;
-    if (sx >= 0 && sx <= rect.width && sy >= 0 && sy <= rect.height) {
-      state.rmbPending = true;
-      state.rmbDownTime = performance.now();
-      state.rmbMoved = false;
-      const evt = { clientX, clientY, preventDefault: () => {} };
-      openContextMenu(evt);
-    }
-  }, LONG_PRESS_MS);
 }
 
 export function isTouchActive() {
@@ -92,7 +54,6 @@ export function handleTouchDown(e) {
   const count = state.touchPointers.size;
 
   if (count === 1) {
-    state.isTouchPanning = false;
     state.touchTapData = {
       clientX: e.clientX,
       clientY: e.clientY,
@@ -100,14 +61,10 @@ export function handleTouchDown(e) {
       moved: false,
     };
     state.isTwoFingerGesture = false;
-    _startLongPressTimer(e.clientX, e.clientY);
     return false;
   }
 
   if (count === 2) {
-    _clearLongPress();
-    _longPressTriggered = false;
-    _lastTapTime = null;
     state.isTwoFingerGesture = true;
     state.touchTapData = null;
     state.isPanning = false;
@@ -122,13 +79,6 @@ export function handleTouchDown(e) {
     state.twoFingerStartScale = state.targetScale;
     state.twoFingerStartOffsetX = state.targetOffsetX;
     state.twoFingerStartOffsetY = state.targetOffsetY;
-
-    state.twoFingerInitMidX = mid.x;
-    state.twoFingerInitMidY = mid.y;
-    state.twoFingerInitDist = dist;
-    state.twoFingerInitScale = state.targetScale;
-    state.twoFingerInitOffsetX = state.targetOffsetX;
-    state.twoFingerInitOffsetY = state.targetOffsetY;
 
     _resetDrawingState();
     return true;
@@ -153,70 +103,49 @@ export function handleTouchMove(e) {
       if (state.touchTapData) {
         state.touchTapData.moved = true;
       }
-      _lastTapTime = null;
-      _clearLongPress();
     }
   }
 
-  if (!state.isTwoFingerGesture) {
-    const movedPastTap = ptr && (Math.abs(e.clientX - ptr.startX) > TAP_MAX_MOVE ||
-      Math.abs(e.clientY - ptr.startY) > TAP_MAX_MOVE);
-
-    if (state.isTouchPanning) {
-      const dx = e.clientX - state.touchPanLastX;
-      const dy = e.clientY - state.touchPanLastY;
-      state.touchPanLastX = e.clientX;
-      state.touchPanLastY = e.clientY;
-      state.targetOffsetX += dx;
-      state.targetOffsetY += dy;
-      return true;
-    }
-
-    if (movedPastTap && state.isSelectingBox) {
-      state.isSelectingBox = false;
-      state.isTouchPanning = true;
-      state.touchPanLastX = e.clientX;
-      state.touchPanLastY = e.clientY;
-      _lastTapTime = null;
-      state.touchTapData = null;
-      return true;
-    }
-
-    return false;
-  }
+  if (!state.isTwoFingerGesture) return false;
 
   if (state.touchPointers.size >= 2) {
     const mid = getTouchMidpoint();
     const dist = getTouchDistance();
 
-    const panDx = mid.x - state.twoFingerInitMidX;
-    const panDy = mid.y - state.twoFingerInitMidY;
+    const panDx = mid.x - state.twoFingerMidX;
+    const panDy = mid.y - state.twoFingerMidY;
 
-    state.targetOffsetX = state.twoFingerInitOffsetX + panDx;
-    state.targetOffsetY = state.twoFingerInitOffsetY + panDy;
+    state.targetOffsetX = state.twoFingerStartOffsetX + panDx;
+    state.targetOffsetY = state.twoFingerStartOffsetY + panDy;
 
-    const ZOOM_DEAD_ZONE = 0.025;
-    const distRatio = dist / state.twoFingerInitDist;
-
-    if (state.twoFingerInitDist > 10 && dist > 10 &&
-        Math.abs(distRatio - 1) > ZOOM_DEAD_ZONE) {
-      const dampedRatio = 1 + (distRatio - 1) * TOUCH_ZOOM_DAMPENING;
-      let newScale = state.twoFingerInitScale * dampedRatio;
+    if (state.twoFingerStartDist > 10 && dist > 10) {
+      const ratio = dist / state.twoFingerStartDist;
+      let newScale = state.twoFingerStartScale * ratio;
       newScale = Math.max(GRID.minScale, Math.min(GRID.maxScale, newScale));
 
-      const factor = newScale / state.twoFingerInitScale;
+      const scaleFactor = newScale / state.twoFingerStartScale;
 
       const rect = state.canvas.getBoundingClientRect();
       const focusSx = mid.x - rect.left;
       const focusSy = mid.y - rect.top;
 
-      state.targetOffsetX = factor * state.twoFingerInitOffsetX + factor * panDx + focusSx * (1 - factor);
-      state.targetOffsetY = factor * state.twoFingerInitOffsetY + factor * panDy + focusSy * (1 - factor);
-      state.targetScale = newScale;
-    }
+      const offsetAdjustX = (focusSx - state.twoFingerStartOffsetX) * (scaleFactor - 1);
+      const offsetAdjustY = (focusSy - state.twoFingerStartOffsetY) * (scaleFactor - 1);
 
-    state.twoFingerMidX = mid.x;
-    state.twoFingerMidY = mid.y;
+      state.targetOffsetX = state.twoFingerStartOffsetX + panDx - offsetAdjustX;
+      state.targetOffsetY = state.twoFingerStartOffsetY + panDy - offsetAdjustY;
+      state.targetScale = newScale;
+
+      state.twoFingerMidX = mid.x;
+      state.twoFingerMidY = mid.y;
+      state.twoFingerStartDist = dist;
+      state.twoFingerStartScale = newScale;
+      state.twoFingerStartOffsetX = state.targetOffsetX;
+      state.twoFingerStartOffsetY = state.targetOffsetY;
+    } else {
+      state.twoFingerMidX = mid.x;
+      state.twoFingerMidY = mid.y;
+    }
   }
 
   return true;
@@ -227,17 +156,7 @@ export function handleTouchUp(e) {
 
   state.touchPointers.delete(e.pointerId);
 
-  if (state.isTouchPanning) {
-    state.isTouchPanning = false;
-    _clearLongPress();
-    state.touchTapData = null;
-    _lastTapTime = null;
-    state.isSelectingBox = false;
-    return true;
-  }
-
   if (state.isTwoFingerGesture && state.touchPointers.size < 2) {
-    _clearLongPress();
     state.isTwoFingerGesture = false;
 
     if (state.touchPointers.size === 1) {
@@ -256,35 +175,12 @@ export function handleTouchUp(e) {
     return true;
   }
 
-  if (_longPressTriggered) {
-    _clearLongPress();
-    state.touchTapData = null;
-    return true;
-  }
-
-  _clearLongPress();
-
   if (state.touchTapData && !state.touchTapData.moved &&
     (e.timeStamp - state.touchTapData.time) < TAP_MAX_MS) {
-    if (_lastTapTime !== null &&
-        (e.timeStamp - _lastTapTime) < DOUBLE_TAP_MAX_MS &&
-        Math.abs(e.clientX - _lastTapX) < DOUBLE_TAP_MAX_MOVE &&
-        Math.abs(e.clientY - _lastTapY) < DOUBLE_TAP_MAX_MOVE) {
-      _lastTapTime = null;
-      state.touchTapData = null;
-      state.canvas.dispatchEvent(new MouseEvent('dblclick', {
-        clientX: e.clientX,
-        clientY: e.clientY,
-        bubbles: true,
-        cancelable: true,
-      }));
-      return true;
-    }
-    _lastTapTime = e.timeStamp;
-    _lastTapX = e.clientX;
-    _lastTapY = e.clientY;
+    const td = state.touchTapData;
     state.touchTapData = null;
-    return false;
+    triggerTouchContextMenu(td.clientX, td.clientY);
+    return true;
   }
 
   state.touchTapData = null;
@@ -293,17 +189,29 @@ export function handleTouchUp(e) {
 
 export function handleTouchCancel(e) {
   if (e.pointerType !== 'touch') return false;
-  _clearLongPress();
   state.touchPointers.delete(e.pointerId);
 
   if (state.touchPointers.size < 2) {
     state.isTwoFingerGesture = false;
   }
-  state.isTouchPanning = false;
   state.touchTapData = null;
-  _longPressTriggered = false;
-  _lastTapTime = null;
   return true;
+}
+
+function triggerTouchContextMenu(clientX, clientY) {
+  closeContextMenu();
+
+  const rect = state.canvas.getBoundingClientRect();
+  const sx = clientX - rect.left;
+  const sy = clientY - rect.top;
+
+  if (sx >= 0 && sx <= rect.width && sy >= 0 && sy <= rect.height) {
+    state.rmbPending = true;
+    state.rmbDownTime = performance.now();
+    state.rmbMoved = false;
+    const evt = { clientX, clientY, preventDefault: () => {} };
+    openContextMenu(evt);
+  }
 }
 
 function _resetDrawingState() {
@@ -325,7 +233,6 @@ function _resetDrawingState() {
   state.isDraggingConnectorBody = false;
   state.isDraggingArrowEnd = false;
   state.isSelectingBox = false;
-  state.isTouchPanning = false;
   state.pendingClickIndex = -1;
   state.didDragSincePointerDown = false;
 }

@@ -3,9 +3,9 @@ import { EDGE_MARGIN } from './config.js';
 import { getEdgeAt as getEntityEdgeAt, drawRoundedRect, getDarkerColor, getBorderColor, worldToScreen } from './utils.js';
 
 export function hitTestNode(wx, wy) {
-  for (let i = state.textBoxes.length - 1; i >= 0; i--) {
-    const tb = state.textBoxes[i];
-    if (wx >= tb.x && wx <= tb.x + tb.w && wy >= tb.y && wy <= tb.y + tb.h) return i;
+  for (let i = state.nodes.length - 1; i >= 0; i--) {
+    const n = state.nodes[i];
+    if (wx >= n.x && wx <= n.x + n.w && wy >= n.y && wy <= n.y + n.h) return i;
   }
   return -1;
 }
@@ -46,7 +46,7 @@ export function findNodeAtPoint(wx, wy) {
 
 export function drawNodePreview() {
   if (!state.drawingTool || state.drawingTool !== 'text') return;
-  const ctx = state.arrowCtx;
+  const ctx = state.ctx;
   const x = Math.min(state.drawingStartX, state.lastWorldMouse.x);
   const y = Math.min(state.drawingStartY, state.lastWorldMouse.y);
   const w = Math.abs(state.lastWorldMouse.x - state.drawingStartX);

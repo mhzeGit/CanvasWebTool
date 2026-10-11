@@ -76,8 +76,7 @@ export function drawArrows(indices) {
     const len = Math.sqrt(dx * dx + dy * dy);
     if (len < 0.001) continue;
 
-    const lw = arrow.lineWidth ?? 2;
-    const headLen = arrow.headSize ?? ARROW_HEAD_LENGTH;
+    const headLen = ARROW_HEAD_LENGTH;
     const headAngle = ARROW_HEAD_ANGLE;
     const nx = dx / len;
     const ny = dy / len;
@@ -88,7 +87,7 @@ export function drawArrows(indices) {
     const lineEndY = y1 + dy * t;
 
     ctx.strokeStyle = arrow.color || DEFAULT_ARROW_COLOR;
-    ctx.lineWidth = isWholeSelected ? lw + 1 : lw;
+    ctx.lineWidth = isWholeSelected ? 3 : 2;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(lineEndX, lineEndY);

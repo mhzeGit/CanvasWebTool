@@ -61,11 +61,7 @@ export function createPropertyChangeCmd(nodes, selected, refreshPanelFn, nodeId,
       const found = nodes.find(n => n.id === nodeId);
       if (found) {
         found[property] = oldValue;
-        if (property === 'text') {
-          found.blocks = null;
-          found.content = null;
-          found._contentVersion = (found._contentVersion || 0) + 1;
-        }
+        if (property === 'text') found.blocks = null;
       }
       if (refreshPanelFn) refreshPanelFn();
     },
@@ -73,11 +69,7 @@ export function createPropertyChangeCmd(nodes, selected, refreshPanelFn, nodeId,
       const found = nodes.find(n => n.id === nodeId);
       if (found) {
         found[property] = newValue;
-        if (property === 'text') {
-          found.blocks = null;
-          found.content = null;
-          found._contentVersion = (found._contentVersion || 0) + 1;
-        }
+        if (property === 'text') found.blocks = null;
       }
       if (refreshPanelFn) refreshPanelFn();
     },
@@ -124,41 +116,11 @@ export function createAddShapeCmd(shapes, selectedShapes, refreshPanelFn, shape,
   };
 }
 
-export function createDeleteShapesCmd(shapes, selectedShapes, refreshPanelFn, deletedEntries,
-  sortedDeletedIndices, entityType, refSnapshot, shiftFn) {
+export function createDeleteShapesCmd(shapes, selectedShapes, refreshPanelFn, deletedEntries) {
   return {
     undo() {
-      // Restore shapes at original indices
       for (let i = 0; i < deletedEntries.length; i++) {
         shapes.splice(deletedEntries[i].index, 0, deletedEntries[i].shape);
-      }
-      // Restore arrow/connector reference state from before deletion
-      for (let i = 0; i < refSnapshot.arrows.length; i++) {
-        const a = state.arrows[i];
-        if (a) {
-          a.connectedFrom = refSnapshot.arrows[i].connectedFrom;
-          a.connectedFromType = refSnapshot.arrows[i].connectedFromType;
-          a.connectedTo = refSnapshot.arrows[i].connectedTo;
-          a.connectedToType = refSnapshot.arrows[i].connectedToType;
-        }
-      }
-      for (let i = 0; i < refSnapshot.connectors.length; i++) {
-        const c = state.connectors[i];
-        if (c) {
-          c.connectedFrom = refSnapshot.connectors[i].connectedFrom;
-          c.connectedFromType = refSnapshot.connectors[i].connectedFromType;
-          c.connectedTo = refSnapshot.connectors[i].connectedTo;
-          c.connectedToType = refSnapshot.connectors[i].connectedToType;
-        }
-      }
-      if (refSnapshot.connections) {
-        for (let i = 0; i < refSnapshot.connections.length; i++) {
-          const c = state.connections[i];
-          if (c) {
-            c.from = refSnapshot.connections[i].from;
-            c.to = refSnapshot.connections[i].to;
-          }
-        }
       }
       selectedShapes.clear();
       for (const entry of deletedEntries) selectedShapes.add(entry.index);
@@ -171,8 +133,6 @@ export function createDeleteShapesCmd(shapes, selectedShapes, refreshPanelFn, de
       for (let i = shapes.length - 1; i >= 0; i--) {
         if (ids.has(shapes[i].id)) shapes.splice(i, 1);
       }
-      // Re-apply index shift so references stay correct
-      if (shiftFn) shiftFn(sortedDeletedIndices, entityType);
       selectedShapes.clear();
       state.markDrawOrderDirty();
       state.reparentAll();
@@ -285,41 +245,11 @@ export function createAddTextBoxCmd(textBoxes, selectedTextBoxes, refreshPanelFn
   };
 }
 
-export function createDeleteTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPanelFn, deletedEntries,
-  sortedDeletedIndices, entityType, refSnapshot, shiftFn) {
+export function createDeleteTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPanelFn, deletedEntries) {
   return {
     undo() {
-      // Restore textBoxes at original indices
       for (let i = 0; i < deletedEntries.length; i++) {
         textBoxes.splice(deletedEntries[i].index, 0, deletedEntries[i].textBox);
-      }
-      // Restore arrow/connector/connection reference state from before deletion
-      for (let i = 0; i < refSnapshot.arrows.length; i++) {
-        const a = state.arrows[i];
-        if (a) {
-          a.connectedFrom = refSnapshot.arrows[i].connectedFrom;
-          a.connectedFromType = refSnapshot.arrows[i].connectedFromType;
-          a.connectedTo = refSnapshot.arrows[i].connectedTo;
-          a.connectedToType = refSnapshot.arrows[i].connectedToType;
-        }
-      }
-      for (let i = 0; i < refSnapshot.connectors.length; i++) {
-        const c = state.connectors[i];
-        if (c) {
-          c.connectedFrom = refSnapshot.connectors[i].connectedFrom;
-          c.connectedFromType = refSnapshot.connectors[i].connectedFromType;
-          c.connectedTo = refSnapshot.connectors[i].connectedTo;
-          c.connectedToType = refSnapshot.connectors[i].connectedToType;
-        }
-      }
-      if (refSnapshot.connections) {
-        for (let i = 0; i < refSnapshot.connections.length; i++) {
-          const c = state.connections[i];
-          if (c) {
-            c.from = refSnapshot.connections[i].from;
-            c.to = refSnapshot.connections[i].to;
-          }
-        }
       }
       selectedTextBoxes.clear();
       for (const entry of deletedEntries) selectedTextBoxes.add(entry.index);
@@ -332,8 +262,6 @@ export function createDeleteTextBoxesCmd(textBoxes, selectedTextBoxes, refreshPa
       for (let i = textBoxes.length - 1; i >= 0; i--) {
         if (ids.has(textBoxes[i].id)) textBoxes.splice(i, 1);
       }
-      // Re-apply index shift so references stay correct
-      if (shiftFn) shiftFn(sortedDeletedIndices, entityType);
       selectedTextBoxes.clear();
       state.markDrawOrderDirty();
       state.reparentAll();
@@ -491,11 +419,7 @@ export function createTextBoxPropertyChangeCmd(textBoxes, selectedTextBoxes, ref
       const found = textBoxes.find(t => t.id === tbId);
       if (found) {
         found[property] = oldValue;
-        if (property === 'text') {
-          found.blocks = null;
-          found.content = null;
-          found._contentVersion = (found._contentVersion || 0) + 1;
-        }
+        if (property === 'text') found.blocks = null;
       }
       if (refreshPanelFn) refreshPanelFn();
     },
@@ -503,11 +427,7 @@ export function createTextBoxPropertyChangeCmd(textBoxes, selectedTextBoxes, ref
       const found = textBoxes.find(t => t.id === tbId);
       if (found) {
         found[property] = newValue;
-        if (property === 'text') {
-          found.blocks = null;
-          found.content = null;
-          found._contentVersion = (found._contentVersion || 0) + 1;
-        }
+        if (property === 'text') found.blocks = null;
       }
       if (refreshPanelFn) refreshPanelFn();
     },
@@ -578,11 +498,7 @@ export function createBatchTextBoxPropertyChangeCmd(textBoxes, selectedTextBoxes
         const found = textBoxes.find(t => t.id === c.tbId);
         if (found) {
           found[c.property] = c.oldValue;
-          if (c.property === 'text') {
-            found.blocks = null;
-            found.content = null;
-            found._contentVersion = (found._contentVersion || 0) + 1;
-          }
+          if (c.property === 'text') found.blocks = null;
         }
       }
       if (refreshPanelFn) refreshPanelFn();
@@ -592,11 +508,7 @@ export function createBatchTextBoxPropertyChangeCmd(textBoxes, selectedTextBoxes
         const found = textBoxes.find(t => t.id === c.tbId);
         if (found) {
           found[c.property] = c.newValue;
-          if (c.property === 'text') {
-            found.blocks = null;
-            found.content = null;
-            found._contentVersion = (found._contentVersion || 0) + 1;
-          }
+          if (c.property === 'text') found.blocks = null;
         }
       }
       if (refreshPanelFn) refreshPanelFn();
@@ -752,22 +664,6 @@ export function createPasteShapesCmd(shapes, selectedShapes, refreshPanelFn, pas
       if (refreshPanelFn) refreshPanelFn();
     },
     description: pastedShapes.length === 1 ? 'Paste Shape' : `Paste ${pastedShapes.length} Shapes`
-  };
-}
-
-export function createSetLockCmd(entities, entityId, oldLocked, newLocked, refreshPanelFn) {
-  return {
-    undo() {
-      const found = entities.find(e => e.id === entityId);
-      if (found) found.locked = oldLocked;
-      if (refreshPanelFn) refreshPanelFn();
-    },
-    redo() {
-      const found = entities.find(e => e.id === entityId);
-      if (found) found.locked = newLocked;
-      if (refreshPanelFn) refreshPanelFn();
-    },
-    description: oldLocked ? 'Unlock' : 'Lock'
   };
 }
 

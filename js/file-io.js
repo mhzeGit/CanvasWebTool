@@ -1,315 +1,194 @@
-/**
- * Reading and writing documents.
- *
- * Two backends sit behind one interface:
- *
- *  - **native** (desktop build) writes straight to the chosen path and keeps
- *    image assets in a sibling `<name>_assets/` folder. Because it knows the
- *    real path, the `canvas` CLI can open the very same document later.
- *  - **web** (browser) uses the File System Access API with OPFS for assets,
- *    falling back to Web Share and finally to a plain download.
- *
- * The rest of the app calls the exported functions and never needs to know
- * which backend is active.
- */
 import { FILE_EXTENSION, extractImageAssets, embedImageAssets } from './format.js';
-import { showAlertDialog, isMobile } from './dialog.js';
-import { native, isDesktop } from './native.js';
 
 const MIME_TYPE = 'application/json';
 const FILE_DESCRIPTION = 'Canvas Web Document';
 const ACCEPT_MIME = { [MIME_TYPE]: [FILE_EXTENSION] };
-const ASSET_DIR_SUFFIX = '_assets';
 
-/** Where the current document lives, in whichever form the backend understands. */
-const current = {
-  /** @type {FileSystemFileHandle | null} web backend */
-  handle: null,
-  /** @type {string | null} native backend */
-  path: null,
-  /** @type {FileSystemDirectoryHandle | null} */
-  assetDir: null,
-  assetDirName: '',
-  lastModified: null,
-};
+let cachedFileHandle = null;
+let cachedAssetDirHandle = null;
+let currentAssetDirName = '';
 
 export function hasCachedFileHandle() {
-  return current.handle !== null || current.path !== null;
-}
-
-/** Absolute path of the open document, or null in the browser. */
-export function getCurrentFilePath() {
-  return current.path;
+  return cachedFileHandle !== null;
 }
 
 export function clearCachedFileHandle() {
-  current.handle = null;
-  current.path = null;
-  current.assetDir = null;
-  current.assetDirName = '';
-  current.lastModified = null;
+  cachedFileHandle = null;
+  cachedAssetDirHandle = null;
+  currentAssetDirName = '';
 }
 
-function baseNameOf(fileName) {
-  return fileName.replace(/\.[^.]+$/, '');
-}
+export async function saveToFile(jsonData, suggestedName) {
+  let assets = [];
 
-// ---------------------------------------------------------------------------
-// Native backend
-// ---------------------------------------------------------------------------
+  // Only extract assets when using File System API (not download fallback)
+  const hasFileApi = typeof window !== 'undefined' && window.showSaveFilePicker;
 
-const nativeBackend = {
-  async save(jsonData, suggestedName) {
-    let path = current.path;
-    if (!path) {
-      const chosen = await native.showSaveDialog(suggestedName || `document${FILE_EXTENSION}`);
-      if (!chosen) return null;
-      path = chosen.path;
-    }
-
-    // Assets move out of the JSON and into <name>_assets/ beside the document.
-    const assets = extractImageAssets(jsonData);
-    const assetDir = await native.assetDirFor(path);
-    await native.writeAssets(assetDir, assets);
-
-    const written = await native.writeDocument(path, jsonData);
-    current.path = written.path;
-    current.assetDirName = assetDir;
-    current.lastModified = written.mtimeMs;
-    return { name: written.name, path: written.path, handle: null };
-  },
-
-  async load(path) {
-    let target = path;
-    if (!target) {
-      const chosen = await native.showOpenDialog();
-      if (!chosen) return null;
-      target = chosen.path;
-    }
-
-    const result = await native.readDocument(target);
-    const assetDir = await native.assetDirFor(result.path);
-    const assets = await native.readAssets(assetDir);
-    if (Object.keys(assets).length > 0) embedImageAssets(result.data, assets);
-
-    current.path = result.path;
-    current.assetDirName = assetDir;
-    current.lastModified = result.mtimeMs;
-    return { data: result.data, name: result.name, path: result.path, handle: null };
-  },
-
-  async isModified() {
-    if (!current.path || current.lastModified === null) return false;
-    const info = await native.statDocument(current.path);
-    return info !== null && info.mtimeMs !== current.lastModified;
-  },
-
-  async reload() {
-    if (!current.path) return null;
-    try {
-      return await this.load(current.path);
-    } catch {
-      return null;
-    }
-  },
-
-  async syncTimestamp() {
-    if (!current.path) return;
-    const info = await native.statDocument(current.path);
-    if (info) current.lastModified = info.mtimeMs;
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Web backend
-// ---------------------------------------------------------------------------
-
-const webBackend = {
-  async save(jsonData, suggestedName) {
-    if (typeof window !== 'undefined' && window.showSaveFilePicker) {
-      const saved = await this._saveWithPicker(jsonData, suggestedName);
-      if (saved !== undefined) return saved;
-    }
-
-    const fileName = suggestedName || `document${FILE_EXTENSION}`;
-    const jsonString = JSON.stringify(jsonData, null, 2);
-
-    // Mobile: hand the file to the OS share sheet so it can be filed away.
-    if (typeof navigator !== 'undefined' && navigator.canShare && navigator.share) {
-      const file = new File([jsonString], fileName, { type: MIME_TYPE });
-      if (navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: fileName });
-          return { name: fileName, handle: null, path: null };
-        } catch (err) {
-          if (err.name === 'AbortError') return null;
-        }
-      }
-    }
-
-    return saveViaDownload(jsonString, fileName);
-  },
-
-  /** @returns {object|null|undefined} undefined means "fall through to the next strategy". */
-  async _saveWithPicker(jsonData, suggestedName) {
-    if (current.handle && current.assetDir) {
+  if (hasFileApi) {
+    if (cachedFileHandle && cachedAssetDirHandle) {
+      assets = extractImageAssets(jsonData);
+      await writeAssets(cachedAssetDirHandle, assets);
+      const jsonString = JSON.stringify(jsonData, null, 2);
+      const blob = new Blob([jsonString], { type: MIME_TYPE });
       try {
-        await writeOpfsAssets(current.assetDir, extractImageAssets(jsonData));
-        await writeHandle(current.handle, jsonData);
-        await this.syncTimestamp();
-        return { name: current.handle.name, handle: current.handle, path: null };
-      } catch {
-        // The handle went stale (file moved or permission revoked) — ask again.
-        current.handle = null;
-        current.assetDir = null;
+        const writable = await cachedFileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return { name: cachedFileHandle.name, handle: cachedFileHandle };
+      } catch (e) {
+        cachedFileHandle = null;
+        cachedAssetDirHandle = null;
       }
     }
 
-    let handle;
     try {
-      handle = await window.showSaveFilePicker({
+      const handle = await window.showSaveFilePicker({
         suggestedName: suggestedName || `document${FILE_EXTENSION}`,
-        types: [{ description: FILE_DESCRIPTION, accept: ACCEPT_MIME }],
+        types: [{ description: FILE_DESCRIPTION, accept: ACCEPT_MIME }]
       });
-    } catch (err) {
-      if (err.name === 'AbortError') return null;
-      current.handle = null;
-      current.assetDir = null;
-      throw err;
-    }
+      cachedFileHandle = handle;
+      const baseName = handle.name.replace(/\.[^.]+$/, '');
+      currentAssetDirName = baseName + '_assets';
 
-    current.handle = handle;
-    current.assetDirName = baseNameOf(handle.name) + ASSET_DIR_SUFFIX;
-    current.assetDir = await openOpfsDir(current.assetDirName, { create: true });
+      assets = extractImageAssets(jsonData);
 
-    const assets = extractImageAssets(jsonData);
-    if (current.assetDir && assets.length > 0) await writeOpfsAssets(current.assetDir, assets);
-
-    await writeHandle(handle, jsonData);
-    await this.syncTimestamp();
-    return { name: handle.name, handle, path: null };
-  },
-
-  async load() {
-    if (typeof window !== 'undefined' && window.showOpenFilePicker) {
-      let handle;
+      let assetDirHandle = null;
       try {
-        [handle] = await window.showOpenFilePicker({
-          types: [{ description: FILE_DESCRIPTION, accept: ACCEPT_MIME }],
-        });
-      } catch (err) {
-        if (err.name === 'AbortError' || err.name === 'NotFoundError') return null;
-        throw err;
+        assetDirHandle = await navigator.storage.getDirectory();
+        assetDirHandle = await assetDirHandle.getDirectoryHandle(currentAssetDirName, { create: true });
+      } catch (_) {
+        try {
+          assetDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        } catch (_2) {}
+      }
+      cachedAssetDirHandle = assetDirHandle;
+
+      if (assetDirHandle && assets.length > 0) {
+        await writeAssets(assetDirHandle, assets);
       }
 
-      const file = await handle.getFile();
-      const data = JSON.parse(await file.text());
-
-      current.handle = handle;
-      current.lastModified = file.lastModified;
-      current.assetDirName = baseNameOf(file.name) + ASSET_DIR_SUFFIX;
-      current.assetDir = await openOpfsDir(current.assetDirName);
-
-      if (current.assetDir) {
-        const assets = await readOpfsAssets(current.assetDir);
-        if (Object.keys(assets).length > 0) embedImageAssets(data, assets);
-      }
-      return { data, name: file.name, handle, path: null };
+      const jsonString = JSON.stringify(jsonData, null, 2);
+      const blob = new Blob([jsonString], { type: MIME_TYPE });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return { name: handle.name, handle };
+    } catch (e) {
+      if (e.name === 'AbortError') return null;
+      cachedFileHandle = null;
+      cachedAssetDirHandle = null;
+      throw e;
     }
-
-    return loadViaFileInput();
-  },
-
-  async isModified() {
-    if (!current.handle || current.lastModified === null) return false;
-    try {
-      const file = await current.handle.getFile();
-      return file.lastModified !== current.lastModified;
-    } catch {
-      return false;
-    }
-  },
-
-  async reload() {
-    if (!current.handle) return null;
-    try {
-      const file = await current.handle.getFile();
-      const data = JSON.parse(await file.text());
-
-      const dir = current.assetDir || (current.assetDirName ? await openOpfsDir(current.assetDirName) : null);
-      if (dir) {
-        const assets = await readOpfsAssets(dir);
-        if (Object.keys(assets).length > 0) embedImageAssets(data, assets);
-      }
-
-      current.lastModified = file.lastModified;
-      return { data, name: file.name, handle: current.handle, path: null };
-    } catch {
-      return null;
-    }
-  },
-
-  async syncTimestamp() {
-    if (!current.handle) return;
-    try {
-      current.lastModified = (await current.handle.getFile()).lastModified;
-    } catch { /* timestamp tracking is best-effort */ }
-  },
-};
-
-async function writeHandle(handle, jsonData) {
-  const writable = await handle.createWritable();
-  await writable.write(new Blob([JSON.stringify(jsonData, null, 2)], { type: MIME_TYPE }));
-  await writable.close();
-}
-
-// ---------------------------------------------------------------------------
-// OPFS asset storage (web backend only)
-// ---------------------------------------------------------------------------
-
-async function openOpfsDir(name, options) {
-  try {
-    const root = await navigator.storage.getDirectory();
-    return await root.getDirectoryHandle(name, options);
-  } catch {
-    return null; // OPFS unavailable, or the directory does not exist yet
   }
+
+  // Download fallback: embed data URIs as-is (no external assets)
+  return saveViaDownload(JSON.stringify(jsonData, null, 2), suggestedName);
 }
 
-async function writeOpfsAssets(dirHandle, assets) {
+export async function saveToFileAs(jsonData, suggestedName) {
+  const oldHandle = cachedFileHandle;
+  const oldAssetDir = cachedAssetDirHandle;
+  cachedFileHandle = null;
+  cachedAssetDirHandle = null;
+  const result = await saveToFile(jsonData, suggestedName);
+  if (!result) {
+    cachedFileHandle = oldHandle;
+    cachedAssetDirHandle = oldAssetDir;
+  }
+  return result;
+}
+
+async function writeAssets(dirHandle, assets) {
   for (const asset of assets) {
     try {
       const fileHandle = await dirHandle.getFileHandle(asset.fileName, { create: true });
       const writable = await fileHandle.createWritable();
-      await writable.write(dataUrlToBlob(asset.dataUrl));
+      const blob = dataUrlToBlob(asset.dataUrl);
+      await writable.write(blob);
       await writable.close();
-    } catch (err) {
-      console.warn('Failed to write asset:', asset.fileName, err);
+    } catch (e) {
+      console.warn('Failed to write asset:', asset.fileName, e);
     }
   }
-}
-
-async function readOpfsAssets(dirHandle) {
-  const assets = {};
-  try {
-    for await (const entry of dirHandle.values()) {
-      if (entry.kind !== 'file') continue;
-      const file = await (await dirHandle.getFileHandle(entry.name)).getFile();
-      assets[entry.name] = await fileToDataUrl(file);
-    }
-  } catch (err) {
-    console.warn('Failed to read assets:', err);
-  }
-  return assets;
 }
 
 function dataUrlToBlob(dataUrl) {
-  const [header, body] = dataUrl.split(',');
-  const mime = header.match(/:(.*?);/)[1];
-  const raw = atob(body);
-  const bytes = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
+  const parts = dataUrl.split(',');
+  const mime = parts[0].match(/:(.*?);/)[1];
+  const raw = atob(parts[1]);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+function saveViaDownload(jsonString, suggestedName) {
+  const blob = new Blob([jsonString], { type: MIME_TYPE });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = suggestedName || `document${FILE_EXTENSION}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return { name: a.download, handle: null };
+}
+
+export async function loadFromFile() {
+  if (typeof window !== 'undefined' && window.showOpenFilePicker) {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: FILE_DESCRIPTION, accept: ACCEPT_MIME }]
+      });
+      cachedFileHandle = handle;
+      const file = await handle.getFile();
+      const text = await file.text();
+      const docState = JSON.parse(text);
+      const baseName = file.name.replace(/\.[^.]+$/, '');
+      currentAssetDirName = baseName + '_assets';
+
+      cachedAssetDirHandle = null;
+      try {
+        const opfsRoot = await navigator.storage.getDirectory();
+        cachedAssetDirHandle = await opfsRoot.getDirectoryHandle(currentAssetDirName);
+      } catch (_) {
+        try {
+          cachedAssetDirHandle = await window.showDirectoryPicker({ mode: 'read' });
+        } catch (_2) {}
+      }
+
+      if (cachedAssetDirHandle) {
+        const assetsMap = await readAssets(cachedAssetDirHandle);
+        if (Object.keys(assetsMap).length > 0) {
+          embedImageAssets(docState, assetsMap);
+        }
+      }
+
+      return { data: docState, name: file.name, handle };
+    } catch (e) {
+      if (e.name === 'AbortError' || e.name === 'NotFoundError') return null;
+      throw e;
+    }
+  }
+
+  return loadViaFileInput();
+}
+
+async function readAssets(dirHandle) {
+  const assetsMap = {};
+  try {
+    for await (const entry of dirHandle.values()) {
+      if (entry.kind === 'file') {
+        const fileHandle = await dirHandle.getFileHandle(entry.name);
+        const file = await fileHandle.getFile();
+        const dataUrl = await fileToDataUrl(file);
+        assetsMap[entry.name] = dataUrl;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to read assets:', e);
+  }
+  return assetsMap;
 }
 
 function fileToDataUrl(file) {
@@ -321,103 +200,54 @@ function fileToDataUrl(file) {
   });
 }
 
-function saveViaDownload(jsonString, fileName) {
-  const url = URL.createObjectURL(new Blob([jsonString], { type: MIME_TYPE }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return { name: fileName, handle: null, path: null };
-}
-
 function loadViaFileInput() {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = isMobile() ? '*/*' : `${FILE_EXTENSION},.json,application/json,text/*`;
+    input.accept = `${FILE_EXTENSION},.json`;
     input.style.position = 'fixed';
     input.style.top = '-100px';
     input.style.left = '-100px';
 
-    let settled = false;
-    const cleanup = () => {
-      window.removeEventListener('focus', onFocus);
-      input.remove();
-    };
+    let resolved = false;
 
-    input.addEventListener('change', async () => {
-      settled = true;
+    input.addEventListener('change', () => {
+      resolved = true;
       cleanup();
       const file = input.files[0];
       if (!file) {
         resolve(null);
         return;
       }
-      try {
-        const data = JSON.parse(await file.text());
-        resolve({ data, name: file.name, handle: null, path: null });
-      } catch (err) {
-        if (!isMobile()) {
-          reject(err);
-          return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          resolve({ data: JSON.parse(reader.result), name: file.name, handle: null });
+        } catch (e) {
+          reject(e);
         }
-        await showAlertDialog(`Invalid file format.\n\n"${file.name}" is not a valid Canvas Web document.`);
-        resolve(null);
-      }
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
     });
 
-    // The picker was dismissed if focus returns without a change event.
-    const onFocus = () => setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(null);
-    }, 200);
+    const cleanup = () => {
+      window.removeEventListener('focus', onFocus);
+      if (input.parentNode) input.parentNode.removeChild(input);
+    };
+
+    const onFocus = () => {
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          resolve(null);
+        }
+      }, 200);
+    };
     window.addEventListener('focus', onFocus);
 
     document.body.appendChild(input);
     input.click();
   });
-}
-
-// ---------------------------------------------------------------------------
-// Public interface
-// ---------------------------------------------------------------------------
-
-const backend = isDesktop ? nativeBackend : webBackend;
-
-export function saveToFile(jsonData, suggestedName) {
-  return backend.save(jsonData, suggestedName);
-}
-
-/** Save under a new name, restoring the previous target if the user cancels. */
-export async function saveToFileAs(jsonData, suggestedName) {
-  const previous = { ...current };
-  current.handle = null;
-  current.path = null;
-  current.assetDir = null;
-
-  const result = await backend.save(jsonData, suggestedName);
-  if (!result) Object.assign(current, previous);
-  return result;
-}
-
-/** @param {string} [path] desktop only: open this file instead of prompting. */
-export function loadFromFile(path) {
-  return backend.load(path);
-}
-
-export function checkFileModified() {
-  return backend.isModified();
-}
-
-export function reloadFromCachedHandle() {
-  return backend.reload();
-}
-
-export function syncFileTimestamp() {
-  return backend.syncTimestamp();
 }

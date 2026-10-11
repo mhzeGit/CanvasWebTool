@@ -10,22 +10,9 @@ import {
   duplicateSelectedNodes, copySelectedNodes, pasteNodesAt,
   removeImageFromShape, saveDocument, saveDocumentAs,
 } from './document.js';
-import {
-  createMoveShapesCmd, createMoveTextBoxesCmd, createMoveConnectorsCmd, createMoveArrowEndCmd, createBatchCmd,
-} from './undo.js';
-import { getSnapIncrement } from './snap.js';
-import { focusOnSelected, focusOnAll } from './focus.js';
-
-let fKeyTimer = null;
 
 export function setupKeyboard() {
   window.addEventListener('keydown', onKeyDown);
-}
-
-function isTextFocused() {
-  const el = document.activeElement;
-  if (!el) return false;
-  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
 }
 
 function handleMarkdownShortcut(e) {
@@ -74,49 +61,32 @@ function wrapSelection(el, wrapper) {
 }
 
 function onKeyDown(e) {
-  const textFocused = isTextFocused();
-  const editing = state.editingState;
-  const ctrl = e.ctrlKey || e.metaKey;
-  const key = e.key;
-  const keyLower = key.toLowerCase();
+  const active = document.activeElement;
+  const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
 
-  if (textFocused || editing) {
-    if (textFocused && !editing && handleMarkdownShortcut(e)) {
-      return;
-    }
-    if (editing) {
-      if (key === 'Escape') {
-        cancelEditing();
-        e.preventDefault();
-      }
-      return;
+  if (isInput && handleMarkdownShortcut(e)) {
+    return;
+  }
+
+  if (state.editingState) {
+    if (e.key === 'Escape') {
+      cancelEditing();
+      e.preventDefault();
     }
     return;
   }
 
-  if (ctrl && keyLower === 's') {
-    e.preventDefault();
-    if (e.shiftKey) {
-      saveDocumentAs();
-    } else {
-      saveDocument();
-    }
-    return;
-  }
-
-  if (ctrl && !e.shiftKey && keyLower === 'z') {
+  if (!isInput && (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key.toLowerCase() === 'z')) {
     performUndo();
     e.preventDefault();
     return;
   }
-
-  if (ctrl && ((e.shiftKey && keyLower === 'z') || keyLower === 'y')) {
+  if (!isInput && (e.ctrlKey || e.metaKey) && ((e.shiftKey && e.key.toLowerCase() === 'z') || e.key.toLowerCase() === 'y')) {
     performRedo();
     e.preventDefault();
     return;
   }
-
-  if (key === 'Delete' || key === 'Backspace') {
+  if (!isInput && (e.key === 'Delete' || e.key === 'Backspace')) {
     if (state.selectedShapes.size > 0) {
       deleteSelectedShapes();
       e.preventDefault();
@@ -145,23 +115,7 @@ function onKeyDown(e) {
     deleteSelectedNodes();
     e.preventDefault();
   }
-
-  if (key.startsWith('Arrow')) {
-    if (state.drawingTool || state.connectingFrom !== null) return;
-    if (state.selectedShapes.size === 0 && state.selectedTextBoxes.size === 0 &&
-        state.selectedConnectors.size === 0 && state.selectedArrows.size === 0) return;
-    e.preventDefault();
-    const inc = e.shiftKey ? 1 : getSnapIncrement(state.scale);
-    switch (key) {
-      case 'ArrowUp': nudgeSelected(0, -inc); break;
-      case 'ArrowDown': nudgeSelected(0, inc); break;
-      case 'ArrowLeft': nudgeSelected(-inc, 0); break;
-      case 'ArrowRight': nudgeSelected(inc, 0); break;
-    }
-    return;
-  }
-
-  if (ctrl && keyLower === 'c') {
+  if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c')) {
     if (state.hoveredPropField) {
       copyHoveredProp();
       e.preventDefault();
@@ -170,8 +124,7 @@ function onKeyDown(e) {
     copySelectedNodes();
     e.preventDefault();
   }
-
-  if (ctrl && keyLower === 'v') {
+  if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'v')) {
     if (state.hoveredPropField && state.propertyClipboard) {
       pasteHoveredProp();
       e.preventDefault();
@@ -184,28 +137,11 @@ function onKeyDown(e) {
     pasteNodesAt(world.x, world.y);
     e.preventDefault();
   }
-
-  if (ctrl && keyLower === 'd') {
+  if (!isInput && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'd')) {
     duplicateSelectedNodes();
     e.preventDefault();
   }
-
-  if (keyLower === 'f' && !ctrl) {
-    e.preventDefault();
-    if (fKeyTimer) {
-      clearTimeout(fKeyTimer);
-      fKeyTimer = null;
-      focusOnAll();
-    } else {
-      fKeyTimer = setTimeout(() => {
-        fKeyTimer = null;
-        focusOnSelected();
-      }, 300);
-    }
-    return;
-  }
-
-  if (key === 'Escape') {
+  if (!isInput && e.key === 'Escape') {
     if (state.drawingTool) {
       state.drawingTool = null;
       state.drawingStartX = 0;
@@ -233,120 +169,6 @@ function onKeyDown(e) {
       refreshSidePanel();
     }
   }
-}
-
-function nudgeSelected(dx, dy) {
-  const movedIds = new Set();
-  const shapeMoves = [];
-  const tbMoves = [];
-  const connectorMoves = [];
-  const arrowMoves = [];
-
-  function addChildMoves(parentType, parentId) {
-    const descendants = state.parentTree.getDescendants(parentType, parentId);
-    for (const desc of descendants) {
-      const key = desc.type + ':' + desc.id;
-      if (movedIds.has(key)) continue;
-      movedIds.add(key);
-      if (desc.type === 'shape') {
-        const s = state.shapes.find(sh => sh.id === desc.id);
-        if (s) {
-          shapeMoves.push({ id: s.id, fromX: s.x, fromY: s.y, toX: s.x + dx, toY: s.y + dy });
-        }
-      } else if (desc.type === 'textBox') {
-        const tb = state.textBoxes.find(t => t.id === desc.id);
-        if (tb) {
-          tbMoves.push({ id: tb.id, fromX: tb.x, fromY: tb.y, toX: tb.x + dx, toY: tb.y + dy });
-        }
-      }
-    }
-  }
-
-  for (const idx of state.selectedShapes) {
-    const s = state.shapes[idx];
-    if (!s || s.locked || movedIds.has('shape:' + s.id)) continue;
-    movedIds.add('shape:' + s.id);
-    shapeMoves.push({ id: s.id, fromX: s.x, fromY: s.y, toX: s.x + dx, toY: s.y + dy });
-    addChildMoves('shape', s.id);
-  }
-
-  for (const idx of state.selectedTextBoxes) {
-    const tb = state.textBoxes[idx];
-    if (!tb || tb.locked || movedIds.has('textBox:' + tb.id)) continue;
-    movedIds.add('textBox:' + tb.id);
-    tbMoves.push({ id: tb.id, fromX: tb.x, fromY: tb.y, toX: tb.x + dx, toY: tb.y + dy });
-    addChildMoves('textBox', tb.id);
-  }
-
-  for (const idx of state.selectedConnectors) {
-    const c = state.connectors[idx];
-    if (!c || c.locked || movedIds.has(`c:${c.id}`)) continue;
-    movedIds.add(`c:${c.id}`);
-    connectorMoves.push({
-      id: c.id,
-      fromX1: c.x1, fromY1: c.y1, fromX2: c.x2, fromY2: c.y2,
-      toX1: c.x1 + dx, toY1: c.y1 + dy, toX2: c.x2 + dx, toY2: c.y2 + dy,
-    });
-  }
-
-  for (const idx of state.selectedArrows) {
-    const a = state.arrows[idx];
-    if (!a || a.locked || a.connectedFrom !== null || a.connectedTo !== null) continue;
-    if (movedIds.has(`a:${a.id}`)) continue;
-    movedIds.add(`a:${a.id}`);
-    arrowMoves.push({
-      idx,
-      fromState: {
-        x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2,
-        connectedFrom: a.connectedFrom, connectedTo: a.connectedTo,
-        connectedFromType: a.connectedFromType, connectedToType: a.connectedToType,
-      },
-      toState: {
-        x1: a.x1 + dx, y1: a.y1 + dy, x2: a.x2 + dx, y2: a.y2 + dy,
-        connectedFrom: a.connectedFrom, connectedTo: a.connectedTo,
-        connectedFromType: a.connectedFromType, connectedToType: a.connectedToType,
-      },
-    });
-  }
-
-  const cmds = [];
-  if (shapeMoves.length > 0) {
-    for (const m of shapeMoves) {
-      const s = state.shapes.find(sh => sh.id === m.id);
-      if (s) { s.x = m.toX; s.y = m.toY; }
-    }
-    cmds.push(createMoveShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, shapeMoves));
-  }
-  if (tbMoves.length > 0) {
-    for (const m of tbMoves) {
-      const tb = state.textBoxes.find(t => t.id === m.id);
-      if (tb) { tb.x = m.toX; tb.y = m.toY; }
-    }
-    cmds.push(createMoveTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, tbMoves));
-  }
-  if (connectorMoves.length > 0) {
-    for (const m of connectorMoves) {
-      const c = state.connectors.find(co => co.id === m.id);
-      if (c) { c.x1 = m.toX1; c.y1 = m.toY1; c.x2 = m.toX2; c.y2 = m.toY2; }
-    }
-    cmds.push(createMoveConnectorsCmd(state.connectors, state.selectedConnectors, connectorMoves));
-  }
-  for (const m of arrowMoves) {
-    const a = state.arrows[m.idx];
-    if (a) { a.x1 = m.toState.x1; a.y1 = m.toState.y1; a.x2 = m.toState.x2; a.y2 = m.toState.y2; }
-    cmds.push(createMoveArrowEndCmd(state.arrows, m.idx, m.fromState, m.toState));
-  }
-
-  if (cmds.length === 1) {
-    history.push(cmds[0]);
-  } else if (cmds.length > 1) {
-    history.push(createBatchCmd(cmds, 'Nudge Items'));
-  }
-
-  for (const m of shapeMoves) state.parentTree.markDirty('shape', m.id);
-  for (const m of tbMoves) state.parentTree.markDirty('textBox', m.id);
-  state.parentTree.recomputeDirty();
-  refreshSidePanel();
 }
 
 function copyHoveredProp() {
@@ -392,3 +214,17 @@ function pasteHoveredProp() {
   flushPanelEdit();
   refreshSidePanel();
 }
+
+window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    const active = document.activeElement;
+    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+    if (isInput) return;
+    e.preventDefault();
+    if (e.shiftKey) {
+      saveDocumentAs();
+    } else {
+      saveDocument();
+    }
+  }
+});

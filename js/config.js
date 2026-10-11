@@ -3,8 +3,8 @@ export const GRID = {
   lineColor: [25, 25, 25],
   lineWidth: 2,
   spacing: 20,
-  panLerp: 0.3,
-  zoomLerp: 0.3,
+  panLerp: 0.2,
+  zoomLerp: 0.2,
   zoomFactor: 1.1,
   minScale: 0.05,
   maxScale: 5,
@@ -41,9 +41,6 @@ export const DEFAULT_TEXTBOX_COLOR = '#1a1a1a';
 export const DEFAULT_TEXTBOX_BORDER_COLOR = '#444';
 
 export const MAX_HISTORY_SIZE = 200;
-
-export const TOUCH_ZOOM_DAMPENING = 0.4;
-export const TOUCHPAD_ZOOM_FACTOR = 1.052;
 
 export const PLACEHOLDER_COLOR = '#777';
 export const TITLE_PLACEHOLDER = 'Add Title';

@@ -15,107 +15,40 @@ import {
   createBatchShapePropertyChangeCmd,
 } from './undo.js';
 import { serializeDocument, deserializeDocument, FILE_EXTENSION } from './format.js';
-import { saveToFile, loadFromFile, clearCachedFileHandle, saveToFileAs, reloadFromCachedHandle, syncFileTimestamp } from './file-io.js';
+import { saveToFile, loadFromFile, clearCachedFileHandle, saveToFileAs } from './file-io.js';
 import { screenToWorld, getObjectEdgePoint } from './utils.js';
 import { refreshSidePanel } from './side-panel.js';
 import { DEFAULT_TEXTBOX_COLOR } from './config.js';
 import { destroyAllEntities } from './dom-entities.js';
-import { imageLOD } from './image-lod.js';
 import { showConfirmDialog } from './dialog.js';
-import { requestRender } from './render-scheduler.js';
-
-/**
- * After deleting entities from textBoxes or shapes array by index, adjust all
- * index-based references in arrows, connectors, and connections to account for
- * the array shift caused by splice().
- *
- * @param {number[]} sortedDeletedIndices - deleted indices, sorted ascending
- * @param {'textBox'|'shape'} entityType - which entity type was deleted
- */
-function shiftIndexRefsAfterDelete(sortedDeletedIndices, entityType) {
-  if (sortedDeletedIndices.length === 0) return;
-  const isText = entityType === 'textBox';
-
-  function matchesType(refType) {
-    if (isText) return refType === 'textBox' || refType === null;
-    return refType === 'shape';
-  }
-
-  function calcShift(idx) {
-    if (idx === null || idx === undefined) return 0;
-    let cnt = 0;
-    for (const d of sortedDeletedIndices) {
-      if (d < idx) cnt++;
-      else break; // sorted ascending, no need to continue
-    }
-    return cnt;
-  }
-
-  // Adjust arrows
-  for (const arrow of state.arrows) {
-    if (arrow.connectedFrom !== null && matchesType(arrow.connectedFromType)) {
-      const s = calcShift(arrow.connectedFrom);
-      if (s > 0) arrow.connectedFrom -= s;
-    }
-    if (arrow.connectedTo !== null && matchesType(arrow.connectedToType)) {
-      const s = calcShift(arrow.connectedTo);
-      if (s > 0) arrow.connectedTo -= s;
-    }
-  }
-
-  // Adjust connectors
-  for (const conn of state.connectors) {
-    if (conn.connectedFrom !== null && matchesType(conn.connectedFromType)) {
-      const s = calcShift(conn.connectedFrom);
-      if (s > 0) conn.connectedFrom -= s;
-    }
-    if (conn.connectedTo !== null && matchesType(conn.connectedToType)) {
-      const s = calcShift(conn.connectedTo);
-      if (s > 0) conn.connectedTo -= s;
-    }
-  }
-
-  // Adjust bezier connections (only for textBox deletes)
-  if (isText) {
-    for (const conn of state.connections) {
-      if (conn.from !== null && conn.from !== undefined) {
-        const s = calcShift(conn.from);
-        if (s > 0) conn.from -= s;
-      }
-      if (conn.to !== null && conn.to !== undefined) {
-        const s = calcShift(conn.to);
-        if (s > 0) conn.to -= s;
-      }
-    }
-  }
-}
-
-/**
- * Capture pre-deletion reference state of arrows, connectors, and connections
- * for undo/redo correctness.
- */
-function snapshotRefState() {
-  return {
-    arrows: state.arrows.map(a => ({
-      connectedFrom: a.connectedFrom,
-      connectedFromType: a.connectedFromType,
-      connectedTo: a.connectedTo,
-      connectedToType: a.connectedToType,
-    })),
-    connectors: state.connectors.map(c => ({
-      connectedFrom: c.connectedFrom,
-      connectedFromType: c.connectedFromType,
-      connectedTo: c.connectedTo,
-      connectedToType: c.connectedToType,
-    })),
-    connections: state.connections.map(c => ({
-      from: c.from,
-      to: c.to,
-    })),
-  };
-}
 
 let _nextImageId = 1;
+
+function fitImageInShape(s, naturalW, naturalH) {
+  const margin = 10;
+  const availW = s.w - margin * 2;
+  const availH = s.h - margin * 2;
+  let imgW, imgH;
+  if (naturalW && naturalH) {
+    const ratio = naturalW / naturalH;
+    if (availW / ratio <= availH) {
+      imgW = availW;
+      imgH = availW / ratio;
+    } else {
+      imgH = availH;
+      imgW = availH * ratio;
+    }
+  } else {
+    imgW = Math.min(120, availW);
+    imgH = Math.min(120, availH);
+  }
+  return {
+    x: margin + (availW - imgW) / 2,
+    y: margin + (availH - imgH) / 2,
+    w: Math.round(imgW),
+    h: Math.round(imgH),
+  };
+}
 
 export function addImageContainerAt(worldX, worldY, optW, optH) {
   flushPanelEdit();
@@ -129,17 +62,17 @@ export function addImageContainerAt(worldX, worldY, optW, optH) {
     y: isDrag ? worldY : worldY - h / 2,
     w, h,
     color: '#1e1e1e',
-    borderColor: '#3a3a3a',
-    borderWidth: 1,
-    cornerRadius: 8,
+    borderColor: '#6bb5ff',
+    borderWidth: 2,
+    cornerRadius: 6,
     image: null,
     parentId: null,
     parentType: null,
-    locked: false,
   };
   const idx = state.shapes.length;
   state.shapes.push(shape);
-  state.parentTree.register('shape', shape.id, shape);
+  state.markDrawOrderDirty();
+  state.reparentAll();
   state.selectedShapes.clear();
   state.selectedTextBoxes.clear();
   state.selectedConnectors.clear();
@@ -162,19 +95,38 @@ export function addImageToShape(shapeIdx, src) {
   flushPanelEdit();
   const s = state.shapes[shapeIdx];
   if (!s) return;
-  if (s.image && s.image.id !== undefined) {
-    imageLOD.removeImage(s.image.id);
-  }
+  const imgId = _nextImageId++;
+  const place = fitImageInShape(s, null, null);
   const img = {
-    id: _nextImageId++,
+    id: imgId,
+    x: place.x,
+    y: place.y,
+    w: place.w,
+    h: place.h,
     src: src || '',
     fileName: '',
+    keepRatio: true,
   };
   s.image = img;
-  imageLOD.generateLODs(img.id, img.src);
   state.markDrawOrderDirty();
   refreshSidePanel();
-  requestRender(3);
+  if (src) {
+    const temp = new Image();
+    temp.onload = () => {
+      const nw = temp.naturalWidth;
+      const nh = temp.naturalHeight;
+      const newPlace = fitImageInShape(s, nw, nh);
+      if (s.image && s.image.id === imgId) {
+        s.image.x = newPlace.x;
+        s.image.y = newPlace.y;
+        s.image.w = newPlace.w;
+        s.image.h = newPlace.h;
+        state.markDrawOrderDirty();
+        refreshSidePanel();
+      }
+    };
+    temp.src = src;
+  }
   return img;
 }
 
@@ -182,9 +134,7 @@ export function removeImageFromShape(shapeIdx) {
   flushPanelEdit();
   const s = state.shapes[shapeIdx];
   if (!s || !s.image) return;
-  const oldId = s.image ? s.image.id : null;
   s.image = null;
-  if (oldId !== null) imageLOD.removeImage(oldId);
   state.markDrawOrderDirty();
   refreshSidePanel();
 }
@@ -272,10 +222,7 @@ export function addArrowAt(worldX, worldY, connectTextBoxIdx) {
     connectedTo,
     connectedFromType: connectedFrom !== null ? 'textBox' : null,
     connectedToType: null,
-    color: '#6bb5ff',
-    lineWidth: 2,
-    headSize: 14,
-    locked: false,
+    color: '#6bb5ff'
   };
 
   const idx = state.arrows.length;
@@ -309,11 +256,11 @@ export function addShapeAt(worldX, worldY, shapeType, optW, optH) {
     image: null,
     parentId: null,
     parentType: null,
-    locked: false,
   };
   const idx = state.shapes.length;
   state.shapes.push(shape);
-  state.parentTree.register('shape', shape.id, shape);
+  state.markDrawOrderDirty();
+  state.reparentAll();
   state.selectedShapes.clear();
   state.selectedTextBoxes.clear();
   state.selectedConnectors.clear();
@@ -343,11 +290,11 @@ export function addTextBoxAt(worldX, worldY, optW, optH) {
     titleColor: '#e7e7e7',
     parentId: null,
     parentType: null,
-    locked: false,
   };
   const idx = state.textBoxes.length;
   state.textBoxes.push(textBox);
-  state.parentTree.register('textBox', textBox.id, textBox);
+  state.markDrawOrderDirty();
+  state.reparentAll();
   state.selectedShapes.clear();
   state.selectedTextBoxes.clear();
   state.selectedConnectors.clear();
@@ -366,7 +313,6 @@ export function addConnector(x1, y1, x2, y2, connectedFrom, connectedTo, connect
     connectedFromType: connectedFromType ?? null,
     connectedToType: connectedToType ?? null,
     color: '#6bb5ff',
-    locked: false,
   };
   const idx = state.connectors.length;
   state.connectors.push(connector);
@@ -388,9 +334,6 @@ export function addArrowFromPoints(x1, y1, x2, y2, connectedFrom, connectedTo, c
     connectedFromType: connectedFromType ?? null,
     connectedToType: connectedToType ?? null,
     color: '#6bb5ff',
-    lineWidth: 2,
-    headSize: 14,
-    locked: false,
   };
   const idx = state.arrows.length;
   state.arrows.push(arrow);
@@ -410,7 +353,6 @@ export function deleteSelectedShapes() {
   const sortedIndices = Array.from(state.selectedShapes).sort((a, b) => a - b);
   const deletedSet = new Set(sortedIndices);
   const deletedEntries = sortedIndices.map(i => ({ shape: state.shapes[i], index: i }));
-  const refSnapshot = snapshotRefState();
 
   for (const arrow of state.arrows) {
     if (arrow.connectedFrom !== null && arrow.connectedFromType === 'shape' && deletedSet.has(arrow.connectedFrom)) {
@@ -429,22 +371,13 @@ export function deleteSelectedShapes() {
     }
   }
 
-  for (const idx of sortedIndices) {
-    state.parentTree.unregister('shape', state.shapes[idx].id);
-  }
   for (let i = sortedIndices.length - 1; i >= 0; i--) {
     state.shapes.splice(sortedIndices[i], 1);
   }
-
-  // Adjust remaining index-based references for the array shift
-  shiftIndexRefsAfterDelete(sortedIndices, 'shape');
-
   state.selectedShapes.clear();
+  state.reparentAll();
   refreshSidePanel();
-  history.push(createDeleteShapesCmd(
-    state.shapes, state.selectedShapes, refreshSidePanel, deletedEntries,
-    sortedIndices, 'shape', refSnapshot, shiftIndexRefsAfterDelete
-  ));
+  history.push(createDeleteShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, deletedEntries));
 }
 
 export function deleteSelectedTextBoxes() {
@@ -453,41 +386,32 @@ export function deleteSelectedTextBoxes() {
   const sortedIndices = Array.from(state.selectedTextBoxes).sort((a, b) => a - b);
   const deletedSet = new Set(sortedIndices);
   const deletedEntries = sortedIndices.map(i => ({ textBox: state.textBoxes[i], index: i }));
-  const refSnapshot = snapshotRefState();
+  const deletedIds = new Set(deletedEntries.map(e => e.textBox.id));
 
   for (const arrow of state.arrows) {
-    if (arrow.connectedFrom !== null && (arrow.connectedFromType === 'textBox' || arrow.connectedFromType === null) && deletedSet.has(arrow.connectedFrom)) {
+    if (arrow.connectedFrom !== null && arrow.connectedFromType === 'textBox' && deletedSet.has(arrow.connectedFrom)) {
       arrow.connectedFrom = null; arrow.connectedFromType = null;
     }
-    if (arrow.connectedTo !== null && (arrow.connectedToType === 'textBox' || arrow.connectedToType === null) && deletedSet.has(arrow.connectedTo)) {
+    if (arrow.connectedTo !== null && arrow.connectedToType === 'textBox' && deletedSet.has(arrow.connectedTo)) {
       arrow.connectedTo = null; arrow.connectedToType = null;
     }
   }
   for (const conn of state.connectors) {
-    if (conn.connectedFrom !== null && (conn.connectedFromType === 'textBox' || conn.connectedFromType === null) && deletedSet.has(conn.connectedFrom)) {
+    if (conn.connectedFrom !== null && conn.connectedFromType === 'textBox' && deletedSet.has(conn.connectedFrom)) {
       conn.connectedFrom = null; conn.connectedFromType = null;
     }
-    if (conn.connectedTo !== null && (conn.connectedToType === 'textBox' || conn.connectedToType === null) && deletedSet.has(conn.connectedTo)) {
+    if (conn.connectedTo !== null && conn.connectedToType === 'textBox' && deletedSet.has(conn.connectedTo)) {
       conn.connectedTo = null; conn.connectedToType = null;
     }
   }
 
-  for (const idx of sortedIndices) {
-    state.parentTree.unregister('textBox', state.textBoxes[idx].id);
-  }
   for (let i = sortedIndices.length - 1; i >= 0; i--) {
     state.textBoxes.splice(sortedIndices[i], 1);
   }
-
-  // Adjust remaining index-based references for the array shift
-  shiftIndexRefsAfterDelete(sortedIndices, 'textBox');
-
   state.selectedTextBoxes.clear();
+  state.reparentAll();
   refreshSidePanel();
-  history.push(createDeleteTextBoxesCmd(
-    state.textBoxes, state.selectedTextBoxes, refreshSidePanel, deletedEntries,
-    sortedIndices, 'textBox', refSnapshot, shiftIndexRefsAfterDelete
-  ));
+  history.push(createDeleteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, deletedEntries));
 }
 
 export function deleteSelectedConnectors() {
@@ -499,6 +423,7 @@ export function deleteSelectedConnectors() {
     state.connectors.splice(sortedIndices[i], 1);
   }
   state.selectedConnectors.clear();
+  state.reparentAll();
   refreshSidePanel();
   history.push(createDeleteConnectorsCmd(state.connectors, state.selectedConnectors, refreshSidePanel, deletedEntries));
 }
@@ -521,7 +446,7 @@ export function addConnection(fromIdx, toIdx) {
   flushPanelEdit();
   let maxId = 0;
   for (const c of state.connections) { if (c.id > maxId) maxId = c.id; }
-  const connection = { id: maxId + 1, from: fromIdx, to: toIdx, color: '#6bb5ff', text: '', locked: false };
+  const connection = { id: maxId + 1, from: fromIdx, to: toIdx, color: '#6bb5ff', text: '' };
   state.connections.push(connection);
   history.push(createAddConnectionCmd(state.connections, state.selectedConnection, refreshSidePanel, connection));
 }
@@ -541,9 +466,9 @@ export function deleteSelectedTextBoxesWithConnections() {
   flushPanelEdit();
   const sortedIndices = Array.from(state.selectedTextBoxes).sort((a, b) => a - b);
   const deletedEntries = sortedIndices.map(i => ({ textBox: state.textBoxes[i], index: i }));
-  const refSnapshot = snapshotRefState();
 
   const toDelete = new Set(state.selectedTextBoxes);
+  const deletedIds = new Set(deletedEntries.map(e => e.textBox.id));
 
   for (const arrow of state.arrows) {
     if (arrow.connectedFrom !== null) {
@@ -589,22 +514,14 @@ export function deleteSelectedTextBoxesWithConnections() {
   state.connections.length = 0;
   for (const c of newConnections) state.connections.push(c);
 
-  for (const idx of sortedIndices) {
-    state.parentTree.unregister('textBox', state.textBoxes[idx].id);
-  }
   for (let i = sortedIndices.length - 1; i >= 0; i--) {
     state.textBoxes.splice(sortedIndices[i], 1);
   }
-
-  // Adjust remaining index-based references for the array shift
-  shiftIndexRefsAfterDelete(sortedIndices, 'textBox');
-
   state.selectedTextBoxes.clear();
+  state.markDrawOrderDirty();
+  state.reparentAll();
   refreshSidePanel();
-  history.push(createDeleteTextBoxesCmd(
-    state.textBoxes, state.selectedTextBoxes, refreshSidePanel, deletedEntries,
-    sortedIndices, 'textBox', refSnapshot, shiftIndexRefsAfterDelete
-  ));
+  history.push(createDeleteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, deletedEntries));
 }
 
 export function duplicateSelectedTextBoxes() {
@@ -635,11 +552,12 @@ export function duplicateSelectedTextBoxes() {
   const entries = [];
   for (let i = 0; i < dupes.length; i++) {
     state.textBoxes.push(dupes[i]);
-    state.parentTree.register('textBox', dupes[i].id, dupes[i]);
     entries.push({ textBox: dupes[i], index: startIdx + i });
   }
   state.selectedTextBoxes.clear();
   for (let i = 0; i < dupes.length; i++) state.selectedTextBoxes.add(startIdx + i);
+  state.markDrawOrderDirty();
+  state.reparentAll();
   refreshSidePanel();
   history.push(createDuplicateTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, entries));
 }
@@ -696,11 +614,12 @@ export function pasteTextBoxesAt(worldX, worldY) {
     };
     const idx = state.textBoxes.length;
     state.textBoxes.push(textBox);
-    state.parentTree.register('textBox', textBox.id, textBox);
     pastedEntries.push({ textBox, index: idx });
   }
   state.selectedTextBoxes.clear();
   for (let i = 0; i < pastedEntries.length; i++) state.selectedTextBoxes.add(pastedEntries[i].index);
+  state.markDrawOrderDirty();
+  state.reparentAll();
   refreshSidePanel();
   history.push(createPasteTextBoxesCmd(state.textBoxes, state.selectedTextBoxes, refreshSidePanel, pastedEntries));
 }
@@ -715,7 +634,6 @@ export function copySelectedShapes() {
 
   for (const i of state.selectedShapes) {
     const s = state.shapes[i];
-    const imgCopy = s.image ? { id: s.image.id, src: s.image.src, fileName: s.image.fileName } : null;
     state.clipboard.push({
       _type: 'shape',
       dx: s.x - mouseWorld.x,
@@ -726,7 +644,7 @@ export function copySelectedShapes() {
       borderColor: s.borderColor,
       borderWidth: s.borderWidth,
       cornerRadius: s.cornerRadius,
-      image: imgCopy,
+      image: s.image ? JSON.parse(JSON.stringify(s.image)) : null,
     });
   }
 }
@@ -737,7 +655,6 @@ export function pasteShapesAt(worldX, worldY) {
   flushPanelEdit();
   const pastedShapes = [];
   for (const c of entries) {
-    const imgCopy = c.image ? { id: c.image.id, src: c.image.src, fileName: c.image.fileName } : null;
     const shape = {
       id: state.nextShapeId++,
       x: worldX + c.dx,
@@ -748,19 +665,20 @@ export function pasteShapesAt(worldX, worldY) {
       borderColor: c.borderColor || '#6bb5ff',
       borderWidth: c.borderWidth ?? 2,
       cornerRadius: c.cornerRadius ?? (c.shapeType === 'rectangle' ? 4 : 0),
-      image: imgCopy,
+      image: c.image ? JSON.parse(JSON.stringify(c.image)) : null,
       parentId: null,
       parentType: null,
     };
     const idx = state.shapes.length;
     state.shapes.push(shape);
-    state.parentTree.register('shape', shape.id, shape);
     pastedShapes.push({ shape, index: idx });
   }
   state.selectedShapes.clear();
   state.selectedTextBoxes.clear();
   state.selectedConnectors.clear();
   for (let i = 0; i < pastedShapes.length; i++) state.selectedShapes.add(pastedShapes[i].index);
+  state.markDrawOrderDirty();
+  state.reparentAll();
   refreshSidePanel();
   history.push(createPasteShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, pastedShapes));
 }
@@ -771,7 +689,6 @@ export function duplicateSelectedShapes() {
   const dupes = [];
   for (const i of state.selectedShapes) {
     const s = state.shapes[i];
-    const imgCopy = s.image ? { id: s.image.id, src: s.image.src, fileName: s.image.fileName } : null;
     dupes.push({
       id: state.nextShapeId++,
       x: s.x + 20,
@@ -782,7 +699,7 @@ export function duplicateSelectedShapes() {
       borderColor: s.borderColor,
       borderWidth: s.borderWidth,
       cornerRadius: s.cornerRadius,
-      image: imgCopy,
+      image: s.image ? JSON.parse(JSON.stringify(s.image)) : null,
       parentId: null,
       parentType: null,
     });
@@ -791,13 +708,14 @@ export function duplicateSelectedShapes() {
   const entries = [];
   for (let i = 0; i < dupes.length; i++) {
     state.shapes.push(dupes[i]);
-    state.parentTree.register('shape', dupes[i].id, dupes[i]);
     entries.push({ shape: dupes[i], index: startIdx + i });
   }
   state.selectedTextBoxes.clear();
   state.selectedShapes.clear();
   state.selectedConnectors.clear();
   for (let i = 0; i < dupes.length; i++) state.selectedShapes.add(startIdx + i);
+  state.markDrawOrderDirty();
+  state.reparentAll();
   refreshSidePanel();
   history.push(createDuplicateShapesCmd(state.shapes, state.selectedShapes, refreshSidePanel, entries));
 }
@@ -828,7 +746,6 @@ export function copySelection() {
   }
   for (const i of state.selectedShapes) {
     const s = state.shapes[i];
-    const imgCopy = s.image ? { id: s.image.id, src: s.image.src, fileName: s.image.fileName } : null;
     state.clipboard.push({
       _type: 'shape',
       dx: s.x - mouseWorld.x,
@@ -839,7 +756,7 @@ export function copySelection() {
       borderColor: s.borderColor,
       borderWidth: s.borderWidth,
       cornerRadius: s.cornerRadius,
-      image: imgCopy,
+      image: s.image ? JSON.parse(JSON.stringify(s.image)) : null,
     });
   }
 }
@@ -868,10 +785,8 @@ export function pasteAt(worldX, worldY) {
       };
       const idx = state.textBoxes.length;
       state.textBoxes.push(tb);
-      state.parentTree.register('textBox', tb.id, tb);
       pastedTextBoxes.push({ textBox: tb, index: idx });
     } else if (type === 'shape') {
-      const imgCopy = c.image ? { id: c.image.id, src: c.image.src, fileName: c.image.fileName } : null;
       const shape = {
         id: state.nextShapeId++,
         x: worldX + c.dx, y: worldY + c.dy,
@@ -881,12 +796,11 @@ export function pasteAt(worldX, worldY) {
         borderColor: c.borderColor || '#6bb5ff',
         borderWidth: c.borderWidth ?? 2,
         cornerRadius: c.cornerRadius ?? (c.shapeType === 'rectangle' ? 4 : 0),
-        image: imgCopy,
+        image: c.image ? JSON.parse(JSON.stringify(c.image)) : null,
         parentId: null, parentType: null,
       };
       const idx = state.shapes.length;
       state.shapes.push(shape);
-      state.parentTree.register('shape', shape.id, shape);
       pastedShapes.push({ shape, index: idx });
     }
   }
@@ -895,6 +809,8 @@ export function pasteAt(worldX, worldY) {
   state.selectedConnectors.clear();
   for (const entry of pastedTextBoxes) state.selectedTextBoxes.add(entry.index);
   for (const entry of pastedShapes) state.selectedShapes.add(entry.index);
+  state.markDrawOrderDirty();
+  state.reparentAll();
   refreshSidePanel();
   const commands = [];
   if (pastedTextBoxes.length > 0) {
@@ -973,6 +889,15 @@ export function restoreDocumentState(docState) {
     }
   }
 
+  const connOffset = docState.nodes ? docState.nodes.length : 0;
+  for (const c of (docState.connections || [])) {
+    const newFrom = c.from;
+    const newTo = c.to;
+    if (newFrom < state.textBoxes.length && newTo < state.textBoxes.length) {
+      state.connections.push({ id: c.id, from: newFrom, to: newTo, color: c.color || '#6bb5ff', text: c.text || '' });
+    }
+  }
+
   for (const a of (docState.arrows || [])) {
     state.arrows.push(a);
   }
@@ -984,21 +909,6 @@ export function restoreDocumentState(docState) {
   }
   for (const cn of (docState.connectors || [])) {
     state.connectors.push(cn);
-  }
-
-  // Connections index into textBoxes, so they can only be validated once the
-  // text boxes are in place. This ran before that loop, which meant every
-  // connection failed the bounds check and was silently discarded on load.
-  for (const c of (docState.connections || [])) {
-    if (c.from >= state.textBoxes.length || c.to >= state.textBoxes.length) continue;
-    state.connections.push({
-      id: c.id,
-      from: c.from,
-      to: c.to,
-      color: c.color || '#6bb5ff',
-      text: c.text || '',
-      locked: !!c.locked,
-    });
   }
 
   let maxTextBoxId = 0;
@@ -1040,9 +950,6 @@ export function restoreDocumentState(docState) {
   state.reparentAll();
   state.isDirty = false;
   refreshSidePanel();
-  // Loading finishes asynchronously, after whatever input started it, so the
-  // next frame has to be asked for rather than assumed.
-  requestRender(3);
 }
 
 export async function newDocument() {
@@ -1053,7 +960,6 @@ export async function newDocument() {
   }
   restoreDocumentState({ nodes: [], connections: [], arrows: [], shapes: [], textBoxes: [], connectors: [], viewport: { offsetX: 0, offsetY: 0, scale: 1 } });
   state.currentFileName = null;
-  state.currentFilePath = null;
   clearCachedFileHandle();
   state.markDrawOrderDirty();
 }
@@ -1082,7 +988,14 @@ export async function saveDocument() {
   const docState = getDocumentState();
   const doc = serializeDocument(docState);
   const suggestedName = state.currentFileName || `document${FILE_EXTENSION}`;
-  return finishSave(await saveToFile(doc, suggestedName));
+  const result = await saveToFile(doc, suggestedName);
+  if (result) {
+    state.currentFileName = result.name;
+    state.isDirty = false;
+    showSaved();
+  } else {
+    clearIndicator();
+  }
 }
 
 export async function saveDocumentAs() {
@@ -1090,19 +1003,14 @@ export async function saveDocumentAs() {
   const docState = getDocumentState();
   const doc = serializeDocument(docState);
   const suggestedName = state.currentFileName || `document${FILE_EXTENSION}`;
-  return finishSave(await saveToFileAs(doc, suggestedName));
-}
-
-function finishSave(result) {
-  if (!result) {
+  const result = await saveToFileAs(doc, suggestedName);
+  if (result) {
+    state.currentFileName = result.name;
+    state.isDirty = false;
+    showSaved();
+  } else {
     clearIndicator();
-    return false;
   }
-  state.currentFileName = result.name;
-  state.currentFilePath = result.path ?? state.currentFilePath;
-  state.isDirty = false;
-  showSaved();
-  return true;
 }
 
 function clearIndicator() {
@@ -1113,65 +1021,17 @@ function clearIndicator() {
   clearTimeout(el._timer);
 }
 
-function showReloaded() {
-  const el = document.getElementById('saveIndicator');
-  if (!el) return;
-  el.textContent = 'Reloaded!';
-  el.className = 'save-indicator saved';
-  clearTimeout(el._timer);
-  el._timer = setTimeout(() => {
-    el.textContent = '';
-    el.className = 'save-indicator';
-  }, 2000);
-}
-
-export async function reloadDocument() {
-  flushPanelEdit();
-  if (state.isDirty) {
-    const confirmed = await showConfirmDialog('The file has changed on disk. Reloading will discard your unsaved changes. Continue?');
-    if (!confirmed) {
-      await syncFileTimestamp();
-      return false;
-    }
-  }
-  const result = await reloadFromCachedHandle();
-  if (!result) return false;
-  const docState = deserializeDocument(result.data);
-  restoreDocumentState(docState);
-  state.currentFileName = result.name;
-  showReloaded();
-  return true;
-}
-
 export async function openDocument() {
   flushPanelEdit();
   if (state.isDirty) {
     const confirmed = await showConfirmDialog('This project has unsaved changes. Are you sure you want to open a different file? Everything unsaved will be discarded!');
-    if (!confirmed) return false;
+    if (!confirmed) return;
   }
-  return loadInto(await loadFromFile());
-}
-
-/**
- * Open a specific file without prompting — used by the CLI, by file
- * associations and by a path given on the command line. Desktop only: in the
- * browser the app is never told where a file lives.
- */
-export async function openDocumentPath(path) {
-  flushPanelEdit();
-  if (state.isDirty) {
-    const confirmed = await showConfirmDialog(`Opening "${path}" will discard your unsaved changes. Continue?`);
-    if (!confirmed) return false;
-  }
-  return loadInto(await loadFromFile(path));
-}
-
-function loadInto(result) {
-  if (!result) return false;
-  restoreDocumentState(deserializeDocument(result.data));
+  const result = await loadFromFile();
+  if (!result) return;
+  const docState = deserializeDocument(result.data);
+  restoreDocumentState(docState);
   state.currentFileName = result.name;
-  state.currentFilePath = result.path ?? null;
-  return true;
 }
 
 export function addNodeAt(worldX, worldY, optW, optH) {
