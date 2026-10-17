@@ -1,3 +1,4 @@
+import { initSubCanvases, addSubCanvasAtCenter } from './sub-canvases.js';
 import { state } from './state.js';
 import { GRID } from './config.js';
 import { drawGrid } from './grid.js';
@@ -119,6 +120,7 @@ function drawImageContainerPreview() {
 }
 
 function initTopBar() {
+  document.getElementById("actionAddSubCanvas")?.addEventListener("click", addSubCanvasAtCenter);
   const addNodeBtn = document.getElementById('actionAddNode');
   const addArrowBtn = document.getElementById('actionAddArrow');
   const addRectBtn = document.getElementById('actionAddRectangle');
@@ -240,6 +242,7 @@ function init() {
   initTopBar();
 
   initPanelResize();
+  initSubCanvases();
 
   setupAutoSave();
 

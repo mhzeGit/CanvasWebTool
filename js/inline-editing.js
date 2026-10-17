@@ -1,3 +1,4 @@
+import { enterCanvas } from './sub-canvases.js';
 import { state } from './state.js';
 import { screenToWorld, worldToScreen, getDarkerColor, getNodeEdgePoint, getPointOnBezier, wrapTextLines } from './utils.js';
 import { hitTestNode } from './nodes.js';
@@ -26,6 +27,7 @@ function onDblClick(e) {
   if (hit === -1) {
     const tbHit = hitTestTextBox(world.x, world.y);
     if (tbHit !== -1) {
+      if (state.textBoxes[tbHit]?.subCanvas) { enterCanvas(tbHit); return; }
       state.selected.clear();
       state.selectedConnection = null;
       state.selectedArrows.clear();

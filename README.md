@@ -2,7 +2,25 @@
 
 A canvas whiteboard and diagramming tool — flowcharts, wireframes, mind maps.
 
-It ships three ways from one copy of the interface code:
+The native desktop application uses **C# and Avalonia 11.2.7 / AXAML**, matching Graphmat's UI framework. The original Electron and web implementations remain available as references.
+
+AI agents can inspect and edit documents entirely in the background through the **MCP server** or **CLI**. Both use the same backend and support closed files and the running native app, without mouse/keyboard automation, window activation or file-picker dialogs.
+
+```powershell
+npm install
+npm run start:native                  # Avalonia desktop app (.NET 8 SDK required)
+node bin/canvas.mjs schema             # Discover the complete agent API
+node bin/canvas.mjs create plan.cvdoc   # Works with the application closed
+node bin/canvas.mjs add textBox plan.cvdoc --set title="Design"
+node bin/canvas.mjs inspect plan.cvdoc
+node bin/canvas.mjs mcp-config          # Exact absolute-path MCP client configuration
+```
+
+Use Node 20 or newer. Configure an MCP client with the output of `mcp-config`; its command starts `bin/canvas-mcp.mjs` directly. Avoid `npm run mcp` in a stdio client configuration because npm can print script banners on stdout. Full setup, operation examples and concurrency/error semantics are in [the agent API guide](docs/AGENT_API.md).
+
+The MCP server exposes nine tools, three resources and a task prompt. Agents can read/search the graph, edit every stored document field, manipulate rich text and image placement, and apply multi-step atomic edits with revision checks. Live batches join native undo history as one step. Closed-file edits preserve unknown fields and assets and use locked atomic writes. Native live access currently uses Windows named pipes; offline file editing and MCP are platform-independent.
+
+The original implementation ships these ways:
 
 - a **desktop app** for Windows, macOS and Linux;
 - the original **web app**, served from any static file server;
@@ -57,7 +75,7 @@ Every command picks its target automatically:
 
 A document the app currently has open is never written behind its back, because
 the app's next save would overwrite it. Use `--live` to require the running app,
-or `--offline` to insist on editing the file.
+or `--offline` to require a closed file. Offline access to the currently open file is rejected to prevent lost edits.
 
 ### Commands
 
@@ -80,6 +98,15 @@ canvas save                        Save what the app has open
 canvas new | undo | redo           Act on the running app
 canvas watch                       Stream change events as they happen
 canvas path [--install|--uninstall]
+
+canvas schema                      Complete agent schema and workflow guide
+canvas create <file>               Create a closed document
+canvas inspect [file]              Counts, graph, bounds and revision
+canvas query [file] --text "word"   Paginated entity search
+canvas apply [file] --input batch.json --revision <revision>
+canvas patch [file] --input patch.json --revision <revision>
+canvas mcp                        Run the MCP stdio server
+canvas mcp-config                 Generate client configuration
 ```
 
 ### Addressing entities
@@ -132,7 +159,7 @@ wins where both name the same field. Values that look like numbers, `true`,
 | connector | `startPoint.x/y`, `endPoint.x/y`, `style.color`, `locked` |
 | connection | `label`, `style.color`, `locked` |
 
-Ids, parent links and array indices are derived and cannot be set directly.
+Ids are stable and derived. The background API additionally edits parent/endpoint references, rich-text JSON, legacy blocks and full image placement. `canvas patch` can edit any stored field in the raw envelope, with validation of document integrity. See `canvas schema` and the [agent API guide](docs/AGENT_API.md).
 
 ### Exit codes
 
@@ -158,6 +185,8 @@ anything that has to read or generate documents.
 
 ```sh
 npm test             # unit tests
+npm run test:native  # native model regressions
+npm run test:agents:live # isolated invisible native session: real CLI/MCP and pipe tests
 npm run smoke        # boots the real window, drives it, screenshots the result
 npm run bench        # idle CPU with a large document loaded
 ```

@@ -1,3 +1,4 @@
+import { enterCanvas } from './sub-canvases.js';
 import { state } from './state.js';
 import { getDarkerColor, getBorderColor, getDividerColor, worldToScreen } from './utils.js';
 import { blocksToHtml, getOrCreateBlocks } from './rich-text.js';
@@ -214,6 +215,20 @@ function ensureTextBoxElement(idx) {
     domByTypeIdx.textBox[key] = el;
   }
 
+  el.classList.toggle('entity-subcanvas', !!tb.subCanvas);
+  let footer = el.querySelector('.subcanvas-open');
+  if (tb.subCanvas) {
+    if (!footer) {
+      footer = document.createElement('button'); footer.className = 'subcanvas-open';
+      footer.onpointerdown = e => e.stopPropagation();
+      footer.onclick = e => { e.stopPropagation(); enterCanvas(Number(el.dataset.entityIdx)); };
+      el.append(footer);
+    }
+    const count = ['textBoxes', 'shapes', 'arrows', 'connectors', 'connections'].reduce((n, k) => n + (tb.subCanvas[k]?.length || 0), 0);
+    footer.innerHTML = `<span>▣ ${count} objects</span><span>Open canvas →</span>`;
+    footer.style.fontSize = (11 * state.scale) + 'px'; footer.style.height = (30 * state.scale) + 'px';
+    el.style.setProperty('--subcanvas-footer', (32 * state.scale) + 'px');
+  } else footer?.remove();
   const baseColor = tb.color || '#1a1a1a';
   const borderColor = tb.borderColor || '#444';
   const hasTitle = tb.title && tb.title.length > 0;
@@ -264,7 +279,7 @@ function ensureTextBoxElement(idx) {
       content.innerHTML = '';
       const placeholder = document.createElement('span');
       placeholder.className = 'entity-textbox-placeholder';
-      placeholder.textContent = hasTitle ? 'Double-click to edit' : 'Double-click to edit';
+      placeholder.textContent = tb.subCanvas ? 'Add a description in the sidebar' : 'Double-click to edit';
       placeholder.style.fontSize = ((tb.fontSize || 14) * state.scale) + 'px';
       content.appendChild(placeholder);
     }

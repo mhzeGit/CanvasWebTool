@@ -4,14 +4,21 @@
   "description": "Canvas whiteboard/diagramming tool — desktop app, web app and agent CLI",
   "main": "electron/main.mjs",
   "type": "commonjs",
+  "engines": { "node": ">=20" },
   "bin": {
-    "canvas": "bin/canvas.mjs"
+    "canvas": "bin/canvas.mjs",
+    "canvas-mcp": "bin/canvas-mcp.mjs"
   },
   "scripts": {
     "vendor": "node tools/vendor-deps.mjs",
     "postinstall": "node tools/vendor-deps.mjs",
     "serve": "python serve.py --port 5173",
     "start": "electron .",
+    "start:native": "dotnet run --project native/Canvas/Canvas.csproj",
+    "mcp": "node bin/canvas-mcp.mjs",
+    "test:agents": "node --test test/agent-*.test.mjs",
+    "test:native": "dotnet run --project native/Canvas.Tests/Canvas.Tests.csproj",
+    "test:agents:live": "node tools/agent-live-smoke.mjs",
     "dist": "electron-builder --win",
     "dist:portable": "electron-builder --win portable",
     "dist:dir": "electron-builder --win --dir",
@@ -30,7 +37,11 @@
     "url": "https://github.com/mhzeGit/CanvasWebTool/issues"
   },
   "homepage": "https://github.com/mhzeGit/CanvasWebTool#readme",
-  "dependencies": {},
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "proper-lockfile": "4.1.2",
+    "zod": "4.6.7"
+  },
   "devDependencies": {
     "@tiptap/core": "3.23.4",
     "@tiptap/extension-blockquote": "3.23.4",

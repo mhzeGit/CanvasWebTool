@@ -9,6 +9,7 @@ yarn-error.log*
 # Build output
 dist/
 build/
+release/
 
 # Temporary files
 *.tmp
@@ -26,3 +27,9 @@ Thumbs.db
 *.sublime-project
 # Browser dependencies copied out of node_modules by `npm run vendor`
 vendor/
+
+# Native Avalonia build products and verification captures
+native/**/bin/
+native/**/obj/
+native-release/
+artifacts/

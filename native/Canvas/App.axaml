@@ -1,0 +1,21 @@
+<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="CanvasNative.App" RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Dark"><SolidColorBrush x:Key="CanvasInput">#1f1f1f</SolidColorBrush><SolidColorBrush x:Key="CanvasBorder">#2b2b2b</SolidColorBrush><SolidColorBrush x:Key="CanvasText">#dddddd</SolidColorBrush></ResourceDictionary>
+        <ResourceDictionary x:Key="Light"><SolidColorBrush x:Key="CanvasInput">#ffffff</SolidColorBrush><SolidColorBrush x:Key="CanvasBorder">#cccccc</SolidColorBrush><SolidColorBrush x:Key="CanvasText">#333333</SolidColorBrush></ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
+    <Style Selector="Window"><Setter Property="FontFamily" Value="Segoe UI" /><Setter Property="FontSize" Value="13" /><Setter Property="Foreground" Value="{DynamicResource CanvasText}" /></Style>
+    <Style Selector="Button"><Setter Property="MinHeight" Value="26" /><Setter Property="Padding" Value="6,4" /><Setter Property="CornerRadius" Value="4" /></Style>
+    <Style Selector="TextBox"><Setter Property="MinHeight" Value="26" /><Setter Property="Padding" Value="6,4" /><Setter Property="FontSize" Value="13" /><Setter Property="CornerRadius" Value="4" /><Setter Property="Background" Value="{DynamicResource CanvasInput}" /><Setter Property="BorderBrush" Value="{DynamicResource CanvasBorder}" /><Setter Property="Foreground" Value="{DynamicResource CanvasText}" /></Style>
+    <Style Selector="NumericUpDown"><Setter Property="Background" Value="{DynamicResource CanvasInput}" /><Setter Property="BorderBrush" Value="{DynamicResource CanvasBorder}" /><Setter Property="Foreground" Value="{DynamicResource CanvasText}" /></Style>
+    <Style Selector="Button.tool"><Setter Property="Width" Value="36" /><Setter Property="Height" Value="36" /><Setter Property="Padding" Value="7" /><Setter Property="Background" Value="Transparent" /><Setter Property="BorderBrush" Value="Transparent" /><Setter Property="BorderThickness" Value="1" /><Setter Property="CornerRadius" Value="6" /></Style>
+    <Style Selector="Button.tool.active"><Setter Property="Background" Value="#1a3a5c" /><Setter Property="BorderBrush" Value="#3a7bd5" /><Setter Property="Foreground" Value="#6bb5ff" /></Style>
+    <Style Selector="MenuItem"><Setter Property="FontSize" Value="13" /></Style>
+  </Application.Styles>
+</Application>

@@ -1,3 +1,4 @@
+import { addSubCanvasAtCenter } from './sub-canvases.js';
 import { TOOLS, getActiveTool, setActiveTool, getShapeSubType, setShapeSubType, onToolChange } from './toolManager.js';
 import { state } from './state.js';
 
@@ -55,6 +56,10 @@ function createToolbar() {
     toolbar.appendChild(btn);
   }
 
+  const subCanvas = document.createElement('button');
+  subCanvas.className = 'toolbar-btn'; subCanvas.title = 'Add sub-canvas (B)'; subCanvas.setAttribute('aria-label', 'Add sub-canvas');
+  subCanvas.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 8h10M7 12h6m0 5h5m-2-2 2 2-2 2"/></svg>';
+  subCanvas.addEventListener('click', addSubCanvasAtCenter); toolbar.appendChild(subCanvas);
   const shapesContainer = document.createElement('div');
   shapesContainer.className = 'toolbar-shapes-container';
 

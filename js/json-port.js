@@ -1,3 +1,4 @@
+import { rootCanvasDocument, resetCanvasNavigation } from './sub-canvases.js';
 import { state } from './state.js';
 import { refreshSidePanel } from './side-panel.js';
 import { destroyAllEntities } from './dom-entities.js';
@@ -9,26 +10,14 @@ import { requestRender } from './render-scheduler.js';
 export { FORMAT, VERSION } from './portable-format.js';
 
 /** The live document in the plain shape `portable-format` understands. */
-export function getPlainDocument() {
-  return {
-    textBoxes: state.textBoxes,
-    shapes: state.shapes,
-    arrows: state.arrows,
-    connectors: state.connectors,
-    connections: state.connections,
-    viewport: {
-      offsetX: state.targetOffsetX,
-      offsetY: state.targetOffsetY,
-      scale: state.targetScale,
-    },
-  };
-}
+export function getPlainDocument() { return rootCanvasDocument(); }
 
 export function exportAsPortableJSON() {
   return toPortable(getPlainDocument());
 }
 
 function clearAllEntities() {
+  resetCanvasNavigation();
   flushPanelEdit();
   state.connections.length = 0;
   state.arrows.length = 0;
@@ -59,11 +48,9 @@ export function importFromPortableJSON(json) {
 
   for (const textBox of doc.textBoxes) {
     state.textBoxes.push(textBox);
-    state.parentTree.register('textBox', textBox.id, textBox);
   }
   for (const shape of doc.shapes) {
     state.shapes.push(shape);
-    state.parentTree.register('shape', shape.id, shape);
   }
   state.arrows.push(...doc.arrows);
   state.connectors.push(...doc.connectors);

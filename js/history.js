@@ -1,7 +1,8 @@
 import { createHistoryManager, createResizeShapeCmd, createShapePropertyChangeCmd, createTextBoxPropertyChangeCmd, createArrowPropertyChangeCmd, createConnectionPropertyChangeCmd, createResizeTextBoxCmd } from './undo.js';
 import { state } from './state.js';
 
-export const history = createHistoryManager();
+export let history = createHistoryManager();
+export function setCanvasHistory(manager) { history = manager; }
 
 let _refreshSidePanel = null;
 

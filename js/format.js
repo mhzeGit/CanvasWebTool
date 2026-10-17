@@ -11,7 +11,7 @@ function serializeShape(shape) {
 }
 
 function serializeTextBox(textBox) {
-  return { ...textBox };
+  return { ...textBox, ...(textBox.subCanvas ? { subCanvas: structuredClone(textBox.subCanvas) } : {}) };
 }
 
 function serializeConnector(connector) {
@@ -40,6 +40,7 @@ export function serializeDocument(state) {
       shapes: (shapes || []).map(serializeShape),
       textBoxes: (textBoxes || []).map(serializeTextBox),
       connectors: (connectors || []).map(serializeConnector),
+      connections: (connections || []).map(connection => ({ ...connection })),
     }
   };
 }
@@ -87,10 +88,16 @@ export function extractImageAssets(docState) {
       assets.push({ fileName, dataUrl });
     }
   }
+  for (const card of docState.textBoxes || []) {
+    if (card.subCanvas) assets.push(...extractImageAssets(card.subCanvas));
+  }
   return assets;
 }
 
 export function embedImageAssets(docState, assetsMap) {
+  for (const card of docState.textBoxes || []) {
+    if (card.subCanvas) embedImageAssets(card.subCanvas, assetsMap);
+  }
   const shapesArr = docState.shapes || [];
   for (const s of shapesArr) {
     if (s.image && s.image.assetPath && assetsMap[s.image.assetPath]) {

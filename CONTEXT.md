@@ -2,12 +2,48 @@
 
 ## Project Overview
 
+- `native/Canvas/` is the true native C# / Avalonia 11.2.7 port (the same UI framework and AXAML language as Graphmat), independent of Electron and browser engines. `Canvas.csproj` pins Avalonia packages and the .NET 8 target; `Program.cs` initializes the platform and application; `App.axaml` defines compact native control styles; `MainWindow.axaml` recreates the 40px menu bar, 44px tool rail, canvas/editor layers and resizable property panel; `Document.cs` owns lossless legacy JSON, assets, validation, undo/redo, selection, hierarchy and entity CRUD. Native build products and verification captures are ignored through `.gitignore`.
+
 - Canvas whiteboard/diagramming tool (flowcharts, wireframes, mind maps). Similar to Excalidraw / draw.io but self-contained.
 - Ships in three forms from **one** copy of the interface code: a **desktop app** (Electron), the original **web app**, and a **`canvas` CLI** for agents.
 - Entirely client-side SPA — no build step, no server rendering, no framework. ES module imports via an import map pointing at `vendor/` (Tiptap/ProseMirror copied out of node_modules by `npm run vendor`; nothing is fetched from a CDN at runtime).
 - The desktop build serves the same `index.html` over a custom `app://` scheme; the web build needs a static HTTP server (ES modules fail on `file://`). Use `python serve.py --port 5173`. The Python server also fixes the Windows `.js` → `text/plain` MIME issue.
 
+- `release/` contains generated Electron installers, portable executables and unpacked runtime files. These remain local build outputs excluded by `.gitignore`; regenerate them with the existing build scripts rather than committing them to Git.
+
 ## Running and building
+
+`.mcp.json` is the project-scoped MCP registration generated from the local Node executable and absolute `bin/canvas-mcp.mjs` path; regenerate with `canvas mcp-config` if the checkout or Node installation moves. Offline writes use the pinned `proper-lockfile` runtime dependency for cross-process locks with heartbeat and 30-second abandoned-lock recovery.
+
+`docs/AGENT_API.md` is the agent integration reference: MCP client setup generated from real executable paths, tool/resource/prompt inventory, CLI compatibility, stable ids and atomic batches, full JSON Patch access, rich-text/image behavior, native history/persistence, conflict/error recovery, platform limits and reproducible verification commands. `README.md` now points to it and distinguishes native agent access from the original Electron/web reference implementation.
+
+`bin/canvas.cmd` and `bin/canvas-mcp.cmd` are checkout/native Windows launchers using the installed Node runtime; `lib/path-setup.mjs` now points checkout PATH installation at these launchers while preserving packaged Electron launcher detection.
+
+`tools/agent-live-smoke.mjs` starts an isolated invisible native session with its own state directory/pipe, verifies the actual live CLI and MCP transports, atomic history/revisions, dialog-free errors, open-file protection, raw field preservation and external-save conflict handling, then closes only its own test process and removes its temporary data.
+
+`test/agent-service.test.mjs` verifies lossless offline edits, alias/graph batches, rollback/dry-run, stale revisions, concurrent writers, image/rich-text preservation, JSON Patch and invalid references/values. `test/agent-mcp.test.mjs` uses the official MCP client over real stdio to test negotiation, tool/resource/prompt discovery, calls and error recovery; `test/agent-cli.test.mjs` spawns the CLI to check stdin/JSON files, paths with spaces, revisions and structured errors. Native `--background` starts an invisible session for agent verification without window activation.
+
+`bin/canvas-mcp.mjs` is the official MCP SDK stdio server with nine typed tools for discovery/status, lossless reads, search, atomic editing, create/import/export and native session control, plus guide/schema/current-document resources and an editing prompt. It shares `AgentService` with the CLI, reserves stdout exclusively for MCP and returns structured tool errors. `package.json` pins the MCP SDK/Zod runtime dependencies, adds the `canvas-mcp` executable and native/agent test commands.
+
+`lib/agent-schema.mjs` publishes field/type discovery and the agent workflow guide (world geometry, references, operations, revisions, errors, rich text and images). `bin/canvas.mjs` now uses the shared background service: adds schema/inspect/query/create/atomic apply/JSON Patch/MCP/config commands, retains CRUD/session commands, reports revisions and structured errors, and never opens UI dialogs.
+
+`native/Canvas/AgentProtocol.cs` implements background agent protocol v1: raw lossless reads, atomic revision-checked document replacement, explicit-path save/open/new and undo/redo. It returns structured busy/unsaved/conflict errors without focusing windows, closing user edits or displaying dialogs; `ControlServer.cs` advertises the protocol and isolates named pipes when a test state directory is supplied.
+
+`lib/agent-service.mjs` is the transport-independent background API used by CLI/MCP: automatically routes open documents to native compare-and-swap RPC and closed files to locked atomic writes, blocks offline edits to open files, preserves assets through content-addressed non-destructive storage, returns revisions/dry runs and exposes read/query/apply/create/import/export and dialog-free session commands.
+
+`lib/agent-document.mjs` is the lossless agent document boundary: preserves envelope metadata, settings, unknown fields, full image placement and rich text; validates ids, numeric fields, references and parent cycles; supplies atomic domain operations with aliases, JSON Patch, search/pagination and graph summaries shared by the CLI and MCP server.
+
+`tools/native-smoke.mjs` exercises the running Avalonia build through the existing CLI client, preserves any pre-test document, checks live CRUD/undo/redo/links, validation and image/file round trips, and captures native empty/fixture/property screenshots beside the web references in `artifacts/`.
+
+`native/Canvas.Tests/Canvas.Tests.csproj` and `Program.cs` provide a dependency-light executable regression suite covering native transactions/history, legacy and portable round trips, references, deletion/duplication, locked objects/hierarchy, polygon/ellipse geometry, rich text preservation, image assets/Save As and invalid-input rejection. `tools/native-reference.mjs` captures the original Electron-rendered UI in empty, fixture and selected-property states and writes a shared deterministic `.cvdoc` into ignored `artifacts/` for native comparison.
+
+`native/Canvas/ControlServer.cs` exposes the existing local NDJSON named-pipe CLI protocol from Avalonia, dispatches document changes on the UI thread, publishes the per-user endpoint, streams watch notifications and adds screenshot/tool commands for native verification; it refuses to replace an endpoint owned by another live Canvas process.
+
+`native/Canvas/MainWindow.axaml.cs` wires native menus, tool icons, property editors with drag numbers and batch styles, Markdown formatting/inline edits, clipboard, context actions, dialogs, images and drops, file open/save/import/export, external-change protection, auto-save and crash recovery. `native/Canvas/NativeSettings.cs` stores native theme/grid/palette, snapping, auto-save and window/panel dimensions in the per-user Canvas state directory; test mode isolates settings and disables recovery writes.
+
+`native/Canvas/RichText.cs` converts legacy block/Tiptap content to Markdown and uses native Avalonia text layouts for marked text, headings, lists, checkboxes, colors and links. `native/Canvas/CanvasView.cs` is the native canvas renderer and pointer controller: multilevel grid, image clipping/cache, entities, links, selection/handles, drag creation/movement/resizing, endpoint attachments, marquee, pan, anchored zoom, snapping, touch pinch and focus-to-fit; no browser view is involved.
+
+`native/Canvas/Portable.cs` translates the existing CLI portable JSON schema and stable ids to indexed legacy documents, validates writable fields, and preserves native extension data; `native/Canvas/Geometry.cs` provides native shape paths, polygon hit tests, shape-edge attachments, Bézier curves, line distances and resize-handle coordinates shared by rendering, input and verification.
 
 | Command | What it does |
 | --- | --- |
@@ -188,3 +224,9 @@ A file the app currently holds is never edited behind its back, because the app'
 - **Undo commands**: `create<Action><Entity>Cmd` (`createAddShapeCmd`, `createDeleteTextBoxesCmd`, `createSetLockCmd`)
 - **File names**: kebab-case (`inline-editing.js`, `context-menu.js`, `color-palette.js`, `editor-content-bridge.js`)
 - **CSS**: hyphen-case class names (`side-panel`, `panel-resize-handle`, `context-menu`), BEM-style for nested elements
+
+- `js/sub-canvases.js` owns nested canvas card creation, breadcrumb/keyboard navigation, isolated per-canvas undo stacks and viewport restoration; root-aware document capture keeps all nested content in saves and portable exports. Sub-canvases are text boxes with a `subCanvas` document body, shared with the native model and preserved recursively with image assets.
+
+- `tools/subcanvas-smoke.mjs` runs an invisible Electron UI regression for portal creation, nested editing, viewport restoration, per-canvas undo, independent duplication, cross-canvas paste and save/portable round trips, capturing the rendered card in ignored `artifacts/subcanvas-web.png`. Run with `electron tools/subcanvas-smoke.mjs`.
+
+- `tools/native-subcanvas-smoke.mjs` launches an isolated invisible native app, verifies sub-canvas creation and nested navigation through the live command bridge, confirms undo/redo navigation and save/reopen retention, and captures both card and inner-workspace views under ignored `artifacts/`; it closes only its own process.

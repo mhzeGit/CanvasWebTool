@@ -1,3 +1,4 @@
+import { enterCanvas } from './sub-canvases.js';
 import { state } from './state.js';
 import { history, flushPanelEdit, startPanelEdit, startShapePanelEdit, startTextBoxPanelEdit, startArrowPanelEdit, startConnectionPanelEdit } from './history.js';
 import { colorSwatchHTML, initColorSwatch } from './color-palette.js';
@@ -836,7 +837,7 @@ export function refreshSidePanel() {
       : null;
     const parentHtml = parentInfo ? '<div class="panel-row"><label>Parent</label><span class="panel-static">' + state.escAttr(parentInfo) + '</span></div>' : '';
 
-    const sectionTitle = isBatch ? indices.length + ' text boxes selected' : 'Text Box';
+    const sectionTitle = isBatch ? indices.length + ' text boxes selected' : tb.subCanvas ? 'Sub-canvas' : 'Text Box';
 
     _sp( [
       '<div class="panel-section-title">' + sectionTitle + '</div>',
@@ -858,6 +859,11 @@ export function refreshSidePanel() {
       '</div>',
     ].join(''));
 
+    if (!isBatch && tb.subCanvas) {
+      const open = document.createElement('button'); open.className = 'subcanvas-panel-open'; open.textContent = 'Open canvas →';
+      open.onclick = () => enterCanvas(indices[0]); state.sidePanelContent.prepend(open);
+      const label = document.createElement('label'); label.textContent = 'Description'; document.getElementById('panelTBTextEditor').before(label);
+    }
     const titleInput = document.getElementById('panelTBTitle');
     const titleColorSwatch = document.getElementById('panelTBTitleColor');
     const colorSwatch = document.getElementById('panelTBColor');

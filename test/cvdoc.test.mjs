@@ -169,3 +169,28 @@ test('a path that is not a document is refused', async () => {
     await assert.rejects(() => readPortable(path), /Not a document file/);
   });
 });
+
+
+test('nested canvas content and image assets survive disk and portable round trips', async () => {
+  const { serializeDocument, extractImageAssets } = await import('../js/format.js');
+  const { toPortable } = await import('../js/portable-format.js');
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'canvas-nested-'));
+  const image = 'data:image/png;base64,aGVsbG8=';
+  const child = { textBoxes: [], shapes: [{ id: 1, shapeType: 'rectangle', x: 0, y: 0, w: 100, h: 80, image: { src: image } }], arrows: [], connectors: [], connections: [], viewport: { offsetX: 25, offsetY: 35, scale: 1.5 } };
+  const root = { textBoxes: [{ id: 1, x: 0, y: 0, w: 280, h: 180, title: 'Workspace', text: 'Description', subCanvas: child }], shapes: [], arrows: [], connectors: [], connections: [], viewport: { offsetX: 0, offsetY: 0, scale: 1 } };
+  try {
+    const serialized = serializeDocument(root);
+    assert.equal(extractImageAssets(serialized.document).length, 1);
+    assert.equal(child.shapes[0].image.src, image, 'asset extraction never mutates live child images');
+    const path = join(dir, 'nested.cvdoc');
+    await writePortable(path, toPortable(root));
+    const { portable } = await readPortable(path);
+    const nested = portable.entities.textBoxes[0].subCanvas;
+    assert.equal(nested.shapes[0].image.src, image);
+    assert.equal(nested.viewport.scale, 1.5);
+    assert.equal(portable.entities.textBoxes[0].content, 'Description');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

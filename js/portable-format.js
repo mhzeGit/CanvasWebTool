@@ -186,6 +186,7 @@ export function toPortable(doc) {
   const textBoxes = (doc.textBoxes || []).map((tb) => ({
     id: portableId('textBox', tb.id),
     title: tb.title || '',
+    ...(tb.subCanvas ? { subCanvas: structuredCloneish(tb.subCanvas) } : {}),
     position: { x: tb.x, y: tb.y },
     size: { w: tb.w, h: tb.h },
     style: {
@@ -349,6 +350,7 @@ export function fromPortable(json) {
       w: num(e.size?.w, d.textBox.w),
       h: num(e.size?.h, d.textBox.h),
       title: e.title || d.textBox.title,
+      ...(e.subCanvas || e.nativeData?.subCanvas ? { subCanvas: structuredCloneish(e.subCanvas || e.nativeData.subCanvas) } : {}),
       titleColor: pick(style.titleColor, d.textBox.titleColor),
       text: e.content || d.textBox.text,
       blocks: e.blocks || null,

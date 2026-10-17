@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "canvas": {
+      "command": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "C:\\Users\\mhzeu\\Projects\\Web\\CanvasWebTool\\bin\\canvas-mcp.mjs"
+      ]
+    }
+  }
+}

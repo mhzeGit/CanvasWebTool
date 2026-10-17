@@ -4,7 +4,9 @@ function escHtml(str) {
   return div.innerHTML;
 }
 
-export function showConfirmDialog(message) {
+export function showAlertDialog(message) { return showConfirmDialog(message, true); }
+
+export function showConfirmDialog(message, alertOnly = false) {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'dialog-overlay';
@@ -28,6 +30,7 @@ export function showConfirmDialog(message) {
 
     const yesBtn = dialog.querySelector('[data-action="yes"]');
     const noBtn = dialog.querySelector('[data-action="no"]');
+    if (alertOnly) { noBtn.hidden = true; yesBtn.textContent = 'OK'; }
 
     let resolved = false;
 
@@ -47,7 +50,7 @@ export function showConfirmDialog(message) {
       }
       if (e.key === 'Tab') {
         e.preventDefault();
-        const focusable = [noBtn, yesBtn];
+        const focusable = alertOnly ? [yesBtn] : [noBtn, yesBtn];
         const currentIndex = focusable.indexOf(document.activeElement);
         if (e.shiftKey) {
           const prev = (currentIndex - 1 + focusable.length) % focusable.length;
@@ -72,6 +75,6 @@ export function showConfirmDialog(message) {
     });
     document.addEventListener('keydown', onKeyDown);
 
-    noBtn.focus();
+    (alertOnly ? yesBtn : noBtn).focus();
   });
 }

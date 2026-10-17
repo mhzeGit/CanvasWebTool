@@ -1,0 +1,30 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:CanvasNative" x:Class="CanvasNative.MainWindow"
+        Title="Canvas" Width="1440" Height="900" MinWidth="720" MinHeight="480" Background="#111111">
+  <Grid Name="Root" RowDefinitions="40,*">
+    <Border Name="TopBar" Background="#181818" BorderBrush="#2a2a2a" BorderThickness="0,0,0,1" Padding="12,0">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+        <Menu Name="MainMenu" VerticalAlignment="Center" Background="Transparent" />
+        <TextBlock Name="SaveIndicator" Grid.Column="2" Foreground="#999" VerticalAlignment="Center" Margin="0,0,12,0" FontSize="12" />
+        <Button Name="SettingsButton" Grid.Column="3" Background="Transparent" BorderThickness="0" Width="30" Height="30" ToolTip.Tip="Settings" />
+      </Grid>
+    </Border>
+    <Grid Name="Workspace" Grid.Row="1" ColumnDefinitions="44,*,1,345">
+      <Border Name="ToolRail" Background="#181818" BorderBrush="#2a2a2a" BorderThickness="0,0,1,0">
+        <StackPanel Name="Tools" Spacing="2" Margin="3,6,4,0" />
+      </Border>
+      <Grid Grid.Column="1" ClipToBounds="True" RowDefinitions="42,*">
+        <Border BorderBrush="#2a2a2a" BorderThickness="0,0,0,1">
+          <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"><StackPanel Name="CanvasBreadcrumbs" Orientation="Horizontal" Spacing="5" Margin="8,4" /></ScrollViewer>
+        </Border>
+        <local:CanvasView Name="Surface" Grid.Row="1" />
+        <Canvas Grid.Row="1" Name="EditorLayer" IsHitTestVisible="False" />
+      </Grid>
+      <GridSplitter Grid.Column="2" Width="5" HorizontalAlignment="Center" Background="Transparent" ResizeDirection="Columns" />
+      <Border Name="PropertiesBorder" Grid.Column="3" Background="#161616" BorderBrush="#2a2a2a" BorderThickness="1,0,0,0" MinWidth="220" MaxWidth="700">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Name="Properties" Margin="12" Spacing="6"><TextBlock Text="No selection" Foreground="#999" /></StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

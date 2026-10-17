@@ -1,0 +1,72 @@
+import { app, BrowserWindow } from 'electron';
+import { resolve } from 'node:path';
+import { writeFile } from 'node:fs/promises';
+import { registerHandler, registerScheme, START_URL } from '../electron/protocol.mjs';
+
+registerScheme();
+app.whenReady().then(async () => {
+  registerHandler(resolve('.'));
+  const win = new BrowserWindow({ width: 1440, height: 900, show: false, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  const errors = [];
+  win.webContents.on('console-message', (_event, level, message) => { if (level >= 2 && !message.includes("Electron Security Warning")) errors.push(message); });
+  try {
+    await win.loadURL(START_URL);
+    await new Promise(r => setTimeout(r, 300));
+    const result = await win.webContents.executeJavaScript(`(async () => {
+      const {state} = await import('./js/state.js');
+      const nav = await import('./js/sub-canvases.js');
+      const doc = await import('./js/document.js');
+      const hist = await import('./js/history.js');
+      const port = await import('./js/json-port.js');
+      const format = await import('./js/format.js');
+      const checks=[];
+      function check(value, label) { if(!value) throw Error(label); checks.push(label); }
+      document.querySelector('[aria-label="Add sub-canvas"]').click();
+      check(state.textBoxes.length===1 && !!state.textBoxes[0].subCanvas,'toolbar creates portal');
+      state.textBoxes[0].title='Project planning';state.textBoxes[0].text='Explore flows and states in a focused workspace.';state.textBoxes[0].blocks=null;
+      state.targetOffsetX=state.offsetX=37;
+      nav.enterCanvas(0);
+      check(state.textBoxes.length===0 && state.offsetX===0,'enter starts empty with independent viewport');
+      doc.addNodeAt(180,160);state.textBoxes[0].title='Draft state';
+      nav.addSubCanvasAt(520,300);state.textBoxes[1].title='Details';
+      state.targetOffsetX=state.offsetX=91;nav.enterCanvas(1);doc.addShapeAt(200,200,'circle');
+      check(state.shapes.length===1,'recursive canvas supports ordinary tools');
+      const root=doc.getDocumentState();
+      check(root.textBoxes[0].subCanvas.viewport.offsetX===91,'save deep inside preserves ancestor viewport');
+      check(root.textBoxes[0].subCanvas.textBoxes[1].subCanvas.shapes.length===1,'save from deep canvas includes entire tree');
+      const portable=port.exportAsPortableJSON();
+      check(portable.entities.textBoxes[0].subCanvas.textBoxes[1].subCanvas.shapes.length===1,'portable export retains nested document');
+      hist.performUndo();check(state.shapes.length===0,'nested undo works');hist.performRedo();
+      nav.navigateCanvas(0);check(state.offsetX===37 && state.textBoxes[0].title==='Project planning','breadcrumb restores parent and viewport');
+      state.selectedTextBoxes.add(0);doc.duplicateSelectedTextBoxes();
+      check(state.textBoxes.length===2 && state.textBoxes[0].subCanvas!==state.textBoxes[1].subCanvas,'duplicate owns independent nested content');
+      hist.performUndo();check(state.textBoxes.length===1,'parent undo is isolated from child undo');
+      nav.enterCanvas(0);hist.performUndo();check(state.textBoxes.length===1,'child history survives exit and re-entry');hist.performRedo();
+      state.selectedTextBoxes.clear();state.selectedTextBoxes.add(1);doc.copySelectedTextBoxes();
+      nav.navigateCanvas(0);doc.pasteTextBoxesAt(600,160);
+      check(state.textBoxes[1].subCanvas.shapes.length===1,'cross-canvas clipboard preserves nested content');
+      hist.performUndo();
+      const saved=JSON.parse(JSON.stringify(format.serializeDocument(doc.getDocumentState())));
+      nav.enterCanvas(0);doc.restoreDocumentState(format.deserializeDocument(saved));
+      check(document.querySelectorAll('.canvas-breadcrumbs [aria-current]').length===1 && state.textBoxes.length===1,'open while nested resets navigation');
+      check(state.textBoxes[0].subCanvas.textBoxes[1].subCanvas.shapes.length===1,'save and reopen preserve tree');
+      port.importFromPortableJSON(portable);
+      check(state.textBoxes[0].subCanvas.textBoxes[1].subCanvas.shapes.length===1,'portable import preserves tree');
+      state.textBoxes[0].x=140;state.textBoxes[0].y=140;state.textBoxes[0].w=310;state.textBoxes[0].h=200;
+      state.textBoxes[0].blocks=null;state.markDrawOrderDirty();(await import('./js/render-scheduler.js')).requestRender();
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      check(document.querySelectorAll('.entity-subcanvas').length===1,'portal card rendered on canvas');
+      document.querySelector('.subcanvas-open').click();
+      check(document.querySelector('[aria-current]').textContent==='Project planning','card open button enters workspace');
+      document.querySelectorAll('.canvas-breadcrumbs button')[1].click();
+      check(state.textBoxes.length===1 && !!state.textBoxes[0].subCanvas,'breadcrumb button returns home');
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return checks;
+    })()`);
+    await new Promise(r => setTimeout(r, 700));
+    await writeFile(resolve('artifacts/subcanvas-web.png'), (await win.webContents.capturePage()).toPNG());
+    if (errors.length) throw Error(errors.join('\n'));
+    console.log(JSON.stringify(result, null, 2));
+    app.exit(0);
+  } catch (error) { console.error(error); app.exit(1); }
+});

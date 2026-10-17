@@ -1,3 +1,4 @@
+import { rootCanvasDocument, resetCanvasNavigation } from './sub-canvases.js';
 import { state } from './state.js';
 import { history, flushPanelEdit } from './history.js';
 import {
@@ -544,6 +545,7 @@ export function duplicateSelectedTextBoxes() {
       titleColor: tb.titleColor,
       text: tb.text,
       blocks: tb.blocks ? JSON.parse(JSON.stringify(tb.blocks)) : null,
+      subCanvas: tb.subCanvas ? structuredClone(tb.subCanvas) : undefined,
       parentId: null,
       parentType: null
     });
@@ -585,7 +587,8 @@ export function copySelectedTextBoxes() {
       title: tb.title,
       titleColor: tb.titleColor,
       text: tb.text,
-      blocks: tb.blocks ? JSON.parse(JSON.stringify(tb.blocks)) : null
+      blocks: tb.blocks ? JSON.parse(JSON.stringify(tb.blocks)) : null,
+      subCanvas: tb.subCanvas ? structuredClone(tb.subCanvas) : undefined
     });
   }
 }
@@ -609,6 +612,7 @@ export function pasteTextBoxesAt(worldX, worldY) {
       titleColor: c.titleColor,
       text: c.text,
       blocks: c.blocks ? JSON.parse(JSON.stringify(c.blocks)) : null,
+      subCanvas: c.subCanvas ? structuredClone(c.subCanvas) : undefined,
       parentId: null,
       parentType: null
     };
@@ -742,6 +746,7 @@ export function copySelection() {
       titleColor: tb.titleColor,
       text: tb.text,
       blocks: tb.blocks ? JSON.parse(JSON.stringify(tb.blocks)) : null,
+      subCanvas: tb.subCanvas ? structuredClone(tb.subCanvas) : undefined,
     });
   }
   for (const i of state.selectedShapes) {
@@ -781,6 +786,7 @@ export function pasteAt(worldX, worldY) {
         titleColor: c.titleColor || '#e7e7e7',
         text: c.text || '',
         blocks: c.blocks ? JSON.parse(JSON.stringify(c.blocks)) : null,
+        subCanvas: c.subCanvas ? structuredClone(c.subCanvas) : undefined,
         parentId: null, parentType: null,
       };
       const idx = state.textBoxes.length;
@@ -833,22 +839,11 @@ export function duplicateSelection() {
 }
 
 export function getDocumentState() {
-  return {
-    connections: state.connections,
-    arrows: state.arrows,
-    shapes: state.shapes,
-    textBoxes: state.textBoxes,
-    connectors: state.connectors,
-    viewport: {
-      offsetX: state.targetOffsetX,
-      offsetY: state.targetOffsetY,
-      scale: state.targetScale
-    },
-    settings: {}
-  };
+  return { ...rootCanvasDocument(), settings: {} };
 }
 
 export function restoreDocumentState(docState) {
+  resetCanvasNavigation();
   state.connections.length = 0;
   state.arrows.length = 0;
   state.shapes.length = 0;
@@ -893,7 +888,7 @@ export function restoreDocumentState(docState) {
   for (const c of (docState.connections || [])) {
     const newFrom = c.from;
     const newTo = c.to;
-    if (newFrom < state.textBoxes.length && newTo < state.textBoxes.length) {
+    if (newFrom >= 0 && newTo >= 0 && newFrom < (docState.textBoxes?.length || 0) + state.textBoxes.length && newTo < (docState.textBoxes?.length || 0) + state.textBoxes.length) {
       state.connections.push({ id: c.id, from: newFrom, to: newTo, color: c.color || '#6bb5ff', text: c.text || '' });
     }
   }
