@@ -12,6 +12,7 @@ import {
   uninstallFromPath,
 } from "../lib/path-setup.mjs";
 import { connectToApp } from "../lib/client.mjs";
+import { renderDocument } from "../lib/render.mjs";
 import { readEndpoint } from "../shared/endpoint.mjs";
 
 const HELP = `canvas — background document editing and MCP
@@ -23,7 +24,7 @@ status                         Inspect the running native app
 create <file>                  Create document; --json optionally supplies contents
 read [file]                    Portable document plus agent.revision/file/mode
 inspect [file]                 Counts, bounds, graph and revision
-query [file]                   --text, --type, --ids, --parent, --limit, --offset
+query [file]                   --text, --type, --ids, --parent, --limit, --offset, --deep
 list [file]                    Summarise entities; optionally --type
 get <id> [file]                Complete entity
 add <type> [file]              Create entity with --json or --set
@@ -31,9 +32,13 @@ update <id> [file]             Update fields with --json or --set
 delete <id> [file]             Remove entity and repair references
 connect <from> <to> [file]     --kind arrow|connector|connection --label --color
 apply [file]                   Atomic operations from --json/--input; --dry-run
+                               (add/update/delete/connect/layout/fit/document/patch)
 patch [file]                   JSON Patch on the raw envelope from --json/--input
 import <source.json> [file]    Replace contents preserving current file identity
 export <destination> [file]   Portable JSON, or --raw .cvdoc
+render <out.png> [file]         Draw the document (or --canvas path) to a PNG in a private
+                               invisible native session; --width --height --theme,
+                               --at x,y --scale s to look at part of it at that zoom
 open <file>                    Open native session without focusing the window
 new                            New session; --discard-changes if explicitly needed
 save [path]                    Save native session without a picker
@@ -50,10 +55,14 @@ Options:
       --input <path>     JSON input file
       --set key=value    Repeatable nested field update, overriding --json
       --revision <rev>   Expected revision; stale changes fail
+      --canvas <path>    Work inside a sub-canvas: text box ids joined by /, e.g. tb-3/tb-2
       --include-images   Include embedded image payloads in reads
+      --nested           Include sub-canvas contents in a read (omitted by default)
+      --deep             query: search every nested canvas too
       --raw              Read/export complete legacy envelope
       --overwrite        Explicitly replace existing destination
       --dry-run          Validate without writing
+  -q, --quiet            apply: report only the ids of what each operation touched
   -p, --pretty           Indent output JSON
 Errors: JSON on stderr with stable codes and nonzero exit status. No dialogs.
 `;
@@ -68,6 +77,8 @@ const bools = new Set([
   "uninstall",
   "raw",
   "include-images",
+  "nested",
+  "deep",
   "overwrite",
   "dry-run",
   "discard-changes",
@@ -86,9 +97,15 @@ const values = new Set([
   "text",
   "ids",
   "parent",
+  "canvas",
   "limit",
   "offset",
   "format",
+  "width",
+  "height",
+  "theme",
+  "at",
+  "scale",
 ]);
 function parse(args) {
   const positional = [],
@@ -219,7 +236,25 @@ export async function runCli(args) {
     mode: options.live ? "live" : options.offline ? "offline" : "auto",
     expectedRevision: options.revision,
     includeImages: options["include-images"] === true,
+    includeNested: options.nested === true,
+    canvas: options.canvas,
   });
+  if (command === "render") {
+    const out = positional.shift();
+    const file = options.file ?? positional.shift() ?? process.env.CANVAS_FILE;
+    return renderDocument({
+      file,
+      out,
+      canvas: options.canvas,
+      width: options.width === undefined ? undefined : Number(options.width),
+      height: options.height === undefined ? undefined : Number(options.height),
+      theme: options.theme,
+      at: options.at
+        ? Object.fromEntries(options.at.split(",").map((v, i) => [["x", "y"][i], Number(v)]))
+        : undefined,
+      scale: options.scale === undefined ? undefined : Number(options.scale),
+    });
+  }
   if (command === "create") {
     const file = options.file ?? positional.shift();
     const doc =
@@ -277,17 +312,18 @@ export async function runCli(args) {
       text: options.text,
       ids: options.ids?.split(","),
       parent: options.parent,
+      deep: options.deep === true,
       limit: options.limit === undefined ? 100 : Number(options.limit),
       offset: options.offset === undefined ? 0 : Number(options.offset),
     });
   if (command === "get") {
     const id = positional.shift();
     const result = await service.snapshot(target(positional.shift()));
-    return getEntity(result.document, id);
+    return getEntity(service.scope(result, options).document, id);
   }
   if (command === "list") {
     const result = await service.snapshot(target(positional.shift()));
-    return listEntities(result.document, options.type);
+    return listEntities(service.scope(result, options).document, options.type);
   }
   let operations;
   if (command === "apply") {
@@ -336,6 +372,11 @@ export async function runCli(args) {
     operations,
     dryRun: options["dry-run"] === true,
   });
+  if (command === "apply" && options.quiet)
+    return {
+      ...result,
+      results: result.results.map((r) => (r?.id ? { id: r.id } : r)),
+    };
   return ["add", "update", "delete", "connect"].includes(command)
     ? {
         ...result.results[0],

@@ -28,7 +28,7 @@ public sealed partial class ControlServer(MainWindow window):IDisposable
             try{var pid=(int)JsonNode.Parse(File.ReadAllText(Endpoint)).N("pid");if(pid>0&&pid!=Environment.ProcessId&&!Process.GetProcessById(pid).HasExited)throw new IOException("Another Canvas app owns the CLI connection. Close that app before using the native CLI bridge.");}
             catch(ArgumentException){}catch(JsonException){}
         }
-        started=true;Publish();_ = Accept();Doc.Changed+=Broadcast;
+        _ = Accept();started=true;Publish();Doc.Changed+=Broadcast;
     }
     public JsonObject Status()=>new(){["running"]=true,["version"]="1.0.0-native",["filePath"]=Doc.FilePath,["fileName"]=Doc.FilePath==null?null:Path.GetFileName(Doc.FilePath),["dirty"]=Doc.Dirty,["pid"]=Environment.ProcessId,["runtime"]="Avalonia 11.2.7",["agentProtocol"]=1,["testMode"]=Program.Arguments.Contains("--test-mode"),["busy"]=window.HasPendingEdit};
     public void Publish()
@@ -80,6 +80,7 @@ public sealed partial class ControlServer(MainWindow window):IDisposable
         if(cmd.StartsWith("agent.",StringComparison.Ordinal))return DispatchAgent(cmd,args);
         if(cmd=="status")return Status();
         if(cmd=="ping")return new{pong=true};
+        if(cmd=="shell.open"){var path=args.S("path");Dispatcher.UIThread.Post(async()=>await window.OpenFromShell(path));return new{accepted=true};}
         window.FlushEdits();
         switch(cmd)
         {

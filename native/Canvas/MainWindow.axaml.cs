@@ -20,6 +20,12 @@ public partial class MainWindow : Window
     public Document Document {get;}=new();
     public CanvasView SurfaceControl=>surface;
     public bool HasPendingEdit=>editBefore!=null||inlineEditor!=null||surface.IsInteracting;
+    public async Task OpenFromShell(string? path)
+    {
+        if(!Program.Arguments.Contains("--test-mode")){if(WindowState==WindowState.Minimized)WindowState=WindowState.Normal;Show();Activate();}
+        if(string.IsNullOrWhiteSpace(path))return;
+        FlushEdits();if(await GuardUnsaved())await Safe(()=>OpenPath(path));
+    }
     public bool AgentDiskChanged=>Document.FilePath is string path&&fileStamp!=default&&(!File.Exists(path)||File.GetLastWriteTimeUtc(path)!=fileStamp);
     private CanvasView surface=null!;
     private StackPanel properties=null!,tools=null!;

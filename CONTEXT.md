@@ -13,6 +13,10 @@
 
 ## Running and building
 
+`tools/file-association-smoke.mjs` checks native file activation in an isolated invisible session: quoted paths with spaces, uppercase `.CVDOC`, opening a second document through a second launch, and reuse of the original process; it closes only its own test instance.
+
+`native/Canvas/FileAssociations.cs` registers `.cvdoc`, its icon, quoted native open command, Open With entry and Default Apps capabilities under the current user's Windows registry, preserves protected Windows UserChoice preferences and synchronously notifies Explorer; normal interactive starts repair missing registration, `--register-file-associations` updates it and reports the saved UserChoice separately, and `--choose-default-app` opens Windows Default Apps. `native/Canvas/ShellActivation.cs` forwards file/double-click launches to an existing native session, where `shell.open` restores the window and handles unsaved edits without creating a competing instance. `tools/install-native.ps1` publishes a self-contained Windows build to the stable per-user `%LOCALAPPDATA%/Programs/CanvasNative` folder, registers it for `.cvdoc` and opens Default Apps when the saved Canvas choice is missing (`-NoDefaultAppPrompt` skips that UI for unattended installs); no administrator access is needed.
+
 `.mcp.json` is the project-scoped MCP registration generated from the local Node executable and absolute `bin/canvas-mcp.mjs` path; regenerate with `canvas mcp-config` if the checkout or Node installation moves. Offline writes use the pinned `proper-lockfile` runtime dependency for cross-process locks with heartbeat and 30-second abandoned-lock recovery.
 
 `docs/AGENT_API.md` is the agent integration reference: MCP client setup generated from real executable paths, tool/resource/prompt inventory, CLI compatibility, stable ids and atomic batches, full JSON Patch access, rich-text/image behavior, native history/persistence, conflict/error recovery, platform limits and reproducible verification commands. `README.md` now points to it and distinguishes native agent access from the original Electron/web reference implementation.
@@ -31,7 +35,9 @@
 
 `lib/agent-service.mjs` is the transport-independent background API used by CLI/MCP: automatically routes open documents to native compare-and-swap RPC and closed files to locked atomic writes, blocks offline edits to open files, preserves assets through content-addressed non-destructive storage, returns revisions/dry runs and exposes read/query/apply/create/import/export and dialog-free session commands.
 
-`lib/agent-document.mjs` is the lossless agent document boundary: preserves envelope metadata, settings, unknown fields, full image placement and rich text; validates ids, numeric fields, references and parent cycles; supplies atomic domain operations with aliases, JSON Patch, search/pagination and graph summaries shared by the CLI and MCP server.
+`lib/diagram-layout.mjs` holds the pure diagram helpers behind the agent `layout` and `fit` operations: a layered flow layout (longest-path layering with cycle breaking, barycentre ordering, columns for `right` or rows for `down`, arrow ends re-attached to box edges) and a text-height estimator that mirrors the native/web Markdown renderer (title bar, padding, bullet/quote prefixes, greedy word wrap) so boxes are sized to fit their content. `lib/render.mjs` powers `canvas render`: it starts a private invisible native session (isolated state dir, never the user's running app), opens a document, enters an optional sub-canvas path, fits the view and writes a PNG, so agents can check what they built. `test/agent-nested.test.mjs` covers sub-canvas creation, scoped operations and aliases, nested reads/deep queries, disk round trips, layout, fit and the CLI `--canvas` option.
+
+`lib/agent-document.mjs` is the lossless agent document boundary (it also makes sub-canvases first-class: every operation takes an optional `canvas` path such as `tb-3/tb-2` or `$alias`, opens that nested canvas as an ordinary id-scoped portable document, applies the operation and writes it back; `subCanvas:true/false` creates or removes a nested canvas; summaries list nested canvases and queries can search them with `deep`): preserves envelope metadata, settings, unknown fields, full image placement and rich text; validates ids, numeric fields, references and parent cycles; supplies atomic domain operations with aliases, JSON Patch, search/pagination and graph summaries shared by the CLI and MCP server.
 
 `tools/native-smoke.mjs` exercises the running Avalonia build through the existing CLI client, preserves any pre-test document, checks live CRUD/undo/redo/links, validation and image/file round trips, and captures native empty/fixture/property screenshots beside the web references in `artifacts/`.
 
@@ -138,6 +144,8 @@ Building Windows artifacts on Linux additionally needs Wine (32-bit, for the NSI
 │   ├── document-store.mjs  The only place that knows the on-disk layout: reads/writes `.cvdoc` files and their `<name>_assets/` folders, validating every path. Used by the shell and the CLI
 │   ├── cvdoc.mjs           Converts between `.cvdoc` files and portable JSON, reusing js/format.js and js/portable-format.js
 │   ├── doc-ops.mjs         list/get/add/update/delete/connect applied directly to portable JSON — the CLI's offline mode. Shares the field schema with agent-api.js
+│   ├── diagram-layout.mjs  Flow layout and text-fit helpers for the agent `layout`/`fit` operations
+│   ├── render.mjs          `canvas render`: private invisible native session that draws a document or nested canvas to PNG
 │   ├── client.mjs          CLI-side client for the control socket: request/response by id, plus event streaming for `watch`
 │   └── path-setup.mjs      `canvas path --install`: adds the launcher directory to the user's PATH (registry on Windows, printed instructions elsewhere)
 ├── shared/

@@ -32,6 +32,12 @@ const entityType = z.enum([
   "connector",
   "connection",
 ]);
+const canvasPath = z
+  .string()
+  .optional()
+  .describe(
+    "Sub-canvas to work in: text box ids joined by /, e.g. tb-3/tb-2 (a $alias may start it). Omit for the main canvas",
+  );
 const patch = z
   .object({
     op: z.enum(["add", "remove", "replace", "test", "copy", "move"]),
@@ -40,22 +46,33 @@ const patch = z
     value: z.unknown().optional(),
   })
   .strict();
+const scope = { canvas: canvasPath };
+const ids = z.array(z.string()).min(1).max(1000).optional();
 const operation = z.discriminatedUnion("op", [
   z
     .object({
       op: z.literal("add"),
+      ...scope,
       type: entityType,
       props: jsonObject.default({}),
       alias: z.string().optional(),
     })
     .strict(),
   z
-    .object({ op: z.literal("update"), id: z.string(), props: jsonObject })
+    .object({
+      op: z.literal("update"),
+      ...scope,
+      id: z.string(),
+      props: jsonObject,
+    })
     .strict(),
-  z.object({ op: z.literal("delete"), id: z.string() }).strict(),
+  z
+    .object({ op: z.literal("delete"), ...scope, id: z.string() })
+    .strict(),
   z
     .object({
       op: z.literal("connect"),
+      ...scope,
       from: z.string(),
       to: z.string(),
       kind: z.enum(["arrow", "connector", "connection"]).default("arrow"),
@@ -67,6 +84,7 @@ const operation = z.discriminatedUnion("op", [
   z
     .object({
       op: z.literal("image"),
+      ...scope,
       id: z.string(),
       path: z.string(),
       width: z.number().positive().optional(),
@@ -76,6 +94,7 @@ const operation = z.discriminatedUnion("op", [
   z
     .object({
       op: z.literal("document"),
+      ...scope,
       viewport: z
         .object({
           offsetX: z.number().optional(),
@@ -90,7 +109,32 @@ const operation = z.discriminatedUnion("op", [
   z
     .object({
       op: z.literal("patch"),
+      ...scope,
       patches: z.array(patch).min(1).max(1000),
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("layout"),
+      ...scope,
+      ids,
+      direction: z.enum(["right", "down"]).default("right"),
+      gap: z
+        .object({ x: z.number().optional(), y: z.number().optional() })
+        .optional(),
+      origin: z.object({ x: z.number(), y: z.number() }).optional(),
+      align: z.enum(["center", "start"]).default("center"),
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("fit"),
+      ...scope,
+      ids,
+      minHeight: z.number().positive().optional(),
+      maxHeight: z.number().positive().optional(),
+      extra: z.number().min(0).optional(),
+      safety: z.number().min(1).max(2).optional(),
     })
     .strict(),
 ]);
@@ -150,8 +194,15 @@ register(
   "Read a canvas as portable JSON, complete raw legacy JSON, or a compact summary with counts, world bounds and graph. Returns revision for concurrency-safe writes. Raw includes all image payloads.",
   {
     ...target,
+    canvas: canvasPath,
     format: z.enum(["portable", "raw", "summary"]).default("portable"),
     includeImages: z.boolean().default(false),
+    includeNested: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Include the contents of sub-canvases; omitted by default (read them with canvas)",
+      ),
   },
   true,
   (args) => service.read(withDefault(args)),
@@ -170,6 +221,14 @@ register(
     text: z.string().optional(),
     ids: z.array(z.string()).max(1000).optional(),
     parent: z.string().optional(),
+    canvas: canvasPath,
+    deep: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Also search every nested canvas; matches carry their canvas path",
+      ),
+    includeNested: z.boolean().default(false),
     offset: z.number().int().nonnegative().default(0),
     limit: z.number().int().min(1).max(1000).default(100),
     includeImages: z.boolean().default(false),
@@ -183,6 +242,9 @@ register(
   {
     ...target,
     expectedRevision: revision,
+    canvas: canvasPath.describe(
+      "Default sub-canvas for operations that do not name their own canvas",
+    ),
     operations: z.array(operation).min(1).max(1000),
     dryRun: z.boolean().default(false),
   },

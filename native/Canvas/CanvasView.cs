@@ -187,8 +187,7 @@ public sealed class CanvasView : Control
     }
     private void Wheel(object? sender,PointerWheelEventArgs e)
     {
-        if(e.KeyModifiers.HasFlag(KeyModifiers.Control))Zoom(Math.Pow(1.1,e.Delta.Y),e.GetPosition(this));
-        else{Document.Viewport["offsetX"]=Offset.X+e.Delta.X*40+(e.KeyModifiers.HasFlag(KeyModifiers.Shift)?e.Delta.Y*40:0);if(!e.KeyModifiers.HasFlag(KeyModifiers.Shift))Document.Viewport["offsetY"]=Offset.Y+e.Delta.Y*40;InvalidateVisual();}
+        Zoom(Math.Pow(1.1,e.Delta.Y),e.GetPosition(this));
         e.Handled=true;
     }
     public override void Render(DrawingContext context)

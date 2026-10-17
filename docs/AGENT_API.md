@@ -92,10 +92,42 @@ Supported operations:
 | `image` | Shape `id`, local `path`, optional `width`, `height` |
 | `document` | Optional `viewport` (merged), `settings` and `metadata` (replaced) |
 | `patch` | `patches`: JSON Patch against the complete legacy envelope |
+| `layout` | Flow layout of boxes by their arrows: `direction`, `gap`, `origin`, `align`, optional `ids` |
+| `fit` | Set text box heights to their content: optional `ids`, `minHeight`, `maxHeight`, `extra`, `safety` |
+
+Every operation also accepts `canvas` (see Sub-canvases).
 
 Basic props and defaults are listed by `schema`. Additional props expose `richText` (Tiptap JSON doc), `blocks` (legacy rich text), `image` (complete source and placement or null), `parent`, `connectedFrom`/`connectedTo`, and Bézier `from`/`to`. Parent and line endpoint references use `{entityId, type}`. Setting Markdown `content` clears stale rich-text caches; setting `richText` or `blocks` clears the Markdown cache. Image operations read local files (up to 16 MB) and embed them without fetching URLs.
 
 Locked entities require a separate `{locked:false}` update before ordinary edits/deletion. Delete detaches attached lines and removes dependent Bézier connections. Parent cycles, dangling references, invalid dimensions, invalid ids and unsupported fields are rejected. Aliases are unique within a batch and use `$name` only in subsequent entity id/from/to fields.
+
+## Sub-canvases
+
+A text box with a `subCanvas` holds a whole canvas: the card shows the box's title and Markdown description, and opening it shows the contents. Agents never touch the stored (index-based) nested shape. Instead every operation, `canvas_read` and `canvas_query` take a **canvas path**: text box ids joined by `/` (`tb-3`, `tb-3/tb-2`), a `$alias` of a sub-canvas card, or an alias followed by more ids. The path opens that nested canvas as an ordinary portable document, so ids are scoped to it (every canvas has its own `tb-1`), and the result is written back into its text box. The main canvas is the empty path.
+
+| Need | How |
+| --- | --- |
+| Make a sub-canvas | `{op:"add",type:"textBox",alias:"stage",props:{title:"Stage",content:"What happens",subCanvas:true}}`; `subCanvas:true` on an existing box keeps its contents, `false` removes the nested canvas |
+| Edit inside it | `{op:"add",canvas:"$stage",type:"textBox",alias:"a",props:{...}}`, `{op:"connect",canvas:"$stage",from:"$a",to:"$b",kind:"arrow"}`; the `canvas` argument of `canvas_edit` is the default for operations that name none |
+| Aliases | Usable only in the canvas that created them (a mismatch is `EINVAL`). `aliasPaths` in the result gives each alias's full path, e.g. `tb-1/tb-1`, for follow-up calls |
+| Read inside | `canvas_read`/`canvas_query` with `canvas`; CLI `--canvas tb-1` on `read`, `list`, `get`, `query`, `add`, `update`, `delete`, `connect`, `apply` |
+| Find anywhere | `canvas_query` with `deep:true` (CLI `--deep`) searches every nested canvas; matches carry a `canvas` path |
+| Overview | The summary lists every nested canvas under `canvases` (path, title, object count) |
+
+Reads of a canvas omit nested contents by default (`subCanvas: {omitted:true, objects:n}`) so a parent read stays small; pass `includeNested` (CLI `--nested`) for everything. `export`, `import` and raw reads are always complete. Live edits replace the whole document, so nested edits are one native undo step like any other batch. Raw JSON Patch works inside a canvas path too and addresses that canvas's own envelope.
+
+## Layout and fit
+
+Two operations help build readable diagrams; both work on one canvas (use `canvas` to pick it).
+
+- `{op:"layout",direction:"right",gap:{x:120,y:50},origin:{x:0,y:0},align:"center",ids:[...]}` arranges text boxes and shapes by flow order from their arrows, connectors and connections: columns for `right`, rows for `down`. Branches are stacked, merges follow their deepest branch, cycles are tolerated, and arrow ends are re-attached to the new box edges.
+- `{op:"fit",ids:[...],minHeight:60,maxHeight:600,extra:6}` sets text box heights so the title and Markdown content are not clipped. It estimates wrapping from the box width and font size, and leaves room for a sub-canvas card's footer. Run it before `layout` so the layout sees final sizes.
+
+Text boxes render Markdown (`**bold**`, `- ` bullets, `> ` quotes, `#` headings) and coloured spans such as `{red:"line"}`.
+
+## Seeing the result
+
+`canvas render out.png [file] [--canvas tb-3/tb-2] [--width 1600 --height 900] [--theme dark|light]` starts a private, invisible native session (isolated state directory, so a running Canvas app and its documents are never touched), opens the file read-only, enters the canvas path, fits the view and writes a PNG. It needs the native build (`dotnet build native/Canvas/Canvas.csproj`) or `CANVAS_NATIVE_EXE`.
 
 ## Full-field editing with JSON Patch
 

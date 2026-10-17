@@ -28,6 +28,8 @@ The original implementation ships these ways:
 
 ## Running it
 
+On Windows, install the native app and register `.cvdoc` double-click opening with `powershell -File tools/install-native.ps1`. The self-contained build installs under `%LOCALAPPDATA%\Programs\CanvasNative`. Existing Canvas windows receive double-clicked files and retain the usual unsaved-changes prompt. Registration alone does not confirm Explorer's default: the installer opens Windows Default Apps when a saved Canvas choice is missing. Choose **Canvas Native** for `.cvdoc` and **Set default**, or use **Open with → Choose another app → Always**. If Canvas is missing from the list, use **Choose an app on your PC** and select `%LOCALAPPDATA%\Programs\CanvasNative\Canvas.Native.exe`. Interactive launches repair missing registration; `Canvas.Native.exe --register-file-associations` updates it and reports the saved `userChoiceProgId` separately from the resolved executable. `Canvas.Native.exe --choose-default-app` reopens Windows Default Apps; installers can use `-NoDefaultAppPrompt` for unattended registration.
+
 ```sh
 npm install          # also copies the browser modules into vendor/
 npm start            # desktop app
@@ -103,11 +105,16 @@ canvas schema                      Complete agent schema and workflow guide
 canvas create <file>               Create a closed document
 canvas inspect [file]              Counts, graph, bounds and revision
 canvas query [file] --text "word"   Paginated entity search
-canvas apply [file] --input batch.json --revision <revision>
+canvas apply [file] --input batch.json --revision <revision>   (add/update/delete/connect/layout/fit/document/patch)
+canvas render <out.png> [file] [--canvas tb-3/tb-2]   Draw a document or nested canvas to a PNG in a private invisible session
 canvas patch [file] --input patch.json --revision <revision>
 canvas mcp                        Run the MCP stdio server
 canvas mcp-config                 Generate client configuration
 ```
+
+### Sub-canvases
+
+A text box can hold a whole canvas inside it (the card shows its title and description; open it to see the contents). The agent API treats nested canvases as ordinary documents: add `--canvas tb-3` (or `tb-3/tb-2` for a canvas inside a canvas) to `read`, `list`, `get`, `query`, `add`, `update`, `delete`, `connect` and `apply`. Ids are scoped per canvas. Make a card with `canvas add textBox --set subCanvas=true --set title=Stage`, and search every nested canvas at once with `canvas query --text word --deep`. Reads of a parent omit nested contents (just an object count) unless `--nested` is given. `apply` also offers `layout` (arrange boxes in flow order from their arrows) and `fit` (size text boxes to their content); see [the agent API guide](docs/AGENT_API.md#sub-canvases).
 
 ### Addressing entities
 
